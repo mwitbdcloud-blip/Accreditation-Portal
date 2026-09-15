@@ -1,0 +1,124 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isStaffOrAdmin() {
+      return isAuthenticated() && (
+        getUserData().role == 'staff' || 
+        getUserData().role == 'admin'
+      );
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role == 'admin';
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAgentOwner(affiliateCode) {
+      return isAuthenticated() && (
+        getUserData().affiliateCode == affiliateCode || 
+        isStaffOrAdmin()
+      );
+    }
+
+    // User accounts
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isStaffOrAdmin();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Agents permanent profiles
+    match /agents/{affiliateCode} {
+      allow read: if isAgentOwner(affiliateCode);
+      allow create: if isAuthenticated();
+      allow update: if isAgentOwner(affiliateCode);
+      allow delete: if isAdmin();
+    }
+
+    // Accreditation applications
+    match /applications/{applicationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.affiliateCode == getUserData().affiliateCode || 
+        isStaffOrAdmin()
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        (resource.data.affiliateCode == getUserData().affiliateCode && resource.data.status in ['Draft', 'Revision Required']) ||
+        isStaffOrAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Accreditations history
+    match /accreditations/{accreditationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.affiliateCode == getUserData().affiliateCode || 
+        isStaffOrAdmin()
+      );
+      allow create, update: if isStaffOrAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Position access requests
+    match /positionRequests/{requestId} {
+      allow read: if isAuthenticated() && (
+        resource.data.affiliateCode == getUserData().affiliateCode || 
+        isStaffOrAdmin()
+      );
+      allow create: if isAuthenticated();
+      allow update, delete: if isStaffOrAdmin();
+    }
+
+    // Documents metadata
+    match /documents/{documentId} {
+      allow read: if isAuthenticated() && (
+        resource.data.affiliateCode == getUserData().affiliateCode || 
+        isStaffOrAdmin()
+      );
+      allow create: if isAuthenticated();
+      allow update, delete: if isStaffOrAdmin();
+    }
+
+    // Notifications
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.recipientId == request.auth.uid || 
+        resource.data.affiliateCode == getUserData().affiliateCode ||
+        (resource.data.targetRole in ['staff', 'admin'] && isStaffOrAdmin())
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        resource.data.recipientId == request.auth.uid || 
+        isStaffOrAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Audit logs (Read only by Staff & Admin, append only)
+    match /auditLogs/{logId} {
+      allow read: if isStaffOrAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if false; // Immutable audit log
+    }
+
+    // System Settings (Admin only write, authenticated read)
+    match /systemSettings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}

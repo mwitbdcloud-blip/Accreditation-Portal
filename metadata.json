@@ -1,0 +1,7 @@
+{
+  "name": "International Property Affiliates Portal",
+  "description": "One-stop shop portal for Megaworld International Property Affiliates (IPAs) - registration, permanent Affiliate Code, accreditation, 4-month renewal cycle, document management, and staff/admin review.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
