@@ -16,6 +16,18 @@ import {
 
 const BASE_URL = '/api';
 
+async function parseJson<T>(res: Response): Promise<T> {
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    throw new Error(
+      res.ok
+        ? 'The server returned an invalid response. Please refresh and try again.'
+        : `The server request failed (${res.status}). Please try again.`
+    );
+  }
+  return res.json() as Promise<T>;
+}
+
 export const api = {
   // Authentication
   async register(data: {
@@ -33,7 +45,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    const json = await res.json();
+    const json = await parseJson<{ success: boolean; affiliateCode: string; agent: AgentProfile; message?: string; error?: string }>(res);
     if (!res.ok) throw new Error(json.error || 'Registration failed.');
     return json;
   },
@@ -47,7 +59,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier, password }),
     });
-    const json = await res.json();
+    const json = await parseJson<{ success: boolean; user: any; error?: string }>(res);
     if (!res.ok) throw new Error(json.error || 'Login failed.');
     return json;
   },

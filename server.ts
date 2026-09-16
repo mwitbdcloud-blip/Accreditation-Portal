@@ -280,16 +280,17 @@ class DatabaseStore {
 
 const db = new DatabaseStore();
 
-async function startServer() {
+export async function createApp(options: { serveFrontend?: boolean; enableTimers?: boolean } = {}) {
   const app = express();
-  const PORT = 3000;
 
   app.use(express.json({ limit: '25mb' }));
 
   // Run periodic automated expiry check
-  setInterval(() => {
-    db.evaluateExpiries();
-  }, 60000);
+  if (options.enableTimers !== false) {
+    setInterval(() => {
+      db.evaluateExpiries();
+    }, 60000);
+  }
 
   // ==========================================
   // API ROUTES
@@ -1972,13 +1973,13 @@ async function startServer() {
   // ==========================================
   // VITE DEV / PRODUCTION MIDDLEWARE
   // ==========================================
-  if (process.env.NODE_ENV !== 'production') {
+  if (options.serveFrontend !== false && process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (options.serveFrontend !== false) {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
@@ -1986,9 +1987,16 @@ async function startServer() {
     });
   }
 
+  return app;
+}
+
+async function startServer() {
+  const PORT = 3000;
+  const app = await createApp();
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Megaworld IPA Portal] Server running on http://0.0.0.0:${PORT}`);
   });
 }
 
-startServer();
+const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname);
+if (isDirectRun) startServer();
