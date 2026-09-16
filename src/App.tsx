@@ -683,7 +683,7 @@ export default function App() {
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <Layers className="w-3.5 h-3.5" /> Home Tab
+                  <Layers className="w-3.5 h-3.5" /> Home
                 </button>
 
                 <button
@@ -696,7 +696,7 @@ export default function App() {
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <FileText className="w-3.5 h-3.5" /> Accreditation Tab
+                  <FileText className="w-3.5 h-3.5" /> Accreditation
                 </button>
 
                 <button
@@ -709,7 +709,7 @@ export default function App() {
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <ExternalLink className="w-3.5 h-3.5" /> Affiliate Portals & Resources
+                  <ExternalLink className="w-3.5 h-3.5" /> Affiliate Resources
                 </button>
               </>
             ) : (
@@ -929,6 +929,7 @@ export default function App() {
                 isSyncingSheets={isSyncingSheets}
                 onUpdateAgent={handleUpdateAgent}
                 onDeleteAgent={handleDeleteAgent}
+                onRefreshData={loadPortalData}
                 currentUserRole={currentUser.role}
                 currentUser={currentUser}
               />

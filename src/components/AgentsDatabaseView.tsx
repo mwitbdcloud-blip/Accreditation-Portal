@@ -41,6 +41,7 @@ import { api } from '../services/api';
 import { InviteStaffModal } from './InviteStaffModal';
 import { ViewDispatchedEmailModal } from './ViewDispatchedEmailModal';
 import { GoogleSpreadsheetMonitoring } from './GoogleSpreadsheetMonitoring';
+import { ImportAgentsModal } from './ImportAgentsModal';
 import { formatDate, formatDateTime } from '../utils/dateFormatter';
 
 interface AgentsDatabaseViewProps {
@@ -50,6 +51,7 @@ interface AgentsDatabaseViewProps {
   isSyncingSheets: boolean;
   onUpdateAgent: (code: string, updatedData: Partial<AgentProfile>) => void;
   onDeleteAgent?: (code: string, name: string) => Promise<void> | void;
+  onRefreshData?: () => void;
   currentUserRole: string;
   currentUser?: {
     fullName: string;
@@ -65,6 +67,7 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
   isSyncingSheets,
   onUpdateAgent,
   onDeleteAgent,
+  onRefreshData,
   currentUserRole,
   currentUser = {
     fullName: 'Business Development Admin',
@@ -85,6 +88,7 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
 
   // Invitation Modals
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [invitationTargetAgent, setInvitationTargetAgent] = useState<AgentProfile | null>(null);
   const [viewingEmailInvitation, setViewingEmailInvitation] = useState<StaffInvitation | null>(null);
   const [notificationToast, setNotificationToast] = useState<{
@@ -390,6 +394,22 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Import Button: Accessible ONLY by Staff and Admin */}
+            {(currentUserRole?.toLowerCase() === 'admin' ||
+              currentUserRole?.toLowerCase() === 'staff' ||
+              currentUser.role?.toLowerCase() === 'admin' ||
+              currentUser.role?.toLowerCase() === 'staff') && (
+              <button
+                type="button"
+                id="import-agents-spreadsheet-btn"
+                onClick={() => setIsImportModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-xs transition"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-amber-300" />
+                Import from Google Spreadsheet
+              </button>
+            )}
+
             {/* Admin Invite Button */}
             {currentUserRole === 'Admin' && (
               <button
@@ -875,6 +895,8 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
           staffAccounts={staffAccounts}
           onSyncGoogleSheets={onSyncGoogleSheets}
           isSyncing={isSyncingSheets}
+          onOpenImport={() => setIsImportModalOpen(true)}
+          currentUserRole={currentUserRole}
         />
       ) : (
         /* Admin & Active Staff Accounts Table */
@@ -1197,6 +1219,25 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
         isOpen={Boolean(viewingEmailInvitation)}
         onClose={() => setViewingEmailInvitation(null)}
         invitation={viewingEmailInvitation}
+      />
+
+      {/* Import Agents Modal (Staff & Admin Only) */}
+      <ImportAgentsModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        agents={agents}
+        onImportComplete={(importedAgents, message) => {
+          setNotificationToast({
+            message,
+            type: 'success',
+          });
+          if (onRefreshData) {
+            onRefreshData();
+          }
+        }}
+        currentUserRole={currentUserRole}
+        currentUser={currentUser}
+        settings={settings}
       />
     </div>
   );

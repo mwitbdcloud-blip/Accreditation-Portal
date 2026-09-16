@@ -16,7 +16,7 @@ import {
   Lock,
   AlertTriangle,
 } from 'lucide-react';
-import { Position, AccreditationApplication, AgentProfile, PositionContractTemplate } from '../types';
+import { Position, POSITIONS, AccreditationApplication, AgentProfile, PositionContractTemplate } from '../types';
 import { extractContractData } from './ContractDocument';
 import { getPagesForPosition } from './contractPages';
 
@@ -215,10 +215,10 @@ export const ContractModal: React.FC<ContractModalProps> = ({
           {/* Position Tabs */}
           <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800">
             <span className="text-[11px] font-semibold text-slate-400 px-2 select-none">Position:</span>
-            {(['Marketing Associate', 'Marketing Manager', 'Marketing Director'] as Position[]).map((pos) => {
+            {POSITIONS.map((pos) => {
               const isActive = activePosition === pos;
               const isUnlocked = isPositionUnlocked(pos);
-              const pageCount = pos === 'Marketing Associate' ? 12 : pos === 'Marketing Manager' ? 10 : 13;
+              const pageCount = (pos === 'Marketing Associate' || pos === 'Senior Marketing Associate') ? 12 : pos === 'Marketing Manager' ? 10 : 13;
               return (
                 <button
                   key={pos}

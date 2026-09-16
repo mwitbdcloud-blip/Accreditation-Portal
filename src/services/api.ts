@@ -254,6 +254,45 @@ export const api = {
     return res.json();
   },
 
+  // Import Agents from Google Spreadsheet / CSV
+  async importAgents(payload: {
+    records: Array<{
+      email: string;
+      nickname?: string;
+      fullName?: string;
+      positions?: string[];
+      position?: string;
+      dateCreated?: string;
+      status?: string;
+      region?: string;
+      passwordHash?: string;
+      hasExistingContract?: boolean;
+    }>;
+    importedBy?: string;
+    importedByRole?: string;
+    filterMinYear?: number;
+    duplicateHandling?: 'update' | 'skip';
+  }): Promise<{
+    success: boolean;
+    message: string;
+    totalProcessed: number;
+    newImported: number;
+    duplicatesUpdated: number;
+    duplicatesSkipped: number;
+    importedAgents: AgentProfile[];
+  }> {
+    const res = await fetch(`${BASE_URL}/agents/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Import failed' }));
+      throw new Error(err.error || 'Failed to import agents');
+    }
+    return res.json();
+  },
+
   // Fast forward simulation for testing 4-month expiry & auto renewal
   async simulateFastForward(months = 4, affiliateCode?: string): Promise<{ success: boolean; message: string }> {
     const res = await fetch(`${BASE_URL}/simulate-fast-forward`, {

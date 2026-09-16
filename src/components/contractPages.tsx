@@ -20,7 +20,7 @@ export interface PageDefinition {
 }
 
 export function getPagesForPosition(position: Position): PageDefinition[] {
-  if (position === 'Marketing Associate') {
+  if (position === 'Marketing Associate' || position === 'Senior Marketing Associate') {
     return [
       {
         pageNumber: 1,
@@ -34,21 +34,21 @@ export function getPagesForPosition(position: Position): PageDefinition[] {
       },
       {
         pageNumber: 3,
-        title: 'Sales Agency Agreement (SAA) — MA Part 1',
+        title: `Sales Agency Agreement (SAA) — ${position === 'Senior Marketing Associate' ? 'SMA' : 'MA'} Part 1`,
         render: (d, pos, total) => (
           <SAAAgreementBodyPage
             data={d}
             position={pos}
             pageNum={3}
             totalPages={total}
-            sectionTitle="Sales Agency Agreement — Marketing Associate (MA)"
+            sectionTitle={`Sales Agency Agreement — ${position}`}
             bodyContent={
               <>
                 <p className="font-sans font-semibold text-sm text-slate-900">
                   Dear {d.fullName},
                 </p>
                 <p>
-                  We are pleased to advise you that you have been accredited as <strong>MARKETING ASSOCIATE (&ldquo;MA&rdquo;)</strong> of 
+                  We are pleased to advise you that you have been accredited as <strong>{position.toUpperCase()}</strong> of 
                   <strong> MEGAWORLD INTERNATIONAL</strong>, for a fixed engagement term of four (4) months, effective 
                   from <strong>{d.startDate}</strong> to <strong>{d.expiryDate}</strong>, subject to the following terms:
                 </p>
@@ -389,14 +389,14 @@ export function getPagesForPosition(position: Position): PageDefinition[] {
     },
     {
       pageNumber: 2,
-      title: 'Marketing Agreement — Director Part 1',
+      title: `Marketing Agreement — ${position} Part 1`,
       render: (d, pos, total) => (
         <SAAAgreementBodyPage
           data={d}
           position={pos}
           pageNum={2}
           totalPages={total}
-          sectionTitle="MARKETING AGREEMENT — MARKETING DIRECTOR (MD)"
+          sectionTitle={`MARKETING AGREEMENT — ${position.toUpperCase()}`}
           bodyContent={
             <>
               <p className="font-serif italic text-center text-xs text-slate-500 mb-2">
@@ -405,12 +405,12 @@ export function getPagesForPosition(position: Position): PageDefinition[] {
               <p>
                 This Marketing Agreement is entered into by and between <strong>MEGAWORLD CORPORATION</strong>, a corporation 
                 organized under Philippine laws, with principal offices in Makati City, and <strong>{d.fullName}</strong>, of legal age, 
-                Filipino, with address at {d.residentialAddress} (&ldquo;Marketing Director&rdquo;).
+                Filipino, with address at {d.residentialAddress} (&ldquo;{position}&rdquo;).
               </p>
 
               <h4 className="font-bold text-blue-950 uppercase font-sans text-xs pt-2">WITNESSETH That:</h4>
               <p>
-                WHEREAS, the Company desires to engage the services of the Marketing Director to direct, manage, and expand international 
+                WHEREAS, the Company desires to engage the services of the {position} to direct, manage, and expand international 
                 sales networks across <strong>{d.region}</strong>;
               </p>
               <p>

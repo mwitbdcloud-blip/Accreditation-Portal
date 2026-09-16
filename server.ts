@@ -137,7 +137,7 @@ class DatabaseStore {
 
   // Counter map by region code to guarantee atomic sequential numbers
   private sequenceMap: Record<string, number> = {
-    AP2: 1,
+    AP2: 21,
     AP3: 1,
     AP4: 1,
     EU2: 4,
@@ -154,18 +154,25 @@ class DatabaseStore {
   };
 
   generateAffiliateCode(region: Region): string {
-    const codePrefix = REGION_CODE_MAP[region] || 'INT';
-    const nextSeq = (this.sequenceMap[codePrefix] || 0) + 1;
+    const codePrefix = REGION_CODE_MAP[region] || 'AP2';
+    
+    // Dynamically find the highest existing sequence number for this prefix
+    let maxExisting = this.sequenceMap[codePrefix] || 0;
+    const prefixPattern = new RegExp(`^IPA-${codePrefix}-(\\d+)$`, 'i');
+    for (const a of this.agents) {
+      const match = a.affiliateCode.match(prefixPattern);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxExisting) {
+          maxExisting = num;
+        }
+      }
+    }
+
+    const nextSeq = maxExisting + 1;
     this.sequenceMap[codePrefix] = nextSeq;
     const formattedSeq = String(nextSeq).padStart(6, '0');
-    const newCode = `IPA-${codePrefix}-${formattedSeq}`;
-
-    // Ensure uniqueness across database
-    if (this.agents.some((a) => a.affiliateCode === newCode)) {
-      this.sequenceMap[codePrefix] = nextSeq + 1;
-      return `IPA-${codePrefix}-${String(nextSeq + 1).padStart(6, '0')}`;
-    }
-    return newCode;
+    return `IPA-${codePrefix}-${formattedSeq}`;
   }
 
   log(user: string, role: any, action: string, recordAffected: string, details: string) {
@@ -724,6 +731,305 @@ async function startServer() {
     });
   });
 
+  // Import Agents Endpoint (Restricted to Staff and Admin)
+  app.post('/api/agents/import', (req, res) => {
+    const {
+      records = [],
+      importedBy = 'Business Development Admin',
+      importedByRole = 'admin',
+      filterMinYear = 2013,
+      duplicateHandling = 'update', // 'update' | 'skip'
+    } = req.body;
+
+    const normalizedRole = (importedByRole || '').toLowerCase();
+    if (normalizedRole !== 'admin' && normalizedRole !== 'staff') {
+      return res.status(403).json({
+        error: 'Access Denied: The import feature is only accessible by Staff and Admin accounts.',
+      });
+    }
+
+    if (!Array.isArray(records) || records.length === 0) {
+      return res.status(400).json({ error: 'No records provided for import.' });
+    }
+
+    let totalProcessed = 0;
+    let newImported = 0;
+    let duplicatesUpdated = 0;
+    let duplicatesSkipped = 0;
+    const currentYear = new Date().getFullYear();
+    const importedAgents: AgentProfile[] = [];
+
+    // Helper to safely parse dates (e.g. DD/MM/YYYY HH:mm:ss, DD/MM/YYYY, or YYYY-MM-DD)
+    const parseDateInfo = (dateStr?: string): { isoDate: string; year: number } => {
+      const now = new Date();
+      const defaultIso = now.toISOString().split('T')[0];
+      const defaultYear = now.getFullYear();
+
+      if (!dateStr || typeof dateStr !== 'string') {
+        return { isoDate: defaultIso, year: defaultYear };
+      }
+
+      const str = dateStr.trim();
+      if (!str || str === '—' || str === 'N/A' || str === 'null' || str === 'undefined' || str === 'Invalid Date') {
+        return { isoDate: defaultIso, year: defaultYear };
+      }
+
+      // Check ISO YYYY-MM-DD
+      const isoMatch = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (isoMatch) {
+        const y = parseInt(isoMatch[1], 10);
+        const m = parseInt(isoMatch[2], 10);
+        const d = parseInt(isoMatch[3], 10);
+        if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          const monthPad = String(m).padStart(2, '0');
+          const dayPad = String(d).padStart(2, '0');
+          return { isoDate: `${y}-${monthPad}-${dayPad}`, year: y };
+        }
+      }
+
+      // Check DD/MM/YYYY or MM/DD/YYYY
+      const slashMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+      if (slashMatch) {
+        let p1 = parseInt(slashMatch[1], 10);
+        let p2 = parseInt(slashMatch[2], 10);
+        const y = parseInt(slashMatch[3], 10);
+
+        let day = p1;
+        let month = p2;
+        if (p1 > 12 && p2 <= 12) {
+          day = p1;
+          month = p2;
+        } else if (p2 > 12 && p1 <= 12) {
+          month = p1;
+          day = p2;
+        }
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          const monthPad = String(month).padStart(2, '0');
+          const dayPad = String(day).padStart(2, '0');
+          return { isoDate: `${y}-${monthPad}-${dayPad}`, year: y };
+        }
+      }
+
+      try {
+        const parsed = new Date(str);
+        if (!isNaN(parsed.getTime())) {
+          return {
+            isoDate: parsed.toISOString().split('T')[0],
+            year: parsed.getFullYear(),
+          };
+        }
+      } catch {
+        // Fallback
+      }
+
+      return { isoDate: defaultIso, year: defaultYear };
+    };
+
+    const VALID_POSITIONS: Position[] = [
+      'Marketing Associate',
+      'Senior Marketing Associate',
+      'Marketing Manager',
+      'Marketing Director',
+      'Marketing Partner',
+    ];
+
+    records.forEach((rec, idx) => {
+      if (!rec.email || typeof rec.email !== 'string') return;
+      const cleanEmail = rec.email.trim();
+      if (!cleanEmail || cleanEmail.length < 3 || !cleanEmail.includes('@')) return;
+
+      totalProcessed++;
+      const { isoDate, year } = parseDateInfo(rec.dateCreated || rec.registrationDate);
+
+      // Filter condition: records from 2013 up to present
+      if (filterMinYear && (year < filterMinYear || year > currentYear + 1)) {
+        return;
+      }
+
+      // Legal name resolution
+      let fullName = (rec.fullName || '').trim();
+      if (!fullName) {
+        if (rec.nickname && rec.nickname.trim().length > 1 && !rec.nickname.includes('#')) {
+          if (rec.nickname.trim().includes(' ')) {
+            fullName = rec.nickname.trim();
+          } else {
+            const emailPrefix = cleanEmail.split('@')[0].replace(/[._]/g, ' ');
+            fullName = `${rec.nickname.trim()} (${emailPrefix.replace(/\b\w/g, (l) => l.toUpperCase())})`;
+          }
+        } else {
+          fullName = cleanEmail
+            .split('@')[0]
+            .replace(/[._]/g, ' ')
+            .replace(/\b\w/g, (l) => l.toUpperCase());
+        }
+      }
+
+      // Position resolution: extract all requested / assigned positions
+      const positionsToAdd: Position[] = [];
+      if (Array.isArray(rec.positions)) {
+        rec.positions.forEach((p: string) => {
+          if (VALID_POSITIONS.includes(p as Position) && !positionsToAdd.includes(p as Position)) {
+            positionsToAdd.push(p as Position);
+          }
+        });
+      }
+      if (rec.position && VALID_POSITIONS.includes(rec.position as Position) && !positionsToAdd.includes(rec.position as Position)) {
+        positionsToAdd.push(rec.position as Position);
+      }
+      if (positionsToAdd.length === 0) {
+        positionsToAdd.push('Marketing Associate');
+      }
+
+      // Double-checker: Check duplicate account by Email (case-insensitive) or matching Full Legal Name
+      const existingAgent = db.agents.find(
+        (a) =>
+          a.email.toLowerCase() === cleanEmail.toLowerCase() ||
+          (fullName && a.fullName.toLowerCase() === fullName.toLowerCase())
+      );
+
+      if (existingAgent) {
+        if (duplicateHandling === 'skip') {
+          duplicatesSkipped++;
+          return;
+        }
+
+        // Add requested positions to existing agent account
+        positionsToAdd.forEach((pos) => {
+          if (!existingAgent.unlockedPositions.includes(pos)) {
+            existingAgent.unlockedPositions.push(pos);
+          }
+        });
+        if (!existingAgent.positions) {
+          existingAgent.positions = [...existingAgent.unlockedPositions];
+        } else {
+          positionsToAdd.forEach((pos) => {
+            if (!existingAgent.positions!.includes(pos)) {
+              existingAgent.positions!.push(pos);
+            }
+          });
+        }
+
+        // Update primary position if specified
+        if (rec.position && VALID_POSITIONS.includes(rec.position as Position)) {
+          existingAgent.position = rec.position as Position;
+        }
+
+        if (rec.nickname && !existingAgent.nickname) {
+          existingAgent.nickname = rec.nickname.trim();
+        }
+
+        if (rec.status && (rec.status.toLowerCase() === 'approved' || rec.status.toLowerCase() === 'active')) {
+          existingAgent.accountStatus = 'Active';
+          existingAgent.accreditationStatus = 'Active';
+        }
+
+        duplicatesUpdated++;
+        importedAgents.push(existingAgent);
+      } else {
+        // Unique New Agent: Generate guaranteed unique sequential IPA code
+        const region: Region = (rec.region as Region) || 'Asia Pacific 2';
+        const uniqueCode = db.generateAffiliateCode(region);
+        const primaryPosition = positionsToAdd[positionsToAdd.length - 1] || 'Marketing Associate';
+
+        const accreditationId = `acc_imp_${Date.now()}_${idx}`;
+        const startDate = isoDate;
+        let expiryDate = '';
+        try {
+          const startDateObj = new Date(startDate);
+          if (!isNaN(startDateObj.getTime())) {
+            const expiryDateObj = new Date(startDateObj);
+            expiryDateObj.setMonth(expiryDateObj.getMonth() + 4);
+            if (!isNaN(expiryDateObj.getTime())) {
+              expiryDate = expiryDateObj.toISOString().split('T')[0];
+            }
+          }
+        } catch {
+          // fallback
+        }
+        if (!expiryDate) {
+          const fallbackDate = new Date();
+          fallbackDate.setMonth(fallbackDate.getMonth() + 4);
+          expiryDate = fallbackDate.toISOString().split('T')[0];
+        }
+
+        const newAgent: AgentProfile = {
+          affiliateCode: uniqueCode,
+          firebaseUserId: `usr_imp_${Date.now()}_${idx}`,
+          fullName,
+          nickname: rec.nickname ? rec.nickname.trim() : undefined,
+          email: cleanEmail,
+          password: 'password123',
+          passwordHash: rec.passwordHash,
+          region,
+          position: primaryPosition,
+          positions: [...positionsToAdd],
+          unlockedPositions: [...positionsToAdd],
+          role: 'agent',
+          registrationDate: startDate,
+          accountStatus: 'Active',
+          profileCompletion: 100,
+          currentAccreditationId: accreditationId,
+          accreditationStatus: 'Active',
+          accreditationStartDate: startDate,
+          accreditationExpiryDate: expiryDate,
+          lastAccreditationDate: startDate,
+          renewalEligibility: false,
+          assignedStaff: importedByRole === 'Admin' ? 'Business Development Admin' : importedBy,
+        };
+
+        db.agents.push(newAgent);
+
+        // Provision active accreditation record & application for contract monitoring
+        const contractNo = `SAA-${REGION_CODE_MAP[region] || 'AP2'}-${String(db.accreditations.length + 1).padStart(5, '0')}`;
+        const newAccRecord: AccreditationRecord = {
+          id: accreditationId,
+          affiliateCode: uniqueCode,
+          applicationType: 'New',
+          position: primaryPosition,
+          startDate,
+          expiryDate,
+          status: 'Active',
+          daysRemaining: 120,
+          approvedBy: importedBy,
+          approvedDate: startDate,
+          contractId: contractNo,
+        };
+        db.accreditations.push(newAccRecord);
+
+        newImported++;
+        importedAgents.push(newAgent);
+      }
+    });
+
+    db.log(
+      importedBy,
+      importedByRole,
+      'Spreadsheet Agent Import',
+      `Import Batch (${newImported} new, ${duplicatesUpdated} updated)`,
+      `Imported Google Spreadsheet Agent records from 2013 to present. Created ${newImported} unique IPA accounts, updated ${duplicatesUpdated} existing accounts with positions.`
+    );
+
+    db.addNotification(
+      undefined,
+      undefined,
+      'admin',
+      'Spreadsheet Agent Import Completed',
+      `Processed ${totalProcessed} records. Created ${newImported} new agents with unique IPA codes, updated ${duplicatesUpdated} accounts with positions.`,
+      'System',
+      'agents'
+    );
+
+    res.json({
+      success: true,
+      message: `Successfully processed ${totalProcessed} records: ${newImported} new agents created with unique IPA codes, ${duplicatesUpdated} accounts updated with positions, ${duplicatesSkipped} duplicates skipped.`,
+      totalProcessed,
+      newImported,
+      duplicatesUpdated,
+      duplicatesSkipped,
+      importedAgents,
+    });
+  });
+
   // Profile Editor: Update photo, fullName, email, password
   app.post('/api/auth/profile', (req, res) => {
     const { fullName, email, photoUrl, password, affiliateCode, role, operatorName } = req.body;
@@ -1114,6 +1420,22 @@ async function startServer() {
           error: 'Possible Existing Accreditation Found',
           details: `Matching record found with Affiliate Code ${duplicateAgent.affiliateCode}. Please contact Admin/BD Staff before creating another accreditation record.`,
         });
+      }
+    }
+
+    // Automate age calculation from dateOfBirth if not specified
+    if (personalDetails && personalDetails.dateOfBirth && (!personalDetails.age || isNaN(Number(personalDetails.age)))) {
+      const birth = new Date(personalDetails.dateOfBirth);
+      if (!isNaN(birth.getTime())) {
+        const today = new Date();
+        let calcAge = today.getFullYear() - birth.getFullYear();
+        const mDiff = today.getMonth() - birth.getMonth();
+        if (mDiff < 0 || (mDiff === 0 && today.getDate() < birth.getDate())) {
+          calcAge--;
+        }
+        if (calcAge >= 0) {
+          personalDetails.age = calcAge;
+        }
       }
     }
 

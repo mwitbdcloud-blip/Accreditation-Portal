@@ -20,6 +20,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { MegaworldLogo } from './MegaworldLogo';
+import { formatDateTime } from '../utils/dateFormatter';
 
 interface InviteStaffModalProps {
   isOpen: boolean;
@@ -258,7 +259,7 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
               <div className="bg-slate-100 px-4 py-2 font-semibold text-slate-700 flex items-center justify-between">
                 <span>Dispatched Email Transcript</span>
                 <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded">
-                  Delivered • {new Date(dispatchResult.emailDispatchLog.sentAt).toLocaleTimeString()}
+                  Delivered • {formatDateTime(dispatchResult.emailDispatchLog.sentAt)}
                 </span>
               </div>
               <div className="p-4 bg-white space-y-2 text-slate-600">

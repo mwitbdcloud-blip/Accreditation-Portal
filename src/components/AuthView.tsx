@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ShieldCheck, UserPlus, LogIn, Sparkles, CheckCircle, ArrowRight, Calendar, Clock } from 'lucide-react';
 import { REGIONS, POSITIONS, Region, Position, REGION_CODE_MAP } from '../types';
 import { MegaworldLogo } from './MegaworldLogo';
-import { formatDate } from '../utils/dateFormatter';
+import { formatDate, safeDatePart, computeExpiryDate } from '../utils/dateFormatter';
 
 interface AuthViewProps {
   onLogin: (email: string, password?: string) => Promise<void>;
@@ -32,22 +32,13 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onRegister, isLoadi
   const [regPassword, setRegPassword] = useState('');
   const [regRegion, setRegRegion] = useState<Region>('Asia Pacific 2');
   const [regPosition, setRegPosition] = useState<Position>('Marketing Associate');
-  const [accreditationStartDate, setAccreditationStartDate] = useState(
-    new Date().toISOString().split('T')[0]
+  const [accreditationStartDate, setAccreditationStartDate] = useState(() =>
+    safeDatePart(new Date())
   );
   const [regAcceptedTerms, setRegAcceptedTerms] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const compute4MonthExpiry = (startDateStr: string) => {
-    if (!startDateStr) return '';
-    const d = new Date(startDateStr);
-    if (isNaN(d.getTime())) return '';
-    const newDate = new Date(d);
-    newDate.setMonth(newDate.getMonth() + 4);
-    return newDate.toISOString().split('T')[0];
-  };
-
-  const calculatedExpiryDate = compute4MonthExpiry(accreditationStartDate);
+  const calculatedExpiryDate = computeExpiryDate(accreditationStartDate, 4);
 
   const regRegionCode = REGION_CODE_MAP[regRegion] || 'AP2';
   const previewAffiliateCode = `IPA-${regRegionCode}-XXXXXX`;

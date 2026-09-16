@@ -38,8 +38,10 @@ export const REGION_CODE_MAP: Record<Region, string> = {
 
 export const POSITIONS = [
   'Marketing Associate',
+  'Senior Marketing Associate',
   'Marketing Manager',
   'Marketing Director',
+  'Marketing Partner',
 ] as const;
 
 export type Position = (typeof POSITIONS)[number];
@@ -168,12 +170,15 @@ export interface AgentProfile {
   affiliateCode: string; // Permanent primary identifier, e.g. IPA-AP2-000001
   firebaseUserId: string;
   fullName: string;
+  nickname?: string;
   email: string;
   mobileNumber?: string;
   password?: string;
+  passwordHash?: string;
   photoUrl?: string;
   region: Region;
   position: Position;
+  positions?: Position[]; // All held or unlocked positions
   role: UserRole;
   registrationDate: string;
   accountStatus: 'Active' | 'Suspended' | 'Pending';

@@ -22,7 +22,7 @@ import {
   Position,
   ApplicationType,
 } from '../types';
-import { formatDate } from '../utils/dateFormatter';
+import { formatDate, calculateAgeFromDob } from '../utils/dateFormatter';
 import { SignaturePad } from './SignaturePad';
 
 interface AccreditationFormProps {
@@ -56,7 +56,13 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
   const [lastName, setLastName] = useState(existingApplication?.personalDetails?.lastName || agent.fullName.split(' ').slice(1).join(' ') || '');
   const [suffix, setSuffix] = useState(existingApplication?.personalDetails?.suffix || '');
   const [dateOfBirth, setDateOfBirth] = useState(existingApplication?.personalDetails?.dateOfBirth || '');
-  const [age, setAge] = useState<number | string>(existingApplication?.personalDetails?.age || '');
+  const [age, setAge] = useState<number | string>(() => {
+    if (existingApplication?.personalDetails?.age) return existingApplication.personalDetails.age;
+    if (existingApplication?.personalDetails?.dateOfBirth) {
+      return calculateAgeFromDob(existingApplication.personalDetails.dateOfBirth);
+    }
+    return '';
+  });
   const [sex, setSex] = useState<'Male' | 'Female' | 'Other' | ''>((existingApplication?.personalDetails?.sex as any) || '');
   const [civilStatus, setCivilStatus] = useState(existingApplication?.personalDetails?.civilStatus || '');
   const [citizenship, setCitizenship] = useState(existingApplication?.personalDetails?.citizenship || existingApplication?.personalDetails?.nationality || '');
@@ -126,8 +132,16 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
       setMiddleName(existingApplication.personalDetails?.middleName || '');
       setLastName(existingApplication.personalDetails?.lastName || agent.fullName.split(' ').slice(1).join(' ') || '');
       setSuffix(existingApplication.personalDetails?.suffix || '');
-      setDateOfBirth(existingApplication.personalDetails?.dateOfBirth || '');
-      setAge(existingApplication.personalDetails?.age || '');
+      const initialDob = existingApplication.personalDetails?.dateOfBirth || '';
+      setDateOfBirth(initialDob);
+      const appAge = existingApplication.personalDetails?.age;
+      if (appAge !== undefined && appAge !== null && appAge !== '') {
+        setAge(appAge);
+      } else if (initialDob) {
+        setAge(calculateAgeFromDob(initialDob));
+      } else {
+        setAge('');
+      }
       setSex((existingApplication.personalDetails?.sex as any) || '');
       setCivilStatus(existingApplication.personalDetails?.civilStatus || '');
       setCitizenship(existingApplication.personalDetails?.citizenship || existingApplication.personalDetails?.nationality || '');
@@ -198,6 +212,15 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
 
   // Auto-assemble Full Name
   const calculatedFullName = [firstName, middleName, lastName, suffix].filter(Boolean).join(' ');
+
+  // Automatically calculate age when registrant indicates Date of Birth
+  const handleDateOfBirthChange = (dobValue: string) => {
+    setDateOfBirth(dobValue);
+    const computedAge = calculateAgeFromDob(dobValue);
+    if (computedAge !== '') {
+      setAge(computedAge);
+    }
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'photo' | 'id') => {
     const file = e.target.files?.[0];
@@ -703,13 +726,20 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                   type="date"
                   required
                   value={dateOfBirth}
-                  onChange={(e) => setDateOfBirth(e.target.value)}
+                  onChange={(e) => handleDateOfBirthChange(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Age *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">Age *</label>
+                  {age !== '' && (
+                    <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                      Auto-calculated
+                    </span>
+                  )}
+                </div>
                 <input
                   type="number"
                   required
@@ -717,8 +747,8 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                   max={99}
                   value={age}
                   onChange={(e) => setAge(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
-                  placeholder="e.g. 34"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none bg-slate-50/60"
+                  placeholder="Auto-calculated from DOB"
                 />
               </div>
 

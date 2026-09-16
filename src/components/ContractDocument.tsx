@@ -1,7 +1,7 @@
 import React from 'react';
 import { ShieldCheck, CheckCircle, Award, Building2, UserCheck, FileCheck } from 'lucide-react';
 import { Position, AccreditationApplication, AgentProfile, TeamLeadershipDetails } from '../types';
-import { formatDate } from '../utils/dateFormatter';
+import { formatDate, calculateAgeFromDob } from '../utils/dateFormatter';
 
 export interface ContractData {
   affiliateCode: string;
@@ -76,7 +76,7 @@ export function extractContractData(
     lastName,
     suffix,
     dateOfBirth: formatDate(p?.dateOfBirth || '1987-05-18'),
-    age: p?.age || 38,
+    age: p?.age || (p?.dateOfBirth ? calculateAgeFromDob(p.dateOfBirth) : 38),
     sex: p?.sex || 'Female',
     civilStatus: p?.civilStatus || 'Married',
     citizenship: p?.citizenship || 'Filipino',

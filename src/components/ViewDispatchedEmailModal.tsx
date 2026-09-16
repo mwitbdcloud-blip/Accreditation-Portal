@@ -2,6 +2,7 @@ import React from 'react';
 import { StaffInvitation } from '../types';
 import { X, Mail, CheckCircle2, Copy, Check } from 'lucide-react';
 import { MegaworldLogo } from './MegaworldLogo';
+import { formatDateTime } from '../utils/dateFormatter';
 
 interface ViewDispatchedEmailModalProps {
   isOpen: boolean;
@@ -57,7 +58,7 @@ export const ViewDispatchedEmailModal: React.FC<ViewDispatchedEmailModalProps> =
               </span>
             </div>
             <span className="text-[10px] text-emerald-700">
-              {new Date(invitation.emailDispatchLog.sentAt).toLocaleString()}
+              {formatDateTime(invitation.emailDispatchLog.sentAt)}
             </span>
           </div>
 

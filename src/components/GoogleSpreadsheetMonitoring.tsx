@@ -15,6 +15,7 @@ import {
   Table,
   Copy,
   Check,
+  Upload,
 } from 'lucide-react';
 import { AgentProfile, AccreditationApplication, SystemSettings, StaffAccount } from '../types';
 import { formatDate, formatDateTime } from '../utils/dateFormatter';
@@ -26,6 +27,8 @@ interface GoogleSpreadsheetMonitoringProps {
   staffAccounts: StaffAccount[];
   onSyncGoogleSheets: () => void;
   isSyncing: boolean;
+  onOpenImport?: () => void;
+  currentUserRole?: string;
 }
 
 type SheetTab = 'all_agents' | 'active_accreditations' | 'expiry_monitoring' | 'pending_applications' | 'staff_roles';
@@ -37,6 +40,8 @@ export const GoogleSpreadsheetMonitoring: React.FC<GoogleSpreadsheetMonitoringPr
   staffAccounts,
   onSyncGoogleSheets,
   isSyncing,
+  onOpenImport,
+  currentUserRole = 'Admin',
 }) => {
   const [activeSheetTab, setActiveSheetTab] = useState<SheetTab>('all_agents');
   const [searchQuery, setSearchQuery] = useState('');
@@ -170,6 +175,18 @@ export const GoogleSpreadsheetMonitoring: React.FC<GoogleSpreadsheetMonitoringPr
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
+          {(currentUserRole?.toLowerCase() === 'admin' || currentUserRole?.toLowerCase() === 'staff') && onOpenImport && (
+            <button
+              type="button"
+              id="monitoring-import-agents-btn"
+              onClick={onOpenImport}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-900 rounded-lg font-bold text-xs shadow-xs transition"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Import Agents (2013-Present)
+            </button>
+          )}
+
           <a
             href={googleSpreadsheetUrl}
             target="_blank"

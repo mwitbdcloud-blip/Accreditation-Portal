@@ -361,8 +361,11 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                     <span className="font-semibold text-slate-800">{selectedApp.personalDetails.fullName}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block">Date of Birth:</span>
-                    <span className="font-semibold text-slate-800">{formatDate(selectedApp.personalDetails.dateOfBirth)}</span>
+                    <span className="text-slate-400 block">Date of Birth & Age:</span>
+                    <span className="font-semibold text-slate-800">
+                      {formatDate(selectedApp.personalDetails.dateOfBirth)}
+                      {selectedApp.personalDetails.age ? ` (${selectedApp.personalDetails.age} yrs old)` : ''}
+                    </span>
                   </div>
                   <div>
                     <span className="text-slate-400 block">Nationality:</span>
