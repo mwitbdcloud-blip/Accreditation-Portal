@@ -21,6 +21,7 @@ import {
   REGION_CODE_MAP,
 } from '../data/seedData';
 import { computeExpiryDate, safeDatePart } from '../utils/dateFormatter';
+import { isLiveEnvironment } from '../utils/environment';
 
 const STORAGE_KEYS = {
   AGENTS: 'mwi_agents_cache',
@@ -84,10 +85,31 @@ export const clientStorage = {
   getAgents(): AgentProfile[] {
     const list = readStorage<AgentProfile[]>(STORAGE_KEYS.AGENTS, []);
     if (!Array.isArray(list) || list.length === 0) {
+      // In live environment, do not seed mock demo accounts
+      if (isLiveEnvironment()) {
+        writeStorage(STORAGE_KEYS.AGENTS, []);
+        return [];
+      }
       writeStorage(STORAGE_KEYS.AGENTS, INITIAL_AGENTS);
       return [...INITIAL_AGENTS];
     }
+    // In live environment, automatically filter out mock demo accounts (those with .example domains)
+    if (isLiveEnvironment()) {
+      const liveAgents = list.filter((a) => !a.email.toLowerCase().includes('.example'));
+      if (liveAgents.length !== list.length) {
+        writeStorage(STORAGE_KEYS.AGENTS, liveAgents);
+        return liveAgents;
+      }
+    }
     return list;
+  },
+
+  clearDemoAccounts(): { removed: number; remaining: number } {
+    const list = readStorage<AgentProfile[]>(STORAGE_KEYS.AGENTS, []);
+    const filtered = list.filter((a) => !a.email.toLowerCase().includes('.example'));
+    const removed = list.length - filtered.length;
+    this.saveAgents(filtered);
+    return { removed, remaining: filtered.length };
   },
 
   saveAgents(agents: AgentProfile[]): void {

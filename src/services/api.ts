@@ -16,6 +16,7 @@ import {
 import { INITIAL_AGENTS, REGION_CODE_MAP } from '../data/seedData';
 import { clientStorage } from './clientStorage';
 import { computeExpiryDate, safeDatePart } from '../utils/dateFormatter';
+import { isLiveEnvironment } from '../utils/environment';
 
 const BASE_URL = '/api';
 
@@ -232,8 +233,8 @@ export const api = {
       };
     }
 
-    // Default demo agent fallback if 'agent' is entered
-    if (trimmedId === 'agent@megaworld.com' || trimmedId === 'agent') {
+    // Default demo agent fallback if 'agent' is entered (available only in local dev, removed on live site)
+    if (!isLiveEnvironment() && (trimmedId === 'agent@megaworld.com' || trimmedId === 'agent')) {
       const defaultAgent = localAgents[0] || INITIAL_AGENTS[0];
       return {
         success: true,
@@ -929,9 +930,14 @@ export const api = {
 
     if (res.ok && res.data) return res.data;
 
+    // Clean client-side fallback with standard MWI-INV-XXXXXX code
+    const invCode = `MWI-INV-${Math.floor(100000 + Math.random() * 900000)}`;
+    const nowIso = new Date().toISOString();
+    const expiresIso = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+
     const newInv: StaffInvitation = {
-      id: `inv_${Date.now()}`,
-      invitationCode: `tok_${Math.random().toString(36).substr(2, 12)}`,
+      id: `inv_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      invitationCode: invCode,
       recipientName: data.recipientName,
       recipientEmail: data.recipientEmail,
       affiliateCode: data.affiliateCode,
@@ -941,27 +947,60 @@ export const api = {
       permissions: data.permissions as StaffPermissions,
       customMessage: data.customMessage,
       status: 'Pending',
-      createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+      createdAt: nowIso,
+      expiresAt: expiresIso,
       invitedBy: data.operatorName || 'Business Development Admin',
-      invitedByEmail: 'admin@megaworld.com',
+      invitedByEmail: data.operatorEmail || 'admin@megaworld.com',
       emailDispatchLog: {
         sentTo: data.recipientEmail,
-        subject: 'Staff Portal Access Invitation',
-        sentAt: new Date().toISOString(),
+        subject: `Official Appointment: Megaworld International BD Staff Invitation (${data.positionTitle})`,
+        sentAt: nowIso,
         status: 'Delivered',
-        deliveryChannel: 'Email Notification',
-        bodyPreview: `You have been invited to join the MWI Portal as ${data.role}`,
+        deliveryChannel: 'Official Megaworld Mail Server (SMTP Relay)',
+        bodyPreview: `Dear ${data.recipientName}, you have been appointed as ${data.positionTitle} (${data.role}) in ${data.department}. Privileges: application review, agent database access, and reporting. Please use invitation code ${invCode} to activate your staff access.`,
       },
     };
 
     clientStorage.saveInvitation(newInv);
+
+    clientStorage.addAuditLog({
+      user: data.operatorName || 'Business Development Admin',
+      role: 'admin',
+      action: 'Dispatched Staff Invitation',
+      recordAffected: data.recipientEmail,
+      details: `Appointed ${data.recipientName} as ${data.positionTitle} (${data.role}) with invitation code ${invCode}.`,
+    });
+
+    clientStorage.addNotification({
+      targetRole: 'staff',
+      title: 'Staff Invitation Dispatched',
+      message: `Invitation code ${invCode} dispatched to ${data.recipientName} (${data.recipientEmail}).`,
+      category: 'System',
+      actionLink: 'agents',
+    });
+
+    if (data.affiliateCode) {
+      clientStorage.addNotification({
+        affiliateCode: data.affiliateCode,
+        targetRole: 'agent',
+        title: 'Official Staff Appointment Invitation',
+        message: `You have been officially invited to join Megaworld International BD Staff as ${data.positionTitle} (${data.role}). Use code ${invCode} to activate.`,
+        category: 'System',
+        actionLink: 'dashboard',
+      });
+    }
 
     return {
       success: true,
       message: `Staff invitation dispatched to ${data.recipientEmail}.`,
       invitation: newInv,
     };
+  },
+
+  async inviteStaff(
+    data: Parameters<typeof api.inviteStaffMember>[0]
+  ): Promise<{ success: boolean; message: string; invitation: StaffInvitation }> {
+    return this.inviteStaffMember(data);
   },
 
   async resendStaffInvitation(

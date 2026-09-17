@@ -118,10 +118,10 @@ export default function App() {
 
   // Synthesized fallback agent so Agent Dashboard always renders with the registrant's Full Legal Name
   const fallbackAgent: AgentProfile = {
-    affiliateCode: currentUser?.affiliateCode || 'IPA-AP2-000001',
+    affiliateCode: currentUser?.affiliateCode || 'IPA-PENDING',
     firebaseUserId: 'usr_current',
-    fullName: currentUser?.displayName || 'Registered Affiliate',
-    email: currentUser?.email || 'agent@megaworld.com',
+    fullName: currentUser?.displayName || (currentUser?.email ? currentUser.email.split('@')[0] : 'Registered Affiliate'),
+    email: currentUser?.email || '',
     region: 'Asia Pacific 2',
     position: 'Marketing Associate',
     role: 'agent',
@@ -132,7 +132,7 @@ export default function App() {
     accreditationStatus: 'Pending',
     renewalEligibility: false,
     unlockedPositions: ['Marketing Associate'],
-    assignedStaff: 'Elena Ramos (BD Staff)',
+    assignedStaff: 'BD Staff Reviewer',
   };
 
   const activeAgent = currentAgent || (currentUser?.role === 'Agent' ? fallbackAgent : null);
@@ -211,7 +211,9 @@ export default function App() {
           : 'Agent';
 
       const displayName =
-        user.displayName || user.fullName || (normalizedRole === 'Agent' ? 'Maria Cristina Santos' : normalizedRole);
+        user.displayName ||
+        user.fullName ||
+        (user.email ? user.email.split('@')[0] : normalizedRole === 'Agent' ? 'Accredited Affiliate' : normalizedRole);
 
       setCurrentUser({
         role: normalizedRole,

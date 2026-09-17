@@ -24,6 +24,7 @@ import {
 } from '../types';
 import { formatDate, calculateAgeFromDob } from '../utils/dateFormatter';
 import { SignaturePad } from './SignaturePad';
+import { api } from '../services/api';
 
 interface AccreditationFormProps {
   agent: AgentProfile;
@@ -346,15 +347,9 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
         declarationAccepted,
       };
 
-      const res = await fetch('/api/applications/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json.error || json.details || 'Failed to submit accreditation.');
+      const result = await api.submitApplication(payload);
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to submit accreditation.');
       }
 
       onSubmitSuccess();

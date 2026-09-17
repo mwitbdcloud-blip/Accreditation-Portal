@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { MegaworldLogo } from './MegaworldLogo';
 import { formatDateTime } from '../utils/dateFormatter';
+import { api } from '../services/api';
 
 interface InviteStaffModalProps {
   isOpen: boolean;
@@ -142,19 +143,13 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
         operatorEmail: currentUser.email || 'admin@megaworld.com',
       };
 
-      const res = await fetch('/api/admin/invite-staff', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json.error || 'Failed to dispatch staff invitation.');
+      const result = await api.inviteStaff(payload);
+      if (!result.success || !result.invitation) {
+        throw new Error(result.message || 'Failed to dispatch staff invitation.');
       }
 
-      setDispatchResult(json.invitation);
-      onInvitationSent(json.invitation);
+      setDispatchResult(result.invitation);
+      onInvitationSent(result.invitation);
     } catch (err: any) {
       setErrorMessage(err.message || 'Error sending invitation.');
     } finally {
