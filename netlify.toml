@@ -1,0 +1,19 @@
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Redirect API calls to the live Cloud backend proxy
+[[redirects]]
+  from = "/api/*"
+  to = "https://ais-dev-zqosip4jfkfqe52ceyf7yn-139025000629.asia-southeast1.run.app/api/:splat"
+  status = 200
+  force = false
+
+# Single Page Application fallback for Netlify and GitHub deployments
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

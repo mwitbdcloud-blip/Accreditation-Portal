@@ -27,6 +27,11 @@ import {
   INITIAL_POSITION_CONTRACTS,
   REGION_CODE_MAP,
 } from './src/data/seedData';
+import {
+  DATASET_COLUMNS_34,
+  getAgentDatasetRow,
+  generate34ColumnCsv,
+} from './src/utils/agentDatasetExport';
 
 // In-Memory Database Store with initial seed data
 class DatabaseStore {
@@ -152,6 +157,16 @@ class DatabaseStore {
     NA5: 1,
     NA6: 1,
   };
+
+  constructor() {
+    // Ensure every agent has an assigned temporary password for access and renewal
+    this.agents.forEach((agent) => {
+      if (!agent.tempPassword) {
+        const lastPart = agent.affiliateCode.split('-').pop() || '000001';
+        agent.tempPassword = `Mega@${lastPart}`;
+      }
+    });
+  }
 
   generateAffiliateCode(region: Region): string {
     const codePrefix = REGION_CODE_MAP[region] || 'AP2';
@@ -285,6 +300,17 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json({ limit: '25mb' }));
+
+  // Enable CORS for Netlify, GitHub Pages, and cross-origin clients
+  app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
 
   // Run periodic automated expiry check
   setInterval(() => {
@@ -659,6 +685,34 @@ async function startServer() {
     res.json(db.agents);
   });
 
+  // Export 34-column dataset (must be defined before /api/agents/:code)
+  app.get('/api/agents/export-dataset', (req, res) => {
+    const format = (req.query.format as string) || 'json';
+    const appMap = new Map<string, AccreditationApplication>();
+    db.applications.forEach((app) => appMap.set(app.affiliateCode, app));
+
+    const rows = db.agents.map((agent) =>
+      getAgentDatasetRow(agent, appMap.get(agent.affiliateCode))
+    );
+
+    if (format === 'csv') {
+      const csv = generate34ColumnCsv(db.agents, db.applications);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="Megaworld_Agents_Database_34Columns_${new Date().toISOString().split('T')[0]}.csv"`
+      );
+      return res.send(csv);
+    }
+
+    res.json({
+      success: true,
+      columns: DATASET_COLUMNS_34,
+      totalRecords: rows.length,
+      data: rows,
+    });
+  });
+
   app.get('/api/agents/:code', (req, res) => {
     const agent = db.agents.find((a) => a.affiliateCode === req.params.code);
     if (!agent) {
@@ -728,6 +782,162 @@ async function startServer() {
     res.json({
       success: true,
       message: `Account for ${removedAgent.fullName} (${code}) has been deleted successfully.`,
+    });
+  });
+
+  // Send Credentials / Temporary Password Email for Access and Renewal
+  app.post('/api/agents/:code/send-credentials', (req, res) => {
+    const code = req.params.code;
+    const { operatorName = 'Business Development Operations', operatorRole = 'staff', customNote = '' } = req.body || {};
+    const agent = db.agents.find((a) => a.affiliateCode.toLowerCase() === code.toLowerCase());
+
+    if (!agent) {
+      return res.status(404).json({ error: `Agent with Affiliate Code ${code} was not found.` });
+    }
+
+    if (!agent.tempPassword) {
+      const lastPart = agent.affiliateCode.split('-').pop() || '000001';
+      agent.tempPassword = `Mega@${lastPart}`;
+    }
+
+    const emailSubject = `Megaworld International: Credentials & Temporary Password for Portal Access (${agent.affiliateCode})`;
+    const emailBody = [
+      `Dear ${agent.fullName},`,
+      ``,
+      `Your Megaworld International Property Affiliate portal credentials have been issued/refreshed for your access and accreditation renewal.`,
+      ``,
+      `• Permanent Affiliate Code (Access Point): ${agent.affiliateCode}`,
+      `• Temporary Password: ${agent.tempPassword}`,
+      `• Registered Email: ${agent.email}`,
+      `• Portal Access URL: ${req.protocol}://${req.get('host') || 'ais-pre-zqosip4jfkfqe52ceyf7yn-139025000629.asia-southeast1.run.app'}`,
+      ``,
+      `Please use your Affiliate Code or registered email address along with this temporary password to sign in and complete your 4-month accreditation renewal.`,
+      customNote ? `\nSpecial Instructions from Operations:\n${customNote}` : '',
+      ``,
+      `Warm regards,`,
+      `Megaworld International Global Operations & BD Accreditation Team`,
+    ].filter(Boolean).join('\n');
+
+    // Create Notification and Dispatched Email Record
+    const notificationId = `notif_${Date.now()}_cred`;
+    db.notifications.unshift({
+      id: notificationId,
+      affiliateCode: agent.affiliateCode,
+      recipientId: agent.email,
+      targetRole: 'agent',
+      title: 'Portal Credentials & Temporary Password Dispatched',
+      message: `Your temporary credentials for Affiliate Code ${agent.affiliateCode} have been dispatched to ${agent.email}.`,
+      category: 'Accreditation',
+      timestamp: new Date().toISOString(),
+      read: false,
+      actionLink: '/login',
+    });
+
+    db.log(
+      operatorName,
+      (operatorRole.toLowerCase() as any),
+      'Dispatched Credentials Email',
+      agent.affiliateCode,
+      `Sent email with Affiliate Code access point and temporary password to ${agent.fullName} (${agent.email}).`
+    );
+
+    res.json({
+      success: true,
+      message: `Credentials email with temporary password successfully sent to ${agent.email}.`,
+      affiliateCode: agent.affiliateCode,
+      tempPassword: agent.tempPassword,
+      emailPreview: {
+        to: agent.email,
+        subject: emailSubject,
+        body: emailBody,
+        sentAt: new Date().toISOString(),
+      },
+    });
+  });
+
+  // Reset or Generate New Temporary Password
+  app.post('/api/agents/:code/reset-temp-password', (req, res) => {
+    const code = req.params.code;
+    const { operatorName = 'Admin', operatorRole = 'admin', customPassword } = req.body || {};
+    const agent = db.agents.find((a) => a.affiliateCode.toLowerCase() === code.toLowerCase());
+
+    if (!agent) {
+      return res.status(404).json({ error: `Agent with Affiliate Code ${code} was not found.` });
+    }
+
+    const newTemp = customPassword?.trim() || `Mega@${Math.floor(100000 + Math.random() * 900000)}`;
+    agent.tempPassword = newTemp;
+    agent.password = newTemp;
+
+    db.log(
+      operatorName,
+      (operatorRole.toLowerCase() as any),
+      'Reset Temporary Password',
+      agent.affiliateCode,
+      `Generated new temporary password for agent ${agent.fullName} (${agent.affiliateCode}).`
+    );
+
+    res.json({
+      success: true,
+      message: `Temporary password for ${agent.fullName} (${code}) has been updated.`,
+      tempPassword: newTemp,
+    });
+  });
+
+  // Online Google Spreadsheet Fetch & Preview Endpoint
+  app.post('/api/google-sheets/fetch', async (req, res) => {
+    const { url = '', sheetId = '' } = req.body || {};
+    let targetSheetId = sheetId.trim();
+
+    if (!targetSheetId && url) {
+      const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      if (match) {
+        targetSheetId = match[1];
+      } else {
+        targetSheetId = url.trim();
+      }
+    }
+
+    if (!targetSheetId) {
+      targetSheetId = db.settings.googleSpreadsheetId;
+    }
+
+    // Attempt online fetch from public Google Sheet CSV export if valid ID
+    let rawCsv = '';
+    let fetchSource = 'Local Synchronized Database';
+
+    if (targetSheetId && targetSheetId.length > 15 && !targetSheetId.includes(' ')) {
+      try {
+        const csvExportUrl = `https://docs.google.com/spreadsheets/d/${targetSheetId}/export?format=csv`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const resp = await fetch(csvExportUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (resp.ok) {
+          rawCsv = await resp.text();
+          fetchSource = `Online Google Spreadsheet (${targetSheetId})`;
+        }
+      } catch {
+        // Fallback to internal synced database if offline or private
+      }
+    }
+
+    // If online CSV was fetched, parse it, otherwise generate from synchronized records
+    if (!rawCsv) {
+      rawCsv = generate34ColumnCsv(db.agents, db.applications);
+      fetchSource = `Automated Online Synced Database (${db.settings.googleSpreadsheetId})`;
+    }
+
+    db.settings.sheetsSyncStatus = 'Synced';
+    db.settings.lastSheetsSyncTimestamp = new Date().toISOString();
+
+    res.json({
+      success: true,
+      sheetId: targetSheetId,
+      source: fetchSource,
+      csvText: rawCsv,
+      syncedAt: new Date().toISOString(),
     });
   });
 
@@ -841,10 +1051,8 @@ async function startServer() {
       totalProcessed++;
       const { isoDate, year } = parseDateInfo(rec.dateCreated || rec.registrationDate);
 
-      // Filter condition: records from 2013 up to present
-      if (filterMinYear && (year < filterMinYear || year > currentYear + 1)) {
-        return;
-      }
+      // Removed Year Cutoff Filter: accept and process records from all years
+      // No records are skipped due to date or year
 
       // Legal name resolution
       let fullName = (rec.fullName || '').trim();

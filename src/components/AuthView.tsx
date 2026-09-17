@@ -144,22 +144,30 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onRegister, isLoadi
             /* Login Form */
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Email Address
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Affiliate Code or Email Address
+                  </label>
+                  <span className="text-[10px] font-semibold text-blue-900 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                    Agent Access Point
+                  </span>
+                </div>
                 <input
-                  type="email"
+                  type="text"
                   required
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
-                  placeholder="name@example.com"
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none font-mono"
+                  placeholder="e.g. IPA-AP2-000001 or name@example.com"
                 />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Your permanent <strong>Affiliate Code</strong> is your primary access point. Staff and Admin can dispatch credentials with temporary password for access and renewal.
+                </p>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Password
+                  Password / Temporary Password
                 </label>
                 <input
                   type="password"
@@ -167,7 +175,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onRegister, isLoadi
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
-                  placeholder="••••••••"
+                  placeholder="Enter your password or temporary password"
                 />
               </div>
 
@@ -186,6 +194,53 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onRegister, isLoadi
               >
                 <LogIn className="w-4 h-4" /> {isLoading ? 'Signing in...' : 'Sign In to Portal'}
               </button>
+
+              {/* Fast Login / Portal Access Helpers */}
+              <div className="pt-3 border-t border-slate-200/80">
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2 text-center">
+                  Quick Access Points & Credentials
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-left">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginEmail('IPA-AP2-000001');
+                      setLoginPassword('Mega@000001');
+                    }}
+                    className="p-2 bg-slate-50 hover:bg-blue-50 border border-slate-200 rounded-lg text-[11px] transition text-left group"
+                  >
+                    <div className="font-bold text-blue-950 group-hover:text-blue-900">Agent Access</div>
+                    <div className="font-mono text-[10px] text-slate-600 truncate">IPA-AP2-000001</div>
+                    <div className="text-[10px] text-emerald-700 font-semibold">Temp Pass: Mega@000001</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginEmail('staff@megaworld.com');
+                      setLoginPassword('staff123');
+                    }}
+                    className="p-2 bg-slate-50 hover:bg-blue-50 border border-slate-200 rounded-lg text-[11px] transition text-left group"
+                  >
+                    <div className="font-bold text-slate-900 group-hover:text-blue-900">BD Staff</div>
+                    <div className="font-mono text-[10px] text-slate-600 truncate">staff@megaworld.com</div>
+                    <div className="text-[10px] text-slate-500">Pass: staff123</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginEmail('admin@megaworld.com');
+                      setLoginPassword('admin123');
+                    }}
+                    className="p-2 bg-slate-50 hover:bg-blue-50 border border-slate-200 rounded-lg text-[11px] transition text-left group"
+                  >
+                    <div className="font-bold text-slate-900 group-hover:text-blue-900">BD Admin</div>
+                    <div className="font-mono text-[10px] text-slate-600 truncate">admin@megaworld.com</div>
+                    <div className="text-[10px] text-slate-500">Pass: admin123</div>
+                  </button>
+                </div>
+              </div>
             </form>
           ) : (
             /* Registration Form */

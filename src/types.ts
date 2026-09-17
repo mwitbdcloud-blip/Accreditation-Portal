@@ -175,6 +175,7 @@ export interface AgentProfile {
   mobileNumber?: string;
   password?: string;
   passwordHash?: string;
+  tempPassword?: string; // Generated temporary credentials for renewal and access
   photoUrl?: string;
   region: Region;
   position: Position;

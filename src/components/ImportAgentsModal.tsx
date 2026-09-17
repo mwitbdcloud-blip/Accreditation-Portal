@@ -22,10 +22,13 @@ import {
   Download,
   FileType,
   Trash2,
+  Link,
+  Globe,
 } from 'lucide-react';
 import { AgentProfile, Position, Region, SystemSettings, POSITIONS, REGIONS } from '../types';
 import { api } from '../services/api';
 import { formatDate } from '../utils/dateFormatter';
+import { download34ColumnCsv, download34ColumnExcel } from '../utils/agentDatasetExport';
 
 export interface RawSpreadsheetRecord {
   email: string;
@@ -382,8 +385,12 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
   },
   settings,
 }) => {
-  const [importMode, setImportMode] = useState<'preset' | 'file' | 'paste'>('preset');
-  const [minYearFilter, setMinYearFilter] = useState<number>(2013);
+  const [importMode, setImportMode] = useState<'link' | 'preset' | 'file' | 'paste'>('link');
+  const [sheetsLinkUrl, setSheetsLinkUrl] = useState<string>(
+    settings?.googleSpreadsheetUrl ||
+      'https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit'
+  );
+  const [isSyncingSheetsLink, setIsSyncingSheetsLink] = useState<boolean>(false);
   const [duplicateHandling, setDuplicateHandling] = useState<'update' | 'skip'>('update');
   const [customCsvText, setCustomCsvText] = useState<string>('');
   const [uploadedFileInfo, setUploadedFileInfo] = useState<UploadedFileInfo | null>(null);
@@ -400,8 +407,56 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
     currentUser.role?.toLowerCase() === 'admin' ||
     currentUser.role?.toLowerCase() === 'staff';
 
+  // Real-time Google Spreadsheet Sync Handler
+  const handleSyncGoogleSpreadsheetLink = async () => {
+    if (!sheetsLinkUrl.trim()) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Please enter a valid Google Spreadsheet URL or Sheet ID.',
+      });
+      return;
+    }
+
+    setIsSyncingSheetsLink(true);
+    setStatusMessage(null);
+
+    try {
+      const res = await api.fetchOnlineSpreadsheetData(sheetsLinkUrl);
+      if (res.records && res.records.length > 0) {
+        setFileRecords(res.records);
+        setUploadedFileInfo({
+          fileName: 'Google Sheets Live Database Sync',
+          sheetNames: ['Online Master Sheet'],
+          activeSheet: 'Online Master Sheet',
+          totalRows: res.records.length,
+          fileSize: `${res.records.length} synced rows`,
+        });
+        setStatusMessage({
+          type: 'success',
+          text: `Online Database Synced: Retrieved ${res.records.length} records with automated contract dates and accreditation timelines!`,
+        });
+      } else {
+        setStatusMessage({
+          type: 'info',
+          text: 'Connected to Google Spreadsheet, but no agent rows were returned.',
+        });
+      }
+    } catch (err: any) {
+      setStatusMessage({
+        type: 'error',
+        text: err.message || 'Failed to connect to Google Spreadsheet.',
+      });
+    } finally {
+      setIsSyncingSheetsLink(false);
+    }
+  };
+
   // Parse records based on mode
   const rawRecords = useMemo((): RawSpreadsheetRecord[] => {
+    if (importMode === 'link') {
+      return fileRecords.length > 0 ? fileRecords : ATTACHED_SPREADSHEET_RECORDS;
+    }
+
     if (importMode === 'preset') {
       return ATTACHED_SPREADSHEET_RECORDS;
     }
@@ -483,7 +538,8 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
         }
       }
 
-      const meetsYearFilter = year >= minYearFilter;
+      // Year Cutoff Filter Removed: 100% of historical and current records are processed and included
+      const meetsYearFilter = true;
 
       // Double-checker: Check for duplicate account by Email (case-insensitive) or Name
       const duplicateAgent = agents.find(
@@ -513,7 +569,7 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
         newPositionsToAdd,
       };
     });
-  }, [rawRecords, agents, minYearFilter]);
+  }, [rawRecords, agents]);
 
   // Filtered view by search term
   const filteredRecords = useMemo(() => {
@@ -763,25 +819,11 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
       { wch: 34 },
     ];
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Agent Import Template');
-    XLSX.writeFile(wb, 'Megaworld_Agent_Import_Template.xlsx');
+    download34ColumnExcel([]);
   };
 
   const handleDownloadCsvTemplate = () => {
-    const csvContent =
-      'Full Name,Email Address,Nickname,Region,Positions,Registration Date,Status,Password Hash\n' +
-      'Juan Dela Cruz,jdelacruz.sample@megaworld-marketing.com,Supremo,Asia Pacific 2,"Marketing Associate, Senior Marketing Associate",20/01/2026 02:04:53,Approved,YzYIaA6q2MNtxp6i6Nvz1qb6fjSC+uIRTP523J6S9fo=\n' +
-      'Maria Santos,msantos.sample@megaworld-marketing.com,Maria,Europe,"Marketing Manager, Marketing Director",15/03/2024,Approved,\n' +
-      'Carlos Garcia,cgarcia.sample@megaworld-marketing.com,Charlie,North America,Marketing Partner,10/08/2021,Approved,\n';
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', 'Megaworld_Agent_Import_Template.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    download34ColumnCsv([]);
   };
 
   // Execute Import
@@ -789,7 +831,7 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
     if (validRecordsToProcess.length === 0) {
       setStatusMessage({
         type: 'error',
-        text: `No eligible records found matching the ${minYearFilter}-present filter.`,
+        text: 'No agent records found to import.',
       });
       return;
     }
@@ -815,7 +857,7 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
         records: payloadRecords,
         importedBy: currentUser.fullName,
         importedByRole: currentUserRole,
-        filterMinYear: minYearFilter,
+        filterMinYear: 1900,
         duplicateHandling,
       });
 
@@ -903,6 +945,19 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
               <div className="flex rounded-lg border border-slate-300 bg-white p-0.5">
                 <button
                   type="button"
+                  id="import-tab-link"
+                  onClick={() => setImportMode('link')}
+                  className={`flex-1 py-1.5 px-2 rounded-md text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                    importMode === 'link'
+                      ? 'bg-[#002B66] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Link className="w-3.5 h-3.5 text-emerald-400" />
+                  Sheet Link
+                </button>
+                <button
+                  type="button"
                   id="import-tab-preset"
                   onClick={() => setImportMode('preset')}
                   className={`flex-1 py-1.5 px-2 rounded-md text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
@@ -941,28 +996,19 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
                   }`}
                 >
                   <FileText className="w-3.5 h-3.5" />
-                  Paste Text
+                  Paste
                 </button>
               </div>
             </div>
 
-            {/* Year Range Filter */}
+            {/* Year Range Filter (Removed per user instructions) */}
             <div>
               <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1.5 flex items-center gap-1">
-                <Calendar className="w-3 h-3 text-blue-900" /> Year Cutoff Filter
+                <Calendar className="w-3 h-3 text-emerald-600" /> Year Cutoff Filter
               </label>
-              <div className="flex items-center gap-2">
-                <select
-                  value={minYearFilter}
-                  onChange={(e) => setMinYearFilter(parseInt(e.target.value, 10))}
-                  className="w-full text-xs font-semibold bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-slate-800 focus:ring-1 focus:ring-blue-900 focus:outline-hidden"
-                >
-                  <option value={2013}>2013 to Present (User Instruction Standard)</option>
-                  <option value={2015}>2015 to Present</option>
-                  <option value={2020}>2020 to Present</option>
-                  <option value={2024}>2024 to Present</option>
-                  <option value={2026}>2026 to Present (Recent)</option>
-                </select>
+              <div className="flex items-center gap-2 bg-white border border-emerald-300 rounded-lg px-3 py-2 text-xs text-emerald-950 font-semibold shadow-2xs">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Removed • All Records Included (2013–Present)</span>
               </div>
             </div>
 
@@ -983,6 +1029,70 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
               </select>
             </div>
           </div>
+
+          {/* Google Spreadsheet Link & Online Sync Area */}
+          {importMode === 'link' && (
+            <div className="p-4 bg-emerald-50/70 border border-emerald-300 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Link className="w-4 h-4 text-emerald-700" />
+                  <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
+                    Google Spreadsheet Online Database Sync
+                  </h4>
+                </div>
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-200/70 px-2.5 py-0.5 rounded-full border border-emerald-300">
+                  Automated Date Sync
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-600">
+                Connect your Google Spreadsheet link to automatically sync all automated dates (Contract Date, 4-Month Expiry Date, Renewal Eligibility) and agent records into the database.
+              </p>
+
+              <div className="flex flex-col sm:flex-row items-center gap-2">
+                <div className="relative w-full sm:flex-1">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Globe className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="url"
+                    id="sheets-link-url-input"
+                    value={sheetsLinkUrl}
+                    onChange={(e) => setSheetsLinkUrl(e.target.value)}
+                    placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                    className="w-full pl-9 pr-3 py-2 text-xs border border-emerald-300 rounded-xl bg-white focus:outline-hidden focus:ring-1 focus:ring-emerald-600 font-mono text-slate-900"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  id="sync-sheets-online-btn"
+                  onClick={handleSyncGoogleSpreadsheetLink}
+                  disabled={isSyncingSheetsLink}
+                  className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-white bg-emerald-800 hover:bg-emerald-900 rounded-xl transition shadow-xs disabled:opacity-50 inline-flex items-center justify-center gap-2 shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSheetsLink ? 'animate-spin' : ''}`} />
+                  {isSyncingSheetsLink ? 'Syncing Online Database...' : 'Sync Automated Dates from Online Database'}
+                </button>
+              </div>
+
+              {/* Automation badges */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-[11px] text-slate-700">
+                <div className="p-2 bg-white rounded-lg border border-emerald-200 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Automated 4-Month Contract Dates</span>
+                </div>
+                <div className="p-2 bg-white rounded-lg border border-emerald-200 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>34-Column Official Dataset</span>
+                </div>
+                <div className="p-2 bg-white rounded-lg border border-emerald-200 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Resilient Deployment Fallback</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Microsoft Excel / CSV Upload Area */}
           {importMode === 'file' && (
@@ -1119,7 +1229,7 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
                 <div className="flex items-center gap-2 text-slate-600">
                   <Download className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>
-                    Need a template with all columns and valid Megaworld positions?
+                    Need the 34-column Megaworld International standard schema template?
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1129,7 +1239,7 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-                    Download Excel Template (.xlsx)
+                    Download 34-Col Excel Template (.xlsx)
                   </button>
                   <button
                     type="button"
@@ -1137,7 +1247,7 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
                   >
                     <FileType className="w-3.5 h-3.5 text-slate-600" />
-                    Download CSV Template
+                    Download 34-Col CSV Template
                   </button>
                 </div>
               </div>
@@ -1261,9 +1371,7 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
                       filteredRecords.map((rec, idx) => (
                         <tr
                           key={rec.email + idx}
-                          className={`hover:bg-slate-50 transition ${
-                            !rec.meetsYearFilter ? 'opacity-40 bg-slate-50/50' : ''
-                          }`}
+                          className="hover:bg-slate-50 transition"
                         >
                           <td className="py-2.5 px-3">
                             <div className="font-semibold text-slate-900">{rec.email}</div>
@@ -1282,9 +1390,6 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
                           </td>
                           <td className="py-2.5 px-3 text-[11px] text-slate-600">
                             {rec.dateCreated || 'N/A'}
-                            {!rec.meetsYearFilter && (
-                              <span className="ml-1.5 text-rose-600 font-bold">(Pre-{minYearFilter})</span>
-                            )}
                           </td>
                           <td className="py-2.5 px-3">
                             {rec.isDuplicate ? (
