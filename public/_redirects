@@ -1,4 +1,4 @@
 # Netlify Redirects for Megaworld International Property Affiliates Portal
 # Route API requests to the cloud backend or handle SPA routing cleanly
-/api/*  https://ais-dev-zqosip4jfkfqe52ceyf7yn-139025000629.asia-southeast1.run.app/api/:splat  200
+/api/*  https://ais-pre-zqosip4jfkfqe52ceyf7yn-139025000629.asia-southeast1.run.app/api/:splat  200
 /*      /index.html                                                                               200

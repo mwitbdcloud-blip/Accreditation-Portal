@@ -8,7 +8,7 @@
 # Redirect API calls to the live Cloud backend proxy
 [[redirects]]
   from = "/api/*"
-  to = "https://ais-dev-zqosip4jfkfqe52ceyf7yn-139025000629.asia-southeast1.run.app/api/:splat"
+  to = "https://ais-pre-zqosip4jfkfqe52ceyf7yn-139025000629.asia-southeast1.run.app/api/:splat"
   status = 200
   force = false
 

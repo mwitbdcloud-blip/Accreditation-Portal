@@ -26,6 +26,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onRegister, isLoadi
   const [loginPassword, setLoginPassword] = useState('');
 
   // Register form state
+  const [showStaffAdminAccess, setShowStaffAdminAccess] = useState(false);
   const [regFullName, setRegFullName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regMobile, setRegMobile] = useState('');
@@ -195,51 +196,72 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onRegister, isLoadi
                 <LogIn className="w-4 h-4" /> {isLoading ? 'Signing in...' : 'Sign In to Portal'}
               </button>
 
-              {/* Fast Login / Portal Access Helpers */}
+              {/* Staff and Admin Only Access (Hidden on sign in, staff and admin only can view this) */}
               <div className="pt-3 border-t border-slate-200/80">
-                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2 text-center">
-                  Quick Access Points & Credentials
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-left">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400">Restricted Access</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      setLoginEmail('IPA-AP2-000001');
-                      setLoginPassword('Mega@000001');
-                    }}
-                    className="p-2 bg-slate-50 hover:bg-blue-50 border border-slate-200 rounded-lg text-[11px] transition text-left group"
+                    id="toggle-staff-admin-credentials"
+                    onClick={() => setShowStaffAdminAccess((prev) => !prev)}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 hover:text-blue-900 transition"
                   >
-                    <div className="font-bold text-blue-950 group-hover:text-blue-900">Agent Access</div>
-                    <div className="font-mono text-[10px] text-slate-600 truncate">IPA-AP2-000001</div>
-                    <div className="text-[10px] text-emerald-700 font-semibold">Temp Pass: Mega@000001</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginEmail('staff@megaworld.com');
-                      setLoginPassword('staff123');
-                    }}
-                    className="p-2 bg-slate-50 hover:bg-blue-50 border border-slate-200 rounded-lg text-[11px] transition text-left group"
-                  >
-                    <div className="font-bold text-slate-900 group-hover:text-blue-900">BD Staff</div>
-                    <div className="font-mono text-[10px] text-slate-600 truncate">staff@megaworld.com</div>
-                    <div className="text-[10px] text-slate-500">Pass: staff123</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginEmail('admin@megaworld.com');
-                      setLoginPassword('admin123');
-                    }}
-                    className="p-2 bg-slate-50 hover:bg-blue-50 border border-slate-200 rounded-lg text-[11px] transition text-left group"
-                  >
-                    <div className="font-bold text-slate-900 group-hover:text-blue-900">BD Admin</div>
-                    <div className="font-mono text-[10px] text-slate-600 truncate">admin@megaworld.com</div>
-                    <div className="text-[10px] text-slate-500">Pass: admin123</div>
+                    <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{showStaffAdminAccess ? 'Hide Staff & Admin Access' : 'Staff & Admin Authorized Access'}</span>
                   </button>
                 </div>
+
+                {showStaffAdminAccess && (
+                  <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl text-left">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-blue-900" />
+                        Staff & Admin Authorized Access
+                      </p>
+                      <span className="text-[9px] font-semibold bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">
+                        BD Internal Only
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mb-2">
+                      Authorized Megaworld International Business Development personnel credentials:
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        id="staff-quick-login-btn"
+                        onClick={() => {
+                          setLoginEmail('staff@megaworld.com');
+                          setLoginPassword('staff123');
+                        }}
+                        className="p-2 bg-white hover:bg-blue-50 border border-slate-200 rounded-lg text-[11px] transition text-left group shadow-xs"
+                      >
+                        <div className="flex items-center justify-between font-bold text-slate-900 group-hover:text-blue-900">
+                          <span>BD Staff</span>
+                          <span className="text-[9px] bg-blue-50 text-blue-800 px-1 rounded font-normal">Reviewer</span>
+                        </div>
+                        <div className="font-mono text-[10px] text-slate-600 truncate">staff@megaworld.com</div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">Pass: staff123</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        id="admin-quick-login-btn"
+                        onClick={() => {
+                          setLoginEmail('admin@megaworld.com');
+                          setLoginPassword('admin123');
+                        }}
+                        className="p-2 bg-white hover:bg-amber-50 border border-slate-200 rounded-lg text-[11px] transition text-left group shadow-xs"
+                      >
+                        <div className="flex items-center justify-between font-bold text-slate-900 group-hover:text-amber-900">
+                          <span>BD Super Admin</span>
+                          <span className="text-[9px] bg-amber-50 text-amber-800 px-1 rounded font-normal">Admin</span>
+                        </div>
+                        <div className="font-mono text-[10px] text-slate-600 truncate">admin@megaworld.com</div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">Pass: admin123</div>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </form>
           ) : (
