@@ -6,6 +6,9 @@
  * In preview mode, it gracefully operates with the full-stack server backend.
  */
 
+import rawConfig from '../../firebase-applet-config.json';
+export * from './firebase';
+
 export interface FirebaseConfig {
   apiKey: string;
   authDomain: string;
@@ -13,17 +16,20 @@ export interface FirebaseConfig {
   storageBucket: string;
   messagingSenderId: string;
   appId: string;
+  firestoreDatabaseId?: string;
 }
 
 export const firebaseConfig: FirebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'demo-api-key',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'megaworld-ipa-portal.firebaseapp.com',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'megaworld-ipa-portal',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'megaworld-ipa-portal.appspot.com',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '139025000629',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:139025000629:web:abcdef123456',
+  apiKey: rawConfig.apiKey || import.meta.env.VITE_FIREBASE_API_KEY || '',
+  authDomain: rawConfig.authDomain || import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+  projectId: rawConfig.projectId || import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
+  storageBucket: rawConfig.storageBucket || import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
+  messagingSenderId: rawConfig.messagingSenderId || import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+  appId: rawConfig.appId || import.meta.env.VITE_FIREBASE_APP_ID || '',
+  firestoreDatabaseId: rawConfig.firestoreDatabaseId,
 };
 
 export const isFirebaseConfigured = Boolean(
-  import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_PROJECT_ID
+  firebaseConfig.apiKey && firebaseConfig.projectId
 );
+

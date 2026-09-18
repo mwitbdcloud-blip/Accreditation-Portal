@@ -32,6 +32,12 @@ import {
   PositionContractTemplate,
 } from './types';
 import { api } from './services/api';
+import {
+  signInWithGoogle,
+  syncAgentToFirestore,
+  saveApplicationToFirestore,
+  logOut as firebaseLogOut,
+} from './services/firebaseConfig';
 
 // Components
 import { AuthView } from './components/AuthView';
@@ -260,6 +266,7 @@ export default function App() {
 
       if (res.agent) {
         setAgents((prev) => [res.agent, ...prev.filter((a) => a.affiliateCode !== res.agent.affiliateCode)]);
+        syncAgentToFirestore(res.agent).catch(() => {});
       }
 
       setCurrentUser({
@@ -279,7 +286,39 @@ export default function App() {
     }
   };
 
+  // Google Sign-In with Firebase Auth
+  const handleGoogleLogin = async () => {
+    setIsLoadingAuth(true);
+    try {
+      const fbUser = await signInWithGoogle();
+      if (!fbUser || !fbUser.email) {
+        throw new Error('Google sign-in did not provide an email address.');
+      }
+      try {
+        await handleLogin(fbUser.email);
+      } catch {
+        const displayName = fbUser.displayName || fbUser.email.split('@')[0];
+        const regRes = await api.register({
+          fullName: displayName,
+          email: fbUser.email,
+          region: 'Asia Pacific 2',
+          position: 'Marketing Associate',
+        });
+        if (regRes.agent) {
+          syncAgentToFirestore(regRes.agent).catch(() => {});
+        }
+        await handleLogin(regRes.affiliateCode);
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Google sign-in failed');
+      throw err;
+    } finally {
+      setIsLoadingAuth(false);
+    }
+  };
+
   const handleLogout = () => {
+    firebaseLogOut().catch(() => {});
     setCurrentUser(null);
     setActiveTab('dashboard');
     showToast('Signed out of International Property Affiliates Portal.');
@@ -289,6 +328,9 @@ export default function App() {
   const handleSubmitAccreditation = async (formData: Partial<AccreditationApplication>) => {
     try {
       const res = await api.submitApplication(formData);
+      if (res.application) {
+        saveApplicationToFirestore(res.application).catch(() => {});
+      }
       showToast('Accreditation application submitted for BD Staff review.');
 
       const legalName =
@@ -512,7 +554,14 @@ export default function App() {
 
   // If not logged in, render the Auth View
   if (!currentUser) {
-    return <AuthView onLogin={handleLogin} onRegister={handleRegister} isLoading={isLoadingAuth} />;
+    return (
+      <AuthView
+        onLogin={handleLogin}
+        onGoogleLogin={handleGoogleLogin}
+        onRegister={handleRegister}
+        isLoading={isLoadingAuth}
+      />
+    );
   }
 
   const unreadCount = notifications.filter((n) => !n.read).length;

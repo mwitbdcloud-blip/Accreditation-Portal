@@ -1,0 +1,83 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "User Account",
+      "description": "User profile with role and associated affiliate code",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique user ID" },
+        "email": { "type": "string", "format": "email", "description": "User email address" },
+        "displayName": { "type": "string", "description": "User display name" },
+        "role": { "type": "string", "enum": ["affiliate", "staff", "admin"], "description": "System access role" },
+        "affiliateCode": { "type": "string", "description": "Associated agent affiliate code" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Account creation timestamp" }
+      },
+      "required": ["id", "email", "role"]
+    },
+    "Agent": {
+      "title": "Agent Profile",
+      "description": "Affiliate agent record with credentials, region, position, and status",
+      "type": "object",
+      "properties": {
+        "affiliateCode": { "type": "string", "description": "Unique affiliate code (e.g. MWI-10492)" },
+        "fullName": { "type": "string", "description": "Agent full legal name" },
+        "email": { "type": "string", "format": "email", "description": "Primary email" },
+        "mobileNumber": { "type": "string", "description": "Contact number" },
+        "position": { "type": "string", "description": "Sales position tier" },
+        "region": { "type": "string", "description": "Operating region" },
+        "status": { "type": "string", "enum": ["Active", "Pending", "Suspended", "Draft"], "description": "Agent status" },
+        "accreditationStatus": { "type": "string", "description": "Accreditation standing" },
+        "contractStatus": { "type": "string", "description": "Contract standing" }
+      },
+      "required": ["affiliateCode", "fullName", "email", "region", "status"]
+    },
+    "AccreditationApplication": {
+      "title": "Accreditation Application",
+      "description": "Accreditation submission or renewal packet submitted by an agent",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Application record ID" },
+        "affiliateCode": { "type": "string", "description": "Affiliate code" },
+        "applicationType": { "type": "string", "enum": ["New", "Renewal"], "description": "Type of application" },
+        "position": { "type": "string", "description": "Applied position tier" },
+        "region": { "type": "string", "description": "Assigned region" },
+        "status": { "type": "string", "enum": ["Draft", "Submitted", "Under Review", "Approved", "Revision Required"], "description": "Review status" },
+        "dateSubmitted": { "type": "string", "format": "date-time", "description": "Submission date" }
+      },
+      "required": ["id", "affiliateCode", "status", "dateSubmitted"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User or system alert",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Notification ID" },
+        "recipientId": { "type": "string", "description": "User ID of recipient" },
+        "affiliateCode": { "type": "string", "description": "Optional affiliate code" },
+        "title": { "type": "string", "description": "Notification title" },
+        "message": { "type": "string", "description": "Notification body" },
+        "read": { "type": "boolean", "description": "Read status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["id", "title", "message", "read", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserAccount",
+      "description": "User authentication credentials and permissions"
+    },
+    "/agents/{affiliateCode}": {
+      "schema": "Agent",
+      "description": "Permanent agent records and master directory"
+    },
+    "/applications/{applicationId}": {
+      "schema": "AccreditationApplication",
+      "description": "Accreditation filings and verification packets"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Notification messages sent to users"
+    }
+  }
+}

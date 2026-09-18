@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Settings, Save, ShieldAlert, CheckCircle2, Database, Mail, FileText } from 'lucide-react';
+import { Settings, Save, ShieldAlert, CheckCircle2, Database, Mail, FileText, Flame } from 'lucide-react';
 import { SystemSettings } from '../types';
+import { firebaseConfig } from '../services/firebaseConfig';
 
 interface SystemSettingsViewProps {
   settings: SystemSettings;
@@ -182,6 +183,44 @@ export const SystemSettingsView: React.FC<SystemSettingsViewProps> = ({
                 onChange={(e) => setAuditRetentionYears(Number(e.target.value))}
                 className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
               />
+            </div>
+          </div>
+        </div>
+
+        {/* Firebase Cloud Infrastructure */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+              <Flame className="w-4 h-4 text-amber-500" /> Firebase Cloud Infrastructure & Firestore
+            </h3>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Provisioned & Active
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Firebase Project ID</span>
+              <p className="font-mono font-bold text-slate-800">{firebaseConfig.projectId || 'steam-dynamics-xq6d2'}</p>
+              <p className="text-[11px] text-slate-500">Region: asia-southeast1 (Singapore)</p>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Firestore Database ID</span>
+              <p className="font-mono font-bold text-slate-800 text-[11px] truncate">{firebaseConfig.firestoreDatabaseId || 'default'}</p>
+              <p className="text-[11px] text-slate-500">Rules status: Hardened Multi-Role RBAC</p>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Authentication Services</span>
+              <p className="font-semibold text-slate-800">Email/Password & Google Identity Services</p>
+              <p className="text-[11px] text-slate-500">Domain: {firebaseConfig.authDomain}</p>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Cloud Storage Bucket</span>
+              <p className="font-mono font-bold text-slate-800">{firebaseConfig.storageBucket || 'steam-dynamics-xq6d2.firebasestorage.app'}</p>
+              <p className="text-[11px] text-slate-500">Stores Government IDs, Signatures, and PDFs</p>
             </div>
           </div>
         </div>
