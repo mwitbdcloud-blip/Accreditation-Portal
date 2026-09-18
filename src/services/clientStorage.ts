@@ -10,6 +10,9 @@ import {
   PositionContractTemplate,
   StaffAccount,
   StaffInvitation,
+  PersonalDetails,
+  BankDetails,
+  TeamDetails,
 } from '../types';
 import {
   INITIAL_AGENTS,
@@ -22,6 +25,7 @@ import {
 } from '../data/seedData';
 import { computeExpiryDate, safeDatePart } from '../utils/dateFormatter';
 import { isLiveEnvironment } from '../utils/environment';
+import { REGIONAL_TERRITORY_HEADS } from '../utils/agentDatasetExport';
 
 const STORAGE_KEYS = {
   AGENTS: 'mwi_agents_cache',
@@ -166,6 +170,39 @@ export const clientStorage = {
       apps.unshift(app);
     }
     this.saveApplications(apps);
+
+    // Update corresponding agent's reflected position and details upon application submission
+    if (app.affiliateCode || app.personalDetails?.emailAddress) {
+      const agents = this.getAgents();
+      const agentIdx = agents.findIndex(
+        (a) =>
+          (app.affiliateCode && a.affiliateCode === app.affiliateCode) ||
+          (app.personalDetails?.emailAddress && a.email.toLowerCase() === app.personalDetails.emailAddress.toLowerCase())
+      );
+      if (agentIdx >= 0) {
+        if (app.position) {
+          agents[agentIdx].position = app.position;
+          const currentUnlocked = agents[agentIdx].unlockedPositions || [];
+          if (!currentUnlocked.includes(app.position)) {
+            agents[agentIdx].unlockedPositions = [...currentUnlocked, app.position];
+          }
+        }
+        if (app.personalDetails?.fullName) {
+          agents[agentIdx].fullName = app.personalDetails.fullName;
+        }
+        if (app.personalDetails) {
+          agents[agentIdx].personalDetails = { ...agents[agentIdx].personalDetails, ...app.personalDetails };
+        }
+        if (app.bankDetails) {
+          agents[agentIdx].bankDetails = { ...agents[agentIdx].bankDetails, ...app.bankDetails };
+        }
+        if (app.teamDetails) {
+          agents[agentIdx].teamDetails = { ...agents[agentIdx].teamDetails, ...app.teamDetails };
+        }
+        agents[agentIdx].accreditationStatus = app.applicationType === 'Renewal' ? 'Renewal Pending' : 'Pending Review';
+        this.saveAgents(agents);
+      }
+    }
   },
 
   getAuditLogs(): AuditLog[] {
@@ -353,6 +390,7 @@ export const clientStorage = {
       region?: string;
       passwordHash?: string;
       hasExistingContract?: boolean;
+      [key: string]: any;
     }>;
     importedBy?: string;
     importedByRole?: string;
@@ -368,6 +406,7 @@ export const clientStorage = {
     importedAgents: AgentProfile[];
   } {
     const currentAgents = [...this.getAgents()];
+    const currentApplications = [...this.getApplications()];
 
     let totalProcessed = 0;
     let newImported = 0;
@@ -389,6 +428,55 @@ export const clientStorage = {
           (normEmail && a.email.toLowerCase() === normEmail) ||
           (normName && a.fullName.toLowerCase() === normName)
       );
+
+      const personalDetails: Partial<PersonalDetails> = {
+        fullName: record.fullName || (record.email ? record.email.split('@')[0] : 'Affiliate'),
+        firstName: record.firstName || (record.fullName ? record.fullName.split(' ')[0] : undefined),
+        middleName: record.middleName,
+        lastName: record.lastName || (record.fullName ? record.fullName.split(' ').slice(1).join(' ') : undefined),
+        suffix: record.suffix,
+        emailAddress: record.email,
+        mobileNumber: record.mobileNumber,
+        telephoneNumber: record.telephoneNumber,
+        dateOfBirth: record.dateOfBirth,
+        age: record.age,
+        civilStatus: (record.civilStatus as any) || 'Single',
+        citizenship: record.citizenship || 'Filipino',
+        nationality: record.nationality || 'Filipino',
+        residentialAddress: record.residentialAddress,
+        country: record.country || 'Philippines',
+        state: record.state,
+        tin: record.tin,
+        idMatchConfirmed: true,
+      };
+
+      const bankDetails: Partial<BankDetails> = {
+        bankName: record.bankName || '',
+        accountName: record.accountName || record.fullName || '',
+        accountNumber: record.accountNumber || '',
+        bankAddress: record.bankAddress || '',
+        swiftCode: record.swiftCode || '',
+      };
+
+      const teamDetails: Partial<TeamDetails> = {
+        teamName: record.teamName || (record.region ? REGIONAL_TERRITORY_HEADS[record.region as Region] : undefined) || '',
+        upline: record.upline || '',
+        teamLeader: record.teamLeader || '',
+        brokerGroup: record.brokerGroup || `Megaworld International ${record.region || 'Asia Pacific 2'} Hub`,
+        leadership: {
+          seniorMarketingAssociate: record.seniorMarketingAssociate,
+          marketingManager: record.marketingManager,
+          marketingDirector: record.marketingDirector,
+          assistanceCountryManager: record.assistanceCountryManager,
+          countryManager: record.countryManager,
+          seniorCountryManager: record.seniorCountryManager,
+          assistanceVicePresident: record.assistanceVicePresident,
+          vicePresident: record.vicePresident,
+          seniorVicePresident: record.seniorVicePresident,
+          referrerName: record.referrerName,
+          referrerPosition: record.referrerPosition,
+        },
+      };
 
       if (existingIndex >= 0) {
         if (duplicateMode === 'skip') {
@@ -413,11 +501,49 @@ export const clientStorage = {
           agent.accountStatus = record.status === 'Active' || record.status === 'Approved' ? 'Active' : 'Suspended';
           agent.accreditationStatus = record.status === 'Approved' || record.status === 'Active' ? 'Active' : (record.status as any);
         }
+        if (record.mobileNumber) agent.mobileNumber = record.mobileNumber;
+        if (record.tin) agent.tin = record.tin;
+        if (record.residentialAddress) agent.residentialAddress = record.residentialAddress;
+        if (record.dateOfBirth) agent.birthday = record.dateOfBirth;
+        agent.personalDetails = { ...agent.personalDetails, ...personalDetails };
+        agent.bankDetails = { ...agent.bankDetails, ...bankDetails };
+        agent.teamDetails = { ...agent.teamDetails, ...teamDetails };
+
         if (!agent.tempPassword) {
           const codeDigits = agent.affiliateCode.split('-').pop() || '000000';
           agent.tempPassword = `Mega@${codeDigits}`;
         }
         currentAgents[existingIndex] = agent;
+
+        // Also update or seed corresponding application record
+        const appIdx = currentApplications.findIndex(
+          (a) => a.affiliateCode === agent.affiliateCode || (normEmail && a.personalDetails?.emailAddress?.toLowerCase() === normEmail)
+        );
+        if (appIdx >= 0) {
+          currentApplications[appIdx] = {
+            ...currentApplications[appIdx],
+            personalDetails: { ...currentApplications[appIdx].personalDetails, ...personalDetails } as any,
+            bankDetails: { ...currentApplications[appIdx].bankDetails, ...bankDetails } as any,
+            teamDetails: { ...currentApplications[appIdx].teamDetails, ...teamDetails } as any,
+          };
+        } else {
+          currentApplications.unshift({
+            id: `app_${agent.affiliateCode}`,
+            affiliateCode: agent.affiliateCode,
+            applicationType: 'New',
+            position: (agent.position as Position) || 'Marketing Associate',
+            region: agent.region,
+            status: 'Approved',
+            dateSubmitted: agent.accreditationStartDate || new Date().toISOString().split('T')[0],
+            personalDetails: personalDetails as any,
+            bankDetails: bankDetails as any,
+            teamDetails: teamDetails as any,
+            idVerificationStatus: 'Verified',
+            eSignatureConfirmed: true,
+            declarationAccepted: true,
+          });
+        }
+
         duplicatesUpdated++;
         return;
       }
@@ -457,6 +583,10 @@ export const clientStorage = {
         fullName: record.fullName || record.email.split('@')[0],
         nickname: record.nickname || record.fullName?.split(' ')[0] || 'Affiliate',
         email: record.email,
+        mobileNumber: record.mobileNumber,
+        tin: record.tin,
+        residentialAddress: record.residentialAddress,
+        birthday: record.dateOfBirth,
         password: 'password123',
         passwordHash: record.passwordHash || '',
         region: regionName,
@@ -475,14 +605,35 @@ export const clientStorage = {
         unlockedPositions: positionsList,
         tempPassword,
         assignedStaff: 'Elena Ramos (BD Staff)',
+        personalDetails,
+        bankDetails,
+        teamDetails,
       };
 
       currentAgents.push(newAgent);
+
+      currentApplications.unshift({
+        id: `app_${affiliateCode}`,
+        affiliateCode,
+        applicationType: 'New',
+        position: agentPosition,
+        region: regionName,
+        status: 'Approved',
+        dateSubmitted: startDate,
+        personalDetails: personalDetails as any,
+        bankDetails: bankDetails as any,
+        teamDetails: teamDetails as any,
+        idVerificationStatus: 'Verified',
+        eSignatureConfirmed: true,
+        declarationAccepted: true,
+      });
+
       newImported++;
     });
 
-    // Save updated agents list to client storage
+    // Save updated agents and applications list to client storage
     this.saveAgents(currentAgents);
+    this.saveApplications(currentApplications);
 
     // Record audit log
     this.addAuditLog({

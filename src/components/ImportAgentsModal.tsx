@@ -34,6 +34,10 @@ export interface RawSpreadsheetRecord {
   email: string;
   nickname?: string;
   fullName?: string;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  suffix?: string;
   passwordHash?: string;
   dateCreated?: string;
   status?: string;
@@ -41,6 +45,37 @@ export interface RawSpreadsheetRecord {
   positions?: Position[];
   position?: Position;
   hasExistingContract?: boolean;
+  mobileNumber?: string;
+  telephoneNumber?: string;
+  dateOfBirth?: string;
+  age?: number | string;
+  civilStatus?: string;
+  citizenship?: string;
+  nationality?: string;
+  residentialAddress?: string;
+  country?: string;
+  state?: string;
+  tin?: string;
+  bankName?: string;
+  accountName?: string;
+  accountNumber?: string;
+  bankAddress?: string;
+  swiftCode?: string;
+  teamName?: string;
+  upline?: string;
+  teamLeader?: string;
+  brokerGroup?: string;
+  seniorMarketingAssociate?: string;
+  marketingManager?: string;
+  marketingDirector?: string;
+  assistanceCountryManager?: string;
+  countryManager?: string;
+  seniorCountryManager?: string;
+  assistanceVicePresident?: string;
+  vicePresident?: string;
+  seniorVicePresident?: string;
+  referrerName?: string;
+  referrerPosition?: string;
 }
 
 // 17 records from the attached Google Spreadsheet Monitoring (2013 - Present)
@@ -275,13 +310,47 @@ export function parseWorksheetToRecords(sheet: XLSX.WorkSheet): RawSpreadsheetRe
 
   const headers = (rows[headerRowIndex] || []).map((h: any) => String(h).trim().toLowerCase());
   const emailIdx = headers.findIndex((h: string) => h.includes('email') || h.includes('mail'));
-  const nameIdx = headers.findIndex((h: string) => h.includes('full name') || (h.includes('name') && !h.includes('nick')));
+  const nameIdx = headers.findIndex((h: string) => h.includes('full name') || (h.includes('name') && !h.includes('nick') && !h.includes('first') && !h.includes('last') && !h.includes('middle')));
+  const firstIdx = headers.findIndex((h: string) => h.includes('first') && h.includes('name'));
+  const midIdx = headers.findIndex((h: string) => h.includes('middle') && h.includes('name'));
+  const lastIdx = headers.findIndex((h: string) => h.includes('last') && h.includes('name') || h.includes('surname'));
+  const suffixIdx = headers.findIndex((h: string) => h.includes('suffix'));
   const nickIdx = headers.findIndex((h: string) => h.includes('nick') || h.includes('alias'));
   const passIdx = headers.findIndex((h: string) => h.includes('pass') || h.includes('hash'));
   const dateIdx = headers.findIndex((h: string) => h.includes('date') || h.includes('create') || h.includes('reg'));
   const statusIdx = headers.findIndex((h: string) => h.includes('status'));
   const posIdx = headers.findIndex((h: string) => h.includes('pos') || h.includes('role') || h.includes('designation'));
   const regIdx = headers.findIndex((h: string) => h.includes('region') || h.includes('territory') || h.includes('branch'));
+  const mobileIdx = headers.findIndex((h: string) => h.includes('mobile') || h.includes('cell') || (h.includes('phone') && !h.includes('tele')));
+  const teleIdx = headers.findIndex((h: string) => h.includes('tele') || h.includes('landline'));
+  const dobIdx = headers.findIndex((h: string) => h.includes('birth') || h.includes('dob') || h.includes('bday'));
+  const ageIdx = headers.findIndex((h: string) => h === 'age' || h.includes('age'));
+  const civilIdx = headers.findIndex((h: string) => h.includes('civil') || h.includes('marital'));
+  const citizenIdx = headers.findIndex((h: string) => h.includes('citizen') || h.includes('national'));
+  const addrIdx = headers.findIndex((h: string) => h.includes('address') || h.includes('home') || h.includes('residence'));
+  const countryIdx = headers.findIndex((h: string) => h === 'country' || h.includes('country'));
+  const stateIdx = headers.findIndex((h: string) => h === 'state' || h.includes('province') || h.includes('city'));
+  const tinIdx = headers.findIndex((h: string) => h.includes('tin') || h.includes('tax'));
+  const bankNameIdx = headers.findIndex((h: string) => h.includes('bank name') || (h.includes('bank') && !h.includes('acc') && !h.includes('swift')));
+  const accNameIdx = headers.findIndex((h: string) => h.includes('account name') || (h.includes('bank') && h.includes('name')));
+  const accNumIdx = headers.findIndex((h: string) => h.includes('account num') || h.includes('account #') || (h.includes('acc') && h.includes('num')));
+  const bankAddrIdx = headers.findIndex((h: string) => h.includes('bank address') || h.includes('branch'));
+  const swiftIdx = headers.findIndex((h: string) => h.includes('swift'));
+  const territoryHeadIdx = headers.findIndex((h: string) => h.includes('territory head') || h.includes('team name') || (h.includes('head') && !h.includes('broker')));
+  const uplineIdx = headers.findIndex((h: string) => h.includes('upline') || h.includes('sponsor'));
+  const teamLeaderIdx = headers.findIndex((h: string) => h.includes('team leader') || (h.includes('leader') && !h.includes('upline')));
+  const brokerGroupIdx = headers.findIndex((h: string) => h.includes('broker') || h.includes('hub') || h.includes('group'));
+  const smaIdx = headers.findIndex((h: string) => h.includes('senior marketing associate') || h.includes('sma'));
+  const mmIdx = headers.findIndex((h: string) => h.includes('marketing manager') || (h.includes('manager') && !h.includes('country')));
+  const mdIdx = headers.findIndex((h: string) => h.includes('marketing director') || (h.includes('director') && !h.includes('partner')));
+  const acmIdx = headers.findIndex((h: string) => h.includes('assistant country manager') || h.includes('assistance country manager') || h.includes('acm'));
+  const cmIdx = headers.findIndex((h: string) => (h === 'country manager' || h.includes('country manager')) && !h.includes('senior') && !h.includes('assistant') && !h.includes('assistance'));
+  const scmIdx = headers.findIndex((h: string) => h.includes('senior country manager') || h.includes('scm'));
+  const avpIdx = headers.findIndex((h: string) => h.includes('assistant vice president') || h.includes('assistance vice president') || h.includes('avp'));
+  const vpIdx = headers.findIndex((h: string) => (h === 'vp' || h.includes('vice president')) && !h.includes('avp') && !h.includes('assistant') && !h.includes('senior'));
+  const svpIdx = headers.findIndex((h: string) => h.includes('senior vice president') || h.includes('svp'));
+  const refNameIdx = headers.findIndex((h: string) => h.includes('referrer name') || h.includes('referrer') || h.includes('referral'));
+  const refPosIdx = headers.findIndex((h: string) => h.includes('referrer position') || h.includes('referral pos'));
 
   const records: RawSpreadsheetRecord[] = [];
 
@@ -296,7 +365,16 @@ export function parseWorksheetToRecords(sheet: XLSX.WorkSheet): RawSpreadsheetRe
     }
     if (!email || !email.includes('@')) continue;
 
-    const fullName = nameIdx !== -1 && row[nameIdx] ? String(row[nameIdx]).trim() : undefined;
+    const firstName = firstIdx !== -1 && row[firstIdx] ? String(row[firstIdx]).trim() : undefined;
+    const middleName = midIdx !== -1 && row[midIdx] ? String(row[midIdx]).trim() : undefined;
+    const lastName = lastIdx !== -1 && row[lastIdx] ? String(row[lastIdx]).trim() : undefined;
+    const suffix = suffixIdx !== -1 && row[suffixIdx] ? String(row[suffixIdx]).trim() : undefined;
+
+    let fullName = nameIdx !== -1 && row[nameIdx] ? String(row[nameIdx]).trim() : undefined;
+    if (!fullName && (firstName || lastName)) {
+      fullName = [firstName, middleName, lastName, suffix].filter(Boolean).join(' ').trim();
+    }
+
     const nickname = nickIdx !== -1 && row[nickIdx] ? String(row[nickIdx]).trim() : undefined;
     const passwordHash = passIdx !== -1 && row[passIdx] ? String(row[passIdx]).trim() : undefined;
 
@@ -342,10 +420,41 @@ export function parseWorksheetToRecords(sheet: XLSX.WorkSheet): RawSpreadsheetRe
       positions.push('Marketing Associate');
     }
 
+    let dateOfBirth: string | undefined = undefined;
+    if (dobIdx !== -1 && row[dobIdx]) {
+      const dv = row[dobIdx];
+      dateOfBirth = dv instanceof Date ? dv.toISOString().split('T')[0] : String(dv).trim();
+    }
+
+    const age = ageIdx !== -1 && row[ageIdx] ? String(row[ageIdx]).trim() : undefined;
+    const civilStatus = civilIdx !== -1 && row[civilIdx] ? String(row[civilIdx]).trim() : undefined;
+    const citizenship = citizenIdx !== -1 && row[citizenIdx] ? String(row[citizenIdx]).trim() : undefined;
+    const residentialAddress = addrIdx !== -1 && row[addrIdx] ? String(row[addrIdx]).trim() : undefined;
+    const country = countryIdx !== -1 && row[countryIdx] ? String(row[countryIdx]).trim() : undefined;
+    const state = stateIdx !== -1 && row[stateIdx] ? String(row[stateIdx]).trim() : undefined;
+    const tin = tinIdx !== -1 && row[tinIdx] ? String(row[tinIdx]).trim() : undefined;
+    const mobileNumber = mobileIdx !== -1 && row[mobileIdx] ? String(row[mobileIdx]).trim() : undefined;
+    const telephoneNumber = teleIdx !== -1 && row[teleIdx] ? String(row[teleIdx]).trim() : undefined;
+
+    const bankName = bankNameIdx !== -1 && row[bankNameIdx] ? String(row[bankNameIdx]).trim() : undefined;
+    const accountName = accNameIdx !== -1 && row[accNameIdx] ? String(row[accNameIdx]).trim() : fullName;
+    const accountNumber = accNumIdx !== -1 && row[accNumIdx] ? String(row[accNumIdx]).trim() : undefined;
+    const bankAddress = bankAddrIdx !== -1 && row[bankAddrIdx] ? String(row[bankAddrIdx]).trim() : undefined;
+    const swiftCode = swiftIdx !== -1 && row[swiftIdx] ? String(row[swiftIdx]).trim() : undefined;
+
+    const teamName = territoryHeadIdx !== -1 && row[territoryHeadIdx] ? String(row[territoryHeadIdx]).trim() : undefined;
+    const upline = uplineIdx !== -1 && row[uplineIdx] ? String(row[uplineIdx]).trim() : undefined;
+    const teamLeader = teamLeaderIdx !== -1 && row[teamLeaderIdx] ? String(row[teamLeaderIdx]).trim() : undefined;
+    const brokerGroup = brokerGroupIdx !== -1 && row[brokerGroupIdx] ? String(row[brokerGroupIdx]).trim() : undefined;
+
     records.push({
       email,
       nickname: nickname || (fullName ? fullName.split(' ')[0] : undefined),
       fullName,
+      firstName,
+      middleName,
+      lastName,
+      suffix,
       passwordHash,
       dateCreated,
       status,
@@ -353,6 +462,36 @@ export function parseWorksheetToRecords(sheet: XLSX.WorkSheet): RawSpreadsheetRe
       position: positions[positions.length - 1],
       positions,
       hasExistingContract: true,
+      mobileNumber,
+      telephoneNumber,
+      dateOfBirth,
+      age,
+      civilStatus,
+      citizenship,
+      residentialAddress,
+      country,
+      state,
+      tin,
+      bankName,
+      accountName,
+      accountNumber,
+      bankAddress,
+      swiftCode,
+      teamName,
+      upline,
+      teamLeader,
+      brokerGroup,
+      seniorMarketingAssociate: smaIdx !== -1 && row[smaIdx] ? String(row[smaIdx]).trim() : undefined,
+      marketingManager: mmIdx !== -1 && row[mmIdx] ? String(row[mmIdx]).trim() : undefined,
+      marketingDirector: mdIdx !== -1 && row[mdIdx] ? String(row[mdIdx]).trim() : undefined,
+      assistanceCountryManager: acmIdx !== -1 && row[acmIdx] ? String(row[acmIdx]).trim() : undefined,
+      countryManager: cmIdx !== -1 && row[cmIdx] ? String(row[cmIdx]).trim() : undefined,
+      seniorCountryManager: scmIdx !== -1 && row[scmIdx] ? String(row[scmIdx]).trim() : undefined,
+      assistanceVicePresident: avpIdx !== -1 && row[avpIdx] ? String(row[avpIdx]).trim() : undefined,
+      vicePresident: vpIdx !== -1 && row[vpIdx] ? String(row[vpIdx]).trim() : undefined,
+      seniorVicePresident: svpIdx !== -1 && row[svpIdx] ? String(row[svpIdx]).trim() : undefined,
+      referrerName: refNameIdx !== -1 && row[refNameIdx] ? String(row[refNameIdx]).trim() : undefined,
+      referrerPosition: refPosIdx !== -1 && row[refPosIdx] ? String(row[refPosIdx]).trim() : undefined,
     });
   }
   return records;
@@ -851,6 +990,42 @@ export const ImportAgentsModal: React.FC<ImportAgentsModalProps> = ({
         position: r.position,
         positions: r.requestedPositions,
         hasExistingContract: true,
+        // All personal, banking, and team hierarchy details for renewal auto-fill
+        firstName: r.firstName,
+        middleName: r.middleName,
+        lastName: r.lastName,
+        suffix: r.suffix,
+        mobileNumber: r.mobileNumber,
+        telephoneNumber: r.telephoneNumber,
+        dateOfBirth: r.dateOfBirth,
+        age: r.age,
+        civilStatus: r.civilStatus,
+        citizenship: r.citizenship,
+        nationality: r.nationality,
+        residentialAddress: r.residentialAddress,
+        country: r.country,
+        state: r.state,
+        tin: r.tin,
+        bankName: r.bankName,
+        accountName: r.accountName,
+        accountNumber: r.accountNumber,
+        bankAddress: r.bankAddress,
+        swiftCode: r.swiftCode,
+        teamName: r.teamName,
+        upline: r.upline,
+        teamLeader: r.teamLeader,
+        brokerGroup: r.brokerGroup,
+        seniorMarketingAssociate: r.seniorMarketingAssociate,
+        marketingManager: r.marketingManager,
+        marketingDirector: r.marketingDirector,
+        assistanceCountryManager: r.assistanceCountryManager,
+        countryManager: r.countryManager,
+        seniorCountryManager: r.seniorCountryManager,
+        assistanceVicePresident: r.assistanceVicePresident,
+        vicePresident: r.vicePresident,
+        seniorVicePresident: r.seniorVicePresident,
+        referrerName: r.referrerName,
+        referrerPosition: r.referrerPosition,
       }));
 
       const response = await api.importAgents({

@@ -15,6 +15,9 @@ import {
   StaffAccount,
   StaffInvitation,
   StaffPermissions,
+  PersonalDetails,
+  BankDetails,
+  TeamDetails,
 } from './src/types';
 import {
   INITIAL_AGENTS,
@@ -31,6 +34,7 @@ import {
   DATASET_COLUMNS_34,
   getAgentDatasetRow,
   generate34ColumnCsv,
+  REGIONAL_TERRITORY_HEADS,
 } from './src/utils/agentDatasetExport';
 
 // In-Memory Database Store with initial seed data
@@ -334,7 +338,7 @@ async function startServer() {
   app.post('/api/auth/register', (req, res) => {
     const { fullName, email, password, region, position, mobileNumber } = req.body;
 
-    if (!fullName || !email || !password || !region || !position) {
+    if (!fullName || !email || !password || !region) {
       return res.status(400).json({ error: 'All required registration fields must be provided.' });
     }
 
@@ -356,6 +360,8 @@ async function startServer() {
     const userId = `usr_${Date.now()}`;
     const today = new Date().toISOString().split('T')[0];
 
+    const initialPosition = position && position !== 'Pending Accreditation' ? position : 'Pending Accreditation';
+
     const newAgent: AgentProfile = {
       affiliateCode,
       firebaseUserId: userId,
@@ -364,14 +370,14 @@ async function startServer() {
       mobileNumber: mobileNumber ? mobileNumber.trim() : '',
       password,
       region,
-      position,
+      position: initialPosition,
       role: 'agent',
       registrationDate: today,
       accountStatus: 'Active',
       profileCompletion: 25, // Initial basic details provided
       accreditationStatus: 'Pending', // Pending until they complete accreditation inside
       renewalEligibility: false,
-      unlockedPositions: [position],
+      unlockedPositions: initialPosition !== 'Pending Accreditation' ? [initialPosition] : [],
     };
 
     db.agents.push(newAgent);
@@ -881,6 +887,204 @@ async function startServer() {
       success: true,
       message: `Temporary password for ${agent.fullName} (${code}) has been updated.`,
       tempPassword: newTemp,
+    });
+  });
+
+  // Admin Batch Import Agents Endpoint
+  app.post(['/api/admin/import-agents', '/api/agents/import'], (req, res) => {
+    const payload = req.body || {};
+    const { records = [], duplicateHandling = 'update', importedBy = 'Admin', importedByRole = 'admin' } = payload;
+    let newImported = 0;
+    let duplicatesUpdated = 0;
+    let duplicatesSkipped = 0;
+
+    records.forEach((record: any) => {
+      if (!record.email && !record.fullName) return;
+      const normEmail = (record.email || '').trim().toLowerCase();
+      const normName = (record.fullName || '').trim().toLowerCase();
+
+      const existingIndex = db.agents.findIndex(
+        (a) =>
+          (normEmail && a.email.toLowerCase() === normEmail) ||
+          (normName && a.fullName.toLowerCase() === normName)
+      );
+
+      const personalDetails: Partial<PersonalDetails> = {
+        fullName: record.fullName || (record.email ? record.email.split('@')[0] : 'Affiliate'),
+        firstName: record.firstName || (record.fullName ? record.fullName.split(' ')[0] : undefined),
+        middleName: record.middleName,
+        lastName: record.lastName || (record.fullName ? record.fullName.split(' ').slice(1).join(' ') : undefined),
+        suffix: record.suffix,
+        emailAddress: record.email,
+        mobileNumber: record.mobileNumber,
+        telephoneNumber: record.telephoneNumber,
+        dateOfBirth: record.dateOfBirth,
+        age: record.age,
+        civilStatus: record.civilStatus || 'Single',
+        citizenship: record.citizenship || 'Filipino',
+        nationality: record.nationality || 'Filipino',
+        residentialAddress: record.residentialAddress,
+        country: record.country || 'Philippines',
+        state: record.state,
+        tin: record.tin,
+        idMatchConfirmed: true,
+      };
+
+      const bankDetails: Partial<BankDetails> = {
+        bankName: record.bankName || '',
+        accountName: record.accountName || record.fullName || '',
+        accountNumber: record.accountNumber || '',
+        bankAddress: record.bankAddress || '',
+        swiftCode: record.swiftCode || '',
+      };
+
+      const teamDetails: Partial<TeamDetails> = {
+        teamName: record.teamName || (record.region ? REGIONAL_TERRITORY_HEADS[record.region as Region] : undefined) || '',
+        upline: record.upline || '',
+        teamLeader: record.teamLeader || '',
+        brokerGroup: record.brokerGroup || `Megaworld International ${record.region || 'Asia Pacific 2'} Hub`,
+        leadership: {
+          seniorMarketingAssociate: record.seniorMarketingAssociate,
+          marketingManager: record.marketingManager,
+          marketingDirector: record.marketingDirector,
+          assistanceCountryManager: record.assistanceCountryManager,
+          countryManager: record.countryManager,
+          seniorCountryManager: record.seniorCountryManager,
+          assistanceVicePresident: record.assistanceVicePresident,
+          vicePresident: record.vicePresident,
+          seniorVicePresident: record.seniorVicePresident,
+          referrerName: record.referrerName,
+          referrerPosition: record.referrerPosition,
+        },
+      };
+
+      if (existingIndex >= 0) {
+        if (duplicateHandling === 'skip') {
+          duplicatesSkipped++;
+          return;
+        }
+
+        const agent = db.agents[existingIndex];
+        if (record.fullName) agent.fullName = record.fullName;
+        if (record.nickname) agent.nickname = record.nickname;
+        if (record.region) agent.region = record.region as Region;
+        if (record.position) agent.position = record.position;
+        if (record.mobileNumber) agent.mobileNumber = record.mobileNumber;
+        if (record.tin) agent.tin = record.tin;
+        if (record.residentialAddress) agent.residentialAddress = record.residentialAddress;
+        if (record.dateOfBirth) agent.birthday = record.dateOfBirth;
+        agent.personalDetails = { ...agent.personalDetails, ...personalDetails };
+        agent.bankDetails = { ...agent.bankDetails, ...bankDetails };
+        agent.teamDetails = { ...agent.teamDetails, ...teamDetails };
+
+        const appIdx = db.applications.findIndex(
+          (a) => a.affiliateCode === agent.affiliateCode || (normEmail && a.personalDetails?.emailAddress?.toLowerCase() === normEmail)
+        );
+        if (appIdx >= 0) {
+          db.applications[appIdx].personalDetails = { ...db.applications[appIdx].personalDetails, ...personalDetails } as any;
+          db.applications[appIdx].bankDetails = { ...db.applications[appIdx].bankDetails, ...bankDetails } as any;
+          db.applications[appIdx].teamDetails = { ...db.applications[appIdx].teamDetails, ...teamDetails } as any;
+        } else {
+          db.applications.unshift({
+            id: `app_${agent.affiliateCode}`,
+            affiliateCode: agent.affiliateCode,
+            applicationType: 'New',
+            position: (agent.position as Position) || 'Marketing Associate',
+            region: agent.region,
+            status: 'Approved',
+            dateSubmitted: agent.accreditationStartDate || new Date().toISOString().split('T')[0],
+            personalDetails: personalDetails as any,
+            bankDetails: bankDetails as any,
+            teamDetails: teamDetails as any,
+            idVerificationStatus: 'Verified',
+            eSignatureConfirmed: true,
+            declarationAccepted: true,
+          });
+        }
+
+        duplicatesUpdated++;
+        return;
+      }
+
+      const regionName = (record.region || 'Asia Pacific 2') as Region;
+      const affiliateCode = db.generateAffiliateCode(regionName);
+      const codeDigits = affiliateCode.split('-').pop() || '000000';
+      const tempPassword = `Mega@${codeDigits}`;
+      const startDate = record.dateCreated ? record.dateCreated.split(' ')[0] : new Date().toISOString().split('T')[0];
+
+      const agentPosition = record.position || 'Marketing Associate';
+      const newAgent: AgentProfile = {
+        affiliateCode,
+        firebaseUserId: `usr_imp_${Date.now()}_${codeDigits}`,
+        fullName: record.fullName || record.email.split('@')[0],
+        nickname: record.nickname || record.fullName?.split(' ')[0] || 'Affiliate',
+        email: record.email,
+        mobileNumber: record.mobileNumber,
+        tin: record.tin,
+        residentialAddress: record.residentialAddress,
+        birthday: record.dateOfBirth,
+        password: 'password123',
+        passwordHash: record.passwordHash || '',
+        region: regionName,
+        position: agentPosition,
+        positions: [agentPosition],
+        role: 'agent',
+        registrationDate: startDate,
+        accountStatus: 'Active',
+        profileCompletion: 100,
+        currentAccreditationId: `acc_imp_${Date.now()}_${codeDigits}`,
+        accreditationStatus: 'Active',
+        accreditationStartDate: startDate,
+        accreditationExpiryDate: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        lastAccreditationDate: startDate,
+        renewalEligibility: false,
+        unlockedPositions: [agentPosition],
+        tempPassword,
+        assignedStaff: 'Elena Ramos (BD Staff)',
+        personalDetails,
+        bankDetails,
+        teamDetails,
+      };
+
+      db.agents.push(newAgent);
+
+      db.applications.unshift({
+        id: `app_${affiliateCode}`,
+        affiliateCode,
+        applicationType: 'New',
+        position: agentPosition,
+        region: regionName,
+        status: 'Approved',
+        dateSubmitted: startDate,
+        personalDetails: personalDetails as any,
+        bankDetails: bankDetails as any,
+        teamDetails: teamDetails as any,
+        idVerificationStatus: 'Verified',
+        eSignatureConfirmed: true,
+        declarationAccepted: true,
+      });
+
+      newImported++;
+    });
+
+    db.log(
+      importedBy,
+      importedByRole as any,
+      'Imported Agent Records',
+      'Affiliate Database',
+      `Imported ${newImported} new agents, updated ${duplicatesUpdated} existing records (${duplicatesSkipped} skipped).`
+    );
+
+    res.json({
+      success: true,
+      message: `Processed ${records.length} records: ${newImported} added, ${duplicatesUpdated} updated.`,
+      totalProcessed: records.length,
+      newImported,
+      duplicatesUpdated,
+      duplicatesSkipped,
+      agents: db.agents,
+      importedAgents: db.agents,
+      applications: db.applications,
     });
   });
 
@@ -1657,7 +1861,7 @@ async function startServer() {
         id: `app_${Date.now()}`,
         affiliateCode,
         applicationType: applicationType || 'New',
-        position: position || agent.position,
+        position: (position as Position) || (agent.position as Position) || 'Marketing Associate',
         region: agent.region,
         status: 'Submitted',
         dateSubmitted: new Date().toISOString(),
@@ -1688,9 +1892,16 @@ async function startServer() {
       targetApp.declarationAccepted = !!data.declarationAccepted;
     }
 
-    // Update Agent profile completion
+    // Update Agent profile completion & reflect submitted position
     agent.profileCompletion = 100;
     agent.accreditationStatus = applicationType === 'Renewal' ? 'Renewal Pending' : 'Pending Review';
+    if (targetApp.position) {
+      agent.position = targetApp.position;
+      const currentUnlocked = agent.unlockedPositions || [];
+      if (!currentUnlocked.includes(targetApp.position)) {
+        agent.unlockedPositions = [...currentUnlocked, targetApp.position];
+      }
+    }
 
     db.log(
       agent.fullName,
@@ -1880,7 +2091,7 @@ async function startServer() {
       id: `pos_req_${Date.now()}`,
       affiliateCode,
       fullName: agent.fullName,
-      currentPosition: agent.position,
+      currentPosition: (agent.position as Position) || 'Marketing Associate',
       requestedPosition,
       region: agent.region,
       requestDate: new Date().toISOString().split('T')[0],

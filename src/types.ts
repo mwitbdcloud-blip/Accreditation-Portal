@@ -178,8 +178,8 @@ export interface AgentProfile {
   tempPassword?: string; // Generated temporary credentials for renewal and access
   photoUrl?: string;
   region: Region;
-  position: Position;
-  positions?: Position[]; // All held or unlocked positions
+  position: Position | 'Pending Accreditation' | string;
+  positions?: (Position | string)[]; // All held or unlocked positions
   role: UserRole;
   registrationDate: string;
   accountStatus: 'Active' | 'Suspended' | 'Pending';
@@ -190,8 +190,14 @@ export interface AgentProfile {
   accreditationExpiryDate?: string;
   lastAccreditationDate?: string;
   renewalEligibility: boolean;
-  unlockedPositions: Position[];
+  unlockedPositions: (Position | string)[];
   assignedStaff?: string;
+  personalDetails?: Partial<PersonalDetails>;
+  bankDetails?: Partial<BankDetails>;
+  teamDetails?: Partial<TeamDetails>;
+  birthday?: string;
+  residentialAddress?: string;
+  tin?: string;
 }
 
 export interface StaffPermissions {

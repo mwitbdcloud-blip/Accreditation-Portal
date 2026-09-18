@@ -58,16 +58,25 @@ export const api = {
     mobileNumber?: string;
     password: string;
     region: Region;
-    position: Position;
+    position?: Position | string;
     accreditationStartDate?: string;
     accreditationExpiryDate?: string;
   }): Promise<{ success: boolean; affiliateCode: string; agent: AgentProfile; message?: string }> {
+    const initialPosition = (data.position && data.position !== 'Pending Accreditation')
+      ? (data.position as Position)
+      : 'Pending Accreditation';
+
+    const payload = {
+      ...data,
+      position: initialPosition,
+    };
+
     const res = await safeFetch<{ success: boolean; affiliateCode: string; agent: AgentProfile; message?: string }>(
       `${BASE_URL}/auth/register`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       }
     );
 
@@ -103,19 +112,19 @@ export const api = {
       email: data.email,
       password: data.password || 'password123',
       region: data.region,
-      position: data.position,
-      positions: [data.position],
+      position: initialPosition,
+      positions: initialPosition !== 'Pending Accreditation' ? [initialPosition] : [],
       role: 'agent',
       registrationDate: startDate,
       accountStatus: 'Active',
-      profileCompletion: 70,
+      profileCompletion: 25,
       currentAccreditationId: `acc_${Date.now()}`,
-      accreditationStatus: 'Active',
+      accreditationStatus: 'Pending',
       accreditationStartDate: startDate,
       accreditationExpiryDate: expiryDate,
       lastAccreditationDate: startDate,
       renewalEligibility: false,
-      unlockedPositions: [data.position],
+      unlockedPositions: initialPosition !== 'Pending Accreditation' ? [initialPosition] : [],
       tempPassword: `Mega@${nextCodeNum}`,
       assignedStaff: 'Elena Ramos (BD Staff)',
     };
@@ -128,7 +137,7 @@ export const api = {
       role: 'agent',
       action: 'New Agent Registration',
       recordAffected: affiliateCode,
-      details: `Registered as ${data.position} for ${data.region}. Permanent code ${affiliateCode} generated.`,
+      details: `Registered for ${data.region}. Permanent code ${affiliateCode} generated. Position pending application submission.`,
     });
 
     return {
@@ -576,7 +585,7 @@ export const api = {
       id: `pos_req_${Date.now()}`,
       affiliateCode,
       fullName: agent?.fullName || affiliateCode,
-      currentPosition: agent?.position || 'Marketing Associate',
+      currentPosition: (agent?.position as Position) || 'Marketing Associate',
       requestedPosition,
       region: agent?.region || 'Asia Pacific 2',
       requestDate: new Date().toISOString().split('T')[0],
@@ -733,6 +742,7 @@ export const api = {
       region?: string;
       passwordHash?: string;
       hasExistingContract?: boolean;
+      [key: string]: any;
     }>;
     importedBy?: string;
     importedByRole?: string;
