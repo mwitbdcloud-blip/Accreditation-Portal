@@ -52,78 +52,83 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
   );
 
   // Form Fields - Personal Details (Initialize with existing application or leave blank for new registrants)
-  const [firstName, setFirstName] = useState(existingApplication?.personalDetails?.firstName || agent.fullName.split(' ')[0] || '');
-  const [middleName, setMiddleName] = useState(existingApplication?.personalDetails?.middleName || '');
-  const [lastName, setLastName] = useState(existingApplication?.personalDetails?.lastName || agent.fullName.split(' ').slice(1).join(' ') || '');
-  const [suffix, setSuffix] = useState(existingApplication?.personalDetails?.suffix || '');
-  const [dateOfBirth, setDateOfBirth] = useState(existingApplication?.personalDetails?.dateOfBirth || '');
+  // Initial Form State - personal details with agent profile fallback
+  const initialPersonal = existingApplication?.personalDetails || agent.personalDetails;
+  const initialBank = existingApplication?.bankDetails || agent.bankDetails;
+  const initialTeam = existingApplication?.teamDetails || agent.teamDetails;
+
+  const [firstName, setFirstName] = useState(initialPersonal?.firstName || agent.fullName.split(' ')[0] || '');
+  const [middleName, setMiddleName] = useState(initialPersonal?.middleName || '');
+  const [lastName, setLastName] = useState(initialPersonal?.lastName || agent.fullName.split(' ').slice(1).join(' ') || '');
+  const [suffix, setSuffix] = useState(initialPersonal?.suffix || '');
+  const [dateOfBirth, setDateOfBirth] = useState(initialPersonal?.dateOfBirth || '');
   const [age, setAge] = useState<number | string>(() => {
-    if (existingApplication?.personalDetails?.age) return existingApplication.personalDetails.age;
-    if (existingApplication?.personalDetails?.dateOfBirth) {
-      return calculateAgeFromDob(existingApplication.personalDetails.dateOfBirth);
+    if (initialPersonal?.age) return initialPersonal.age;
+    if (initialPersonal?.dateOfBirth) {
+      return calculateAgeFromDob(initialPersonal.dateOfBirth);
     }
     return '';
   });
-  const [sex, setSex] = useState<'Male' | 'Female' | 'Other' | ''>((existingApplication?.personalDetails?.sex as any) || '');
-  const [civilStatus, setCivilStatus] = useState(existingApplication?.personalDetails?.civilStatus || '');
-  const [citizenship, setCitizenship] = useState(existingApplication?.personalDetails?.citizenship || existingApplication?.personalDetails?.nationality || '');
-  const [nationality, setNationality] = useState(existingApplication?.personalDetails?.nationality || '');
-  const [residentialAddress, setResidentialAddress] = useState(existingApplication?.personalDetails?.residentialAddress || '');
-  const [country, setCountry] = useState(existingApplication?.personalDetails?.country || '');
-  const [state, setState] = useState(existingApplication?.personalDetails?.state || '');
-  const [telephoneNumber, setTelephoneNumber] = useState(existingApplication?.personalDetails?.telephoneNumber || '');
-  const [mobileNumber, setMobileNumber] = useState(existingApplication?.personalDetails?.mobileNumber || agent.mobileNumber || '');
-  const [emailAddress, setEmailAddress] = useState(existingApplication?.personalDetails?.emailAddress || agent.email || '');
-  const [tin, setTin] = useState(existingApplication?.personalDetails?.tin || '');
-  const [lastContractPeriod, setLastContractPeriod] = useState(existingApplication?.personalDetails?.lastContractPeriod || '');
-  const [idMatchConfirmed, setIdMatchConfirmed] = useState(existingApplication?.personalDetails?.idMatchConfirmed || false);
+  const [sex, setSex] = useState<'Male' | 'Female' | 'Other' | ''>((initialPersonal?.sex as any) || '');
+  const [civilStatus, setCivilStatus] = useState(initialPersonal?.civilStatus || '');
+  const [citizenship, setCitizenship] = useState(initialPersonal?.citizenship || initialPersonal?.nationality || '');
+  const [nationality, setNationality] = useState(initialPersonal?.nationality || '');
+  const [residentialAddress, setResidentialAddress] = useState(initialPersonal?.residentialAddress || '');
+  const [country, setCountry] = useState(initialPersonal?.country || '');
+  const [state, setState] = useState(initialPersonal?.state || '');
+  const [telephoneNumber, setTelephoneNumber] = useState(initialPersonal?.telephoneNumber || '');
+  const [mobileNumber, setMobileNumber] = useState(initialPersonal?.mobileNumber || agent.mobileNumber || '');
+  const [emailAddress, setEmailAddress] = useState(initialPersonal?.emailAddress || agent.email || '');
+  const [tin, setTin] = useState(initialPersonal?.tin || '');
+  const [lastContractPeriod, setLastContractPeriod] = useState(initialPersonal?.lastContractPeriod || '');
+  const [idMatchConfirmed, setIdMatchConfirmed] = useState(initialPersonal?.idMatchConfirmed || false);
 
-  // Bank Details (Left blank for new registrants)
-  const [bankName, setBankName] = useState(existingApplication?.bankDetails?.bankName || '');
-  const [accountName, setAccountName] = useState(existingApplication?.bankDetails?.accountName || agent.fullName || '');
-  const [accountNumber, setAccountNumber] = useState(existingApplication?.bankDetails?.accountNumber || '');
-  const [bankAddress, setBankAddress] = useState(existingApplication?.bankDetails?.bankAddress || '');
-  const [swiftCode, setSwiftCode] = useState(existingApplication?.bankDetails?.swiftCode || '');
+  // Bank Details (with agent profile fallback)
+  const [bankName, setBankName] = useState(initialBank?.bankName || '');
+  const [accountName, setAccountName] = useState(initialBank?.accountName || agent.fullName || '');
+  const [accountNumber, setAccountNumber] = useState(initialBank?.accountNumber || '');
+  const [bankAddress, setBankAddress] = useState(initialBank?.bankAddress || '');
+  const [swiftCode, setSwiftCode] = useState(initialBank?.swiftCode || '');
 
-  // Team Details & Leadership Hierarchy (Position-specific, left blank for new registrants)
-  const [teamName, setTeamName] = useState(existingApplication?.teamDetails?.teamName || '');
-  const [upline, setUpline] = useState(existingApplication?.teamDetails?.upline || '');
-  const [teamLeader, setTeamLeader] = useState(existingApplication?.teamDetails?.teamLeader || '');
-  const [brokerGroup, setBrokerGroup] = useState(existingApplication?.teamDetails?.brokerGroup || `Megaworld International ${agent.region} Hub`);
+  // Team Details & Leadership Hierarchy (with agent profile fallback)
+  const [teamName, setTeamName] = useState(initialTeam?.teamName || '');
+  const [upline, setUpline] = useState(initialTeam?.upline || '');
+  const [teamLeader, setTeamLeader] = useState(initialTeam?.teamLeader || '');
+  const [brokerGroup, setBrokerGroup] = useState(initialTeam?.brokerGroup || `Megaworld International ${agent.region} Hub`);
 
-  // Leadership chains (Leave blank for new registrants to complete during accreditation)
+  // Leadership chains
   const [seniorMarketingAssociate, setSeniorMarketingAssociate] = useState(
-    existingApplication?.teamDetails?.leadership?.seniorMarketingAssociate || ''
+    initialTeam?.leadership?.seniorMarketingAssociate || ''
   );
   const [marketingManager, setMarketingManager] = useState(
-    existingApplication?.teamDetails?.leadership?.marketingManager || ''
+    initialTeam?.leadership?.marketingManager || ''
   );
   const [marketingDirector, setMarketingDirector] = useState(
-    existingApplication?.teamDetails?.leadership?.marketingDirector || ''
+    initialTeam?.leadership?.marketingDirector || ''
   );
   const [assistanceCountryManager, setAssistanceCountryManager] = useState(
-    existingApplication?.teamDetails?.leadership?.assistanceCountryManager || ''
+    initialTeam?.leadership?.assistanceCountryManager || ''
   );
   const [countryManager, setCountryManager] = useState(
-    existingApplication?.teamDetails?.leadership?.countryManager || ''
+    initialTeam?.leadership?.countryManager || ''
   );
   const [seniorCountryManager, setSeniorCountryManager] = useState(
-    existingApplication?.teamDetails?.leadership?.seniorCountryManager || ''
+    initialTeam?.leadership?.seniorCountryManager || ''
   );
   const [assistanceVicePresident, setAssistanceVicePresident] = useState(
-    existingApplication?.teamDetails?.leadership?.assistanceVicePresident || ''
+    initialTeam?.leadership?.assistanceVicePresident || ''
   );
   const [vicePresident, setVicePresident] = useState(
-    existingApplication?.teamDetails?.leadership?.vicePresident || ''
+    initialTeam?.leadership?.vicePresident || ''
   );
   const [seniorVicePresident, setSeniorVicePresident] = useState(
-    existingApplication?.teamDetails?.leadership?.seniorVicePresident || ''
+    initialTeam?.leadership?.seniorVicePresident || ''
   );
   const [referrerName, setReferrerName] = useState(
-    existingApplication?.teamDetails?.leadership?.referrerName || ''
+    initialTeam?.leadership?.referrerName || ''
   );
   const [referrerPosition, setReferrerPosition] = useState(
-    existingApplication?.teamDetails?.leadership?.referrerPosition || 'Senior Marketing Associate'
+    initialTeam?.leadership?.referrerPosition || 'Senior Marketing Associate'
   );
 
   // Sync state when agent or existingApplication changes
@@ -188,6 +193,64 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
       setESignatureUrl(existingApplication.eSignatureUrl || '');
       setESignatureConfirmed(existingApplication.eSignatureConfirmed || false);
       setDeclarationAccepted(existingApplication.declarationAccepted || false);
+    } else {
+      // Fall back to agent profile data if available (e.g. renewal after batch CSV import)
+      if (agent.personalDetails) {
+        const p = agent.personalDetails;
+        setFirstName(p.firstName || agent.fullName.split(' ')[0] || '');
+        setMiddleName(p.middleName || '');
+        setLastName(p.lastName || agent.fullName.split(' ').slice(1).join(' ') || '');
+        setSuffix(p.suffix || '');
+        const initialDob = p.dateOfBirth || '';
+        setDateOfBirth(initialDob);
+        if (p.age !== undefined && p.age !== null && p.age !== '') {
+          setAge(p.age);
+        } else if (initialDob) {
+          setAge(calculateAgeFromDob(initialDob));
+        }
+        setSex((p.sex as any) || '');
+        setCivilStatus(p.civilStatus || '');
+        setCitizenship(p.citizenship || p.nationality || '');
+        setNationality(p.nationality || '');
+        setResidentialAddress(p.residentialAddress || '');
+        setCountry(p.country || '');
+        setState(p.state || '');
+        setTelephoneNumber(p.telephoneNumber || '');
+        setMobileNumber(p.mobileNumber || agent.mobileNumber || '');
+        setEmailAddress(p.emailAddress || agent.email || '');
+        setTin(p.tin || '');
+        setLastContractPeriod(p.lastContractPeriod || '');
+        setIdMatchConfirmed(p.idMatchConfirmed || false);
+      }
+      if (agent.bankDetails) {
+        const b = agent.bankDetails;
+        setBankName(b.bankName || '');
+        setAccountName(b.accountName || agent.fullName || '');
+        setAccountNumber(b.accountNumber || '');
+        setBankAddress(b.bankAddress || '');
+        setSwiftCode(b.swiftCode || '');
+      }
+      if (agent.teamDetails) {
+        const t = agent.teamDetails;
+        setTeamName(t.teamName || '');
+        setUpline(t.upline || '');
+        setTeamLeader(t.teamLeader || '');
+        setBrokerGroup(t.brokerGroup || `Megaworld International ${agent.region} Hub`);
+        const l = t.leadership;
+        if (l) {
+          setSeniorMarketingAssociate(l.seniorMarketingAssociate || '');
+          setMarketingManager(l.marketingManager || '');
+          setMarketingDirector(l.marketingDirector || '');
+          setAssistanceCountryManager(l.assistanceCountryManager || '');
+          setCountryManager(l.countryManager || '');
+          setSeniorCountryManager(l.seniorCountryManager || '');
+          setAssistanceVicePresident(l.assistanceVicePresident || '');
+          setVicePresident(l.vicePresident || '');
+          setSeniorVicePresident(l.seniorVicePresident || '');
+          setReferrerName(l.referrerName || '');
+          setReferrerPosition(l.referrerPosition || 'Senior Marketing Associate');
+        }
+      }
     }
   }, [existingApplication, agent]);
 
@@ -258,7 +321,43 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
   );
   // Bank details are optional during initial accreditation
   const isBankComplete = Boolean(!bankName || (bankName && accountName && accountNumber));
-  const isTeamComplete = Boolean(teamName && upline);
+
+  // Leadership hierarchy validation based on selected position
+  const isLeadershipComplete = (() => {
+    // Executive leadership roles marked with (*) in the UI for all positions
+    const hasCoreExecutives = Boolean(
+      assistanceCountryManager?.trim() &&
+      countryManager?.trim() &&
+      seniorCountryManager?.trim() &&
+      assistanceVicePresident?.trim() &&
+      vicePresident?.trim() &&
+      seniorVicePresident?.trim()
+    );
+
+    if (!hasCoreExecutives) return false;
+
+    if (selectedPosition === 'Marketing Associate') {
+      return Boolean(
+        seniorMarketingAssociate?.trim() &&
+        marketingManager?.trim() &&
+        marketingDirector?.trim()
+      );
+    }
+
+    if (selectedPosition === 'Marketing Manager') {
+      return Boolean(marketingDirector?.trim());
+    }
+
+    return true;
+  })();
+
+  // Team Details is complete if Territory Head is provided AND either:
+  // 1) All required leadership hierarchy roles for the position are provided, OR
+  // 2) An established upline or team structure exists
+  const isTeamComplete = Boolean(
+    teamName?.trim() && (isLeadershipComplete || upline?.trim() || teamLeader?.trim())
+  );
+
   const isPhotoComplete = Boolean(idPhotoUrl);
   const isSignatureComplete = Boolean(eSignatureUrl && eSignatureConfirmed);
   const isIdComplete = Boolean(governmentIdUrl && idBelongsConfirmed);
@@ -319,22 +418,22 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
           swiftCode,
         },
         teamDetails: {
-          teamName,
-          upline,
-          teamLeader,
-          brokerGroup,
+          teamName: teamName?.trim() || 'Direct Team',
+          upline: upline?.trim() || seniorMarketingAssociate?.trim() || referrerName?.trim() || teamName?.trim() || 'Megaworld International Direct',
+          teamLeader: teamLeader?.trim() || marketingManager?.trim() || marketingDirector?.trim() || teamName?.trim() || 'Regional Head',
+          brokerGroup: brokerGroup?.trim() || `Megaworld International ${agent.region} Hub`,
           leadership: {
-            seniorMarketingAssociate,
-            marketingManager,
-            marketingDirector,
-            assistanceCountryManager,
-            countryManager,
-            seniorCountryManager,
-            assistanceVicePresident,
-            vicePresident,
-            seniorVicePresident,
-            referrerName,
-            referrerPosition,
+            seniorMarketingAssociate: seniorMarketingAssociate?.trim() || '',
+            marketingManager: marketingManager?.trim() || '',
+            marketingDirector: marketingDirector?.trim() || '',
+            assistanceCountryManager: assistanceCountryManager?.trim() || '',
+            countryManager: countryManager?.trim() || '',
+            seniorCountryManager: seniorCountryManager?.trim() || '',
+            assistanceVicePresident: assistanceVicePresident?.trim() || '',
+            vicePresident: vicePresident?.trim() || '',
+            seniorVicePresident: seniorVicePresident?.trim() || '',
+            referrerName: referrerName?.trim() || '',
+            referrerPosition: referrerPosition?.trim() || 'Senior Marketing Associate',
           },
         },
         idPhotoUrl,
@@ -1021,7 +1120,7 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
 
             {/* Position-Specific Team & Leadership Hierarchy Section */}
             <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100 space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h4 className="text-xs font-bold uppercase tracking-wider text-blue-950">
                     Official Leadership Hierarchy for {selectedPosition}
@@ -1030,13 +1129,24 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                     These leaders will appear directly on your generated accreditation contract and witnessing page.
                   </p>
                 </div>
-                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-900">
-                  {selectedPosition === 'Marketing Associate'
-                    ? '9 Leadership Roles + Referral'
-                    : selectedPosition === 'Marketing Manager'
-                    ? '7 Leadership Roles'
-                    : '6 Executive Directorate Roles'}
-                </span>
+                <div className="flex items-center gap-2">
+                  {isTeamComplete ? (
+                    <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Complete
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                      Required Fields Pending
+                    </span>
+                  )}
+                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-900">
+                    {selectedPosition === 'Marketing Associate'
+                      ? '9 Leadership Roles + Referral'
+                      : selectedPosition === 'Marketing Manager'
+                      ? '7 Leadership Roles'
+                      : '6 Executive Directorate Roles'}
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
@@ -1469,9 +1579,20 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                   <CheckCircle2 className={`w-4 h-4 ${isTeamComplete ? 'text-emerald-600' : 'text-slate-300'}`} />
                   Team Details completed
                 </span>
-                <span className={isTeamComplete ? 'text-emerald-700 font-bold' : 'text-slate-400'}>
-                  {isTeamComplete ? 'Complete' : 'Incomplete'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={isTeamComplete ? 'text-emerald-700 font-bold' : 'text-amber-600 font-semibold'}>
+                    {isTeamComplete ? 'Complete' : 'Incomplete'}
+                  </span>
+                  {!isTeamComplete && (
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep(3)}
+                      className="text-[11px] text-blue-900 underline font-medium hover:text-blue-700"
+                    >
+                      Fill Step 3
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center justify-between py-1 border-b border-slate-200">
