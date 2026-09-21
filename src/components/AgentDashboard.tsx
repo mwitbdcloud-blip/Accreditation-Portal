@@ -45,7 +45,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
   const isExpiringSoon = agent.accreditationStatus === 'Expiring Soon';
   const isActive = agent.accreditationStatus === 'Active';
   const isUnderReview = agent.accreditationStatus === 'Pending Review' || latestApp?.status === 'Submitted' || latestApp?.status === 'Under Review';
-  const isNotStarted = agent.accreditationStatus === 'Not Started' || !latestApp;
+  const isNotStarted = agent.accreditationStatus === 'Not Started' || !latestApp || latestApp?.status === 'Draft' || (agent.accreditationStatus === 'Pending' && latestApp?.status !== 'Submitted' && latestApp?.status !== 'Under Review');
 
   const contractFileName = positionContract?.fileName || `Megaworld_SAA_${agent.position.replace(/\s+/g, '_')}.pdf`;
   const fileExt = contractFileName.split('.').pop()?.toUpperCase() || 'PDF';
@@ -93,7 +93,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
               Welcome, {agent.fullName}
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-2xl">
-              IPA Code: <strong className="font-mono text-amber-400">{agent.affiliateCode}</strong> • {agent.position} • {agent.region}
+              IPA Code: <strong className="font-mono text-amber-400">{agent.affiliateCode}</strong> • {agent.position && agent.position !== 'Pending Accreditation' ? agent.position : 'Accreditation Pending'} • {agent.region}
             </p>
           </div>
 
@@ -114,12 +114,14 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
                     : 'bg-blue-400'
                 }`}
               />
-              <span className="text-base font-bold text-white">{agent.accreditationStatus}</span>
+              <span className="text-base font-bold text-white">
+                {isActive ? 'Active' : isUnderReview ? 'Under Review' : isExpired ? 'Expired' : 'Pending Submission'}
+              </span>
             </div>
             <p className="text-[11px] text-slate-300 mt-1">
-              {agent.accreditationExpiryDate
+              {isActive && agent.accreditationExpiryDate
                 ? `Expires: ${formatDate(agent.accreditationExpiryDate)}`
-                : 'Pending accreditation submission'}
+                : 'Pending accreditation completion'}
             </p>
           </div>
         </div>

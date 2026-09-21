@@ -247,7 +247,7 @@ export default function App() {
     mobileNumber?: string;
     password?: string;
     region: Region;
-    position: Position;
+    position?: Position;
     accreditationStartDate?: string;
     accreditationExpiryDate?: string;
   }) => {
@@ -914,7 +914,8 @@ export default function App() {
                 accreditations={
                   accreditations.length > 0
                     ? accreditations
-                    : [
+                    : activeAgent.accreditationStatus === 'Active' || activeAgent.accreditationStatus === 'Expired' || activeAgent.accreditationStatus === 'Expiring Soon'
+                    ? [
                         {
                           id: activeAgent.currentAccreditationId || 'acc_001',
                           affiliateCode: activeAgent.affiliateCode,
@@ -928,6 +929,7 @@ export default function App() {
                           approvedDate: activeAgent.accreditationStartDate || '2026-06-15',
                         },
                       ]
+                    : []
                 }
                 positionContract={positionContracts.find((c) => c.position === activeAgent.position)}
                 onNavigateToAccreditation={() => setActiveTab('accreditation')}
@@ -940,7 +942,24 @@ export default function App() {
                 agent={activeAgent}
                 existingApplication={applications.find((a) => a.affiliateCode === activeAgent.affiliateCode)}
                 onSubmit={handleSubmitAccreditation}
+                onSubmitSuccess={() => {
+                  loadPortalData();
+                  setActiveTab('dashboard');
+                }}
                 onCancel={() => setActiveTab('dashboard')}
+                onRequestPositionAccess={async (pos) => {
+                  try {
+                    await api.submitPositionRequest(
+                      activeAgent.affiliateCode,
+                      pos,
+                      `Agent requested access to ${pos} position via Accreditation Form`
+                    );
+                    showToast(`Request for ${pos} submitted for BD Staff review.`);
+                    await loadPortalData();
+                  } catch (err: any) {
+                    showToast(err?.message || 'Could not submit position request');
+                  }
+                }}
               />
             )}
 

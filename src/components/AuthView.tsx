@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { ShieldCheck, UserPlus, LogIn, Sparkles, CheckCircle, ArrowRight, Calendar, Clock } from 'lucide-react';
-import { REGIONS, POSITIONS, Region, Position, REGION_CODE_MAP } from '../types';
+import { ShieldCheck, UserPlus, LogIn, Sparkles, CheckCircle, ArrowRight } from 'lucide-react';
+import { REGIONS, Region, REGION_CODE_MAP, Position } from '../types';
 import { MegaworldLogo } from './MegaworldLogo';
-import { formatDate, safeDatePart, computeExpiryDate } from '../utils/dateFormatter';
 import { isLiveEnvironment } from '../utils/environment';
 
 interface AuthViewProps {
@@ -11,9 +10,10 @@ interface AuthViewProps {
   onRegister: (data: {
     fullName: string;
     email: string;
+    mobileNumber?: string;
     password?: string;
     region: Region;
-    position: Position;
+    position?: Position;
     accreditationStartDate?: string;
     accreditationExpiryDate?: string;
   }) => Promise<void>;
@@ -34,14 +34,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onGoogleLogin, onRe
   const [regMobile, setRegMobile] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regRegion, setRegRegion] = useState<Region>('Asia Pacific 2');
-  const [regPosition, setRegPosition] = useState<Position>('Marketing Associate');
-  const [accreditationStartDate, setAccreditationStartDate] = useState(() =>
-    safeDatePart(new Date())
-  );
   const [regAcceptedTerms, setRegAcceptedTerms] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-
-  const calculatedExpiryDate = computeExpiryDate(accreditationStartDate, 4);
 
   const regRegionCode = REGION_CODE_MAP[regRegion] || 'AP2';
   const previewAffiliateCode = `IPA-${regRegionCode}-XXXXXX`;
@@ -75,9 +69,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onGoogleLogin, onRe
         mobileNumber: regMobile,
         password: regPassword,
         region: regRegion,
-        position: regPosition,
-        accreditationStartDate,
-        accreditationExpiryDate: calculatedExpiryDate,
       });
     } catch (err: any) {
       setErrorMessage(err.message || 'Registration failed.');
@@ -375,92 +366,33 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onGoogleLogin, onRe
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Region/Territory
-                  </label>
-                  <select
-                    value={regRegion}
-                    onChange={(e) => setRegRegion(e.target.value as Region)}
-                    className="w-full px-2.5 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none text-slate-800"
-                  >
-                    {REGIONS.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Initial Position Tier
-                  </label>
-                  <select
-                    value={regPosition}
-                    onChange={(e) => setRegPosition(e.target.value as Position)}
-                    className="w-full px-2.5 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none text-slate-800"
-                  >
-                    {POSITIONS.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Region / Territory
+                </label>
+                <select
+                  value={regRegion}
+                  onChange={(e) => setRegRegion(e.target.value as Region)}
+                  className="w-full px-2.5 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none text-slate-800"
+                >
+                  {REGIONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              {/* Accreditation Start Date & 4-Month Cycle Duration */}
-              <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <label htmlFor="reg-accreditation-date" className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-amber-700" /> Accreditation Start Date
-                  </label>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                    <Clock className="w-3 h-3" /> 4 Months Duration
-                  </span>
-                </div>
-
-                <div className="space-y-1">
-                  <input
-                    type="date"
-                    id="reg-accreditation-date"
-                    required
-                    value={accreditationStartDate}
-                    onChange={(e) => setAccreditationStartDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-amber-300 bg-white rounded-lg focus:ring-2 focus:ring-amber-600 focus:outline-none text-slate-800 font-medium"
-                  />
-                  <p className="text-[11px] text-amber-900">
-                    Registration initiates your official 4-month international accreditation term.
-                  </p>
-                </div>
-
-                {/* 4-Month Validity Period Preview */}
-                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-amber-200/80 text-[11px]">
-                  <div>
-                    <span className="text-slate-500 block text-[10px] uppercase font-semibold">Accredited From</span>
-                    <span className="font-semibold text-slate-900">
-                      {accreditationStartDate ? formatDate(accreditationStartDate) : 'Today'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block text-[10px] uppercase font-semibold">Valid Until (4 Mos)</span>
-                    <span className="font-bold text-amber-900">
-                      {calculatedExpiryDate ? formatDate(calculatedExpiryDate) : '4 Months'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Permanent Affiliate Code Preview Callout */}
-              <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs space-y-1">
+              {/* Permanent Affiliate Code Preview & Portal Access Information Callout */}
+              <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-xl text-xs space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-blue-950">Permanent Affiliate Code Preview:</span>
-                  <span className="font-mono font-bold text-blue-900 text-xs">{previewAffiliateCode}</span>
+                  <span className="font-mono font-bold text-blue-900 text-xs px-2.5 py-0.5 bg-white rounded-md border border-blue-200 shadow-2xs">
+                    {previewAffiliateCode}
+                  </span>
                 </div>
-                <p className="text-[11px] text-slate-500">
-                  Registration generates your permanent Affiliate Code. You will complete your personal details, bank information, team upline, ID verification, and contract once inside the portal.
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  <strong>Account Access Only:</strong> Registration creates your account and assigns your permanent Affiliate Code. It does not count as accreditation. Once you access your portal, you can proceed with the official accreditation process.
                 </p>
               </div>
 
@@ -484,7 +416,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onGoogleLogin, onRe
                 disabled={isLoading}
                 className="w-full py-2.5 px-4 text-xs font-bold uppercase tracking-wider text-white bg-blue-900 hover:bg-blue-800 rounded-xl shadow-xs transition disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                <UserPlus className="w-4 h-4" /> {isLoading ? 'Registering...' : 'Register & Assign Permanent Code'}
+                <UserPlus className="w-4 h-4" /> {isLoading ? 'Registering...' : 'Register & Access Portal'}
               </button>
             </form>
           )}

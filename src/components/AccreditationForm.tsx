@@ -29,14 +29,18 @@ import { api } from '../services/api';
 interface AccreditationFormProps {
   agent: AgentProfile;
   existingApplication?: AccreditationApplication | null;
-  onSubmitSuccess: () => void;
-  onRequestPositionAccess: (position: Position) => void;
+  onSubmitSuccess?: () => void;
+  onSubmit?: (data: Partial<AccreditationApplication>) => Promise<void> | void;
+  onCancel?: () => void;
+  onRequestPositionAccess?: (position: Position) => void;
 }
 
 export const AccreditationForm: React.FC<AccreditationFormProps> = ({
   agent,
   existingApplication,
   onSubmitSuccess,
+  onSubmit,
+  onCancel,
   onRequestPositionAccess,
 }) => {
   // Selected position & type
@@ -44,12 +48,22 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
     (agent.position as Position) || 'Marketing Associate'
   );
 
-  const isRenewalEligible = agent.renewalEligibility || agent.accreditationStatus === 'Expired' || agent.accreditationStatus === 'Expiring Soon';
-  const hasActiveRecord = agent.accreditationStatus === 'Active' || agent.accreditationStatus === 'Expiring Soon';
+  // Renewal Accreditation is locked for newly registered agents and can only be accessed once the accreditation is expired
+  const isAccreditationExpired =
+    agent.accreditationStatus === 'Expired' ||
+    Boolean(agent.renewalEligibility);
+
+  const isRenewalUnlocked = isAccreditationExpired;
 
   const [applicationType, setApplicationType] = useState<ApplicationType>(
-    isRenewalEligible ? 'Renewal' : 'New'
+    isRenewalUnlocked ? 'Renewal' : 'New'
   );
+
+  useEffect(() => {
+    if (!isRenewalUnlocked && applicationType !== 'New') {
+      setApplicationType('New');
+    }
+  }, [isRenewalUnlocked, applicationType]);
 
   // Form Fields - Personal Details (Initialize with existing application or leave blank for new registrants)
   // Initial Form State - personal details with agent profile fallback
@@ -385,7 +399,7 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
     try {
       const payload: Partial<AccreditationApplication> = {
         affiliateCode: agent.affiliateCode,
-        applicationType,
+        applicationType: isRenewalUnlocked ? applicationType : 'New',
         position: selectedPosition,
         region: agent.region,
         personalDetails: {
@@ -446,12 +460,20 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
         declarationAccepted,
       };
 
-      const result = await api.submitApplication(payload);
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to submit accreditation.');
+      if (onSubmit) {
+        await onSubmit(payload);
+      } else {
+        const result = await api.submitApplication(payload);
+        if (!result.success) {
+          throw new Error(result.message || 'Failed to submit accreditation.');
+        }
       }
 
-      onSubmitSuccess();
+      if (typeof onSubmitSuccess === 'function') {
+        onSubmitSuccess();
+      } else if (typeof onCancel === 'function') {
+        onCancel();
+      }
     } catch (err: any) {
       setErrorMessage(err.message || 'An error occurred while submitting.');
     } finally {
@@ -567,7 +589,7 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onRequestPositionAccess('Marketing Manager');
+                    onRequestPositionAccess?.('Marketing Manager');
                   }}
                   className="w-full text-xs font-semibold text-blue-900 bg-white hover:bg-blue-50 border border-blue-200 py-1.5 px-2.5 rounded-lg transition text-center"
                 >
@@ -615,7 +637,7 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onRequestPositionAccess('Marketing Director');
+                    onRequestPositionAccess?.('Marketing Director');
                   }}
                   className="w-full text-xs font-semibold text-blue-900 bg-white hover:bg-blue-50 border border-blue-200 py-1.5 px-2.5 rounded-lg transition text-center"
                 >
@@ -631,7 +653,7 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
         <h3 className="text-base font-bold text-slate-900 mb-1">2. Type of Contract</h3>
         <p className="text-xs text-slate-500 mb-4">
-          Select whether this is your first accreditation cycle or a 4-month renewal.
+          Select whether this is your initial accreditation cycle or a 4-month renewal.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -648,18 +670,22 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
               <span className="font-bold text-sm">NEW ACCREDITATION</span>
               {applicationType === 'New' && <CheckCircle2 className="w-4 h-4 text-blue-900" />}
             </div>
-            <p className="text-xs text-slate-500 font-normal mt-1">
-              For initial registration or when entering a brand new position tier.
+            <p className="text-xs text-slate-500 font-normal mt-1 leading-relaxed">
+              For newly registered affiliates completing their initial accreditation cycle.
             </p>
           </button>
 
           <button
             type="button"
-            disabled={!isRenewalEligible && hasActiveRecord}
-            onClick={() => setApplicationType('Renewal')}
-            className={`p-4 rounded-xl border-2 text-left transition ${
-              !isRenewalEligible && hasActiveRecord
-                ? 'opacity-60 cursor-not-allowed bg-slate-50 border-slate-200'
+            disabled={!isRenewalUnlocked}
+            onClick={() => {
+              if (isRenewalUnlocked) {
+                setApplicationType('Renewal');
+              }
+            }}
+            className={`p-4 rounded-xl border-2 text-left transition relative ${
+              !isRenewalUnlocked
+                ? 'opacity-70 cursor-not-allowed bg-slate-50/90 border-slate-200 text-slate-400'
                 : applicationType === 'Renewal'
                 ? 'border-emerald-700 bg-emerald-50/40 text-emerald-950 font-semibold'
                 : 'border-slate-200 hover:border-slate-300 text-slate-700'
@@ -667,24 +693,36 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-sm">RENEWAL ACCREDITATION</span>
-                {isRenewalEligible && (
-                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">
+                <span className={`font-bold text-sm ${!isRenewalUnlocked ? 'text-slate-600' : ''}`}>
+                  RENEWAL ACCREDITATION
+                </span>
+                {isRenewalUnlocked ? (
+                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
                     Unlocked
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+                    <Lock className="w-3 h-3 text-slate-600" /> Locked
                   </span>
                 )}
               </div>
-              {applicationType === 'Renewal' && <CheckCircle2 className="w-4 h-4 text-emerald-700" />}
+              {isRenewalUnlocked && applicationType === 'Renewal' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+              ) : !isRenewalUnlocked ? (
+                <div className="p-1 rounded-md bg-slate-200 text-slate-600">
+                  <Lock className="w-3.5 h-3.5" />
+                </div>
+              ) : null}
             </div>
-            <p className="text-xs text-slate-500 font-normal mt-1">
-              {!isRenewalEligible && hasActiveRecord
-                ? 'Renewal automatically unlocks when 4-month term reaches expiry window.'
+            <p className="text-xs text-slate-500 font-normal mt-1.5 leading-relaxed">
+              {!isRenewalUnlocked
+                ? 'Locked for new registration. Renewal Accreditation is accessible once your 4-month accreditation has expired.'
                 : 'Pre-fills previous approved details. Preserves permanent Affiliate Code.'}
             </p>
           </button>
         </div>
 
-        {applicationType === 'Renewal' && (
+        {applicationType === 'Renewal' && isRenewalUnlocked && (
           <div className="mt-4 p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2.5">
             <RefreshCw className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
             <div>
