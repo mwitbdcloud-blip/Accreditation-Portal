@@ -368,7 +368,8 @@ export default function App() {
   const handleReviewApplication = async (
     id: string,
     action: 'Approve' | 'Reject' | 'Revision Required',
-    notes?: string
+    notes?: string,
+    updatedTeamDetails?: any
   ) => {
     try {
       const res = await api.reviewApplication(
@@ -376,7 +377,8 @@ export default function App() {
         action,
         currentUser?.displayName || 'BD Staff',
         currentUser?.role || 'Staff',
-        notes
+        notes,
+        updatedTeamDetails
       );
       showToast(`Application ${id} marked as ${action}. 4-month accreditation record & contract updated.`);
       await loadPortalData();

@@ -496,14 +496,15 @@ export const api = {
     action: 'Approve' | 'Reject' | 'Revision Required',
     reviewerName: string,
     reviewerRole: string,
-    notes?: string
+    notes?: string,
+    updatedTeamDetails?: any
   ): Promise<{ success: boolean; message: string; application: AccreditationApplication }> {
     const res = await safeFetch<{ success: boolean; message: string; application: AccreditationApplication }>(
       `${BASE_URL}/applications/${id}/review`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, reviewerName, reviewerRole, notes }),
+        body: JSON.stringify({ action, reviewerName, reviewerRole, notes, updatedTeamDetails }),
       }
     );
 
@@ -514,6 +515,17 @@ export const api = {
 
     const app = clientStorage.getApplication(id);
     if (!app) throw new Error(`Application ${id} not found.`);
+
+    if (updatedTeamDetails) {
+      app.teamDetails = {
+        ...app.teamDetails,
+        ...updatedTeamDetails,
+        leadership: {
+          ...app.teamDetails?.leadership,
+          ...updatedTeamDetails.leadership,
+        },
+      };
+    }
 
     app.status = action === 'Approve' ? 'Approved' : action === 'Reject' ? 'Rejected' : 'Revision Required';
     app.dateReviewed = new Date().toISOString().split('T')[0];

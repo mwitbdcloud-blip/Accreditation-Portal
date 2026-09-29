@@ -1930,7 +1930,7 @@ async function startServer() {
 
   // Staff / Admin Application Review (Approve, Reject, Request Revision)
   app.post('/api/applications/:id/review', (req, res) => {
-    const { action, reviewerName, reviewerRole, notes } = req.body;
+    const { action, reviewerName, reviewerRole, notes, updatedTeamDetails } = req.body;
     const targetApp = db.applications.find((a) => a.id === req.params.id);
 
     if (!targetApp) {
@@ -1940,6 +1940,25 @@ async function startServer() {
     const agent = db.agents.find((a) => a.affiliateCode === targetApp.affiliateCode);
     if (!agent) {
       return res.status(404).json({ error: 'Associated agent not found.' });
+    }
+
+    if (updatedTeamDetails) {
+      targetApp.teamDetails = {
+        ...targetApp.teamDetails,
+        ...updatedTeamDetails,
+        leadership: {
+          ...targetApp.teamDetails?.leadership,
+          ...updatedTeamDetails.leadership,
+        },
+      };
+      agent.teamDetails = {
+        ...agent.teamDetails,
+        ...updatedTeamDetails,
+        leadership: {
+          ...agent.teamDetails?.leadership,
+          ...updatedTeamDetails.leadership,
+        },
+      };
     }
 
     targetApp.dateReviewed = new Date().toISOString();
