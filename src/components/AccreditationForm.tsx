@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ShieldCheck,
   Lock,
@@ -64,6 +64,41 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
       setApplicationType('New');
     }
   }, [isRenewalUnlocked, applicationType]);
+
+  // When a new account is created by the new agent, all information/details that they need to provide
+  // on Personal Details, Bank Details, Team Details, 1x1 Photo, Electronic Signature, and Valid Government ID
+  // for new accreditation and renewal accreditation CAN BE ACCESSED and edited.
+  // BUT once it is submitted or saved by the agent, all data cannot be changed, revised, or edited by the agent.
+  // Only the staff and admin can change, revise, or edit the data they submit if there is need for correction.
+  const isSubmittedAndLocked = useMemo(() => {
+    if (!existingApplication) return false;
+
+    // A draft application is never locked — the agent is actively filling out and providing their details
+    if (existingApplication.status === 'Draft') return false;
+
+    // In Renewal mode:
+    if (isRenewalUnlocked && applicationType === 'Renewal') {
+      // If existingApplication is an old application record from a previous 'New' cycle, it does not lock the renewal application!
+      if (existingApplication.applicationType !== 'Renewal') {
+        return false;
+      }
+    }
+
+    // In New mode:
+    if (!isRenewalUnlocked || applicationType === 'New') {
+      if (existingApplication.status === 'Draft') {
+        return false;
+      }
+    }
+
+    // Otherwise, once completely submitted or saved by the agent, all data is locked in read-only mode
+    return (
+      existingApplication.status === 'Submitted' ||
+      existingApplication.status === 'Under Review' ||
+      existingApplication.status === 'Approved' ||
+      existingApplication.status === 'Revision Required'
+    );
+  }, [existingApplication, isRenewalUnlocked, applicationType]);
 
   // Form Fields - Personal Details (Initialize with existing application or leave blank for new registrants)
   // Initial Form State - personal details with agent profile fallback
@@ -388,6 +423,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
 
   const handleSubmitApplication = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittedAndLocked) {
+      setErrorMessage('Your application has already been submitted and is locked. Only Megaworld BD Staff and Administrators have permission to edit or correct submitted data.');
+      return;
+    }
     if (!canSubmit) {
       setErrorMessage('Please complete all required items in the Accreditation Checklist before submitting.');
       return;
@@ -518,6 +557,71 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
         </div>
       </div>
 
+      {/* Submitted & Locked Status Banner for Agent View */}
+      {isSubmittedAndLocked && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-5 shadow-xs">
+          <div className="flex items-start gap-3.5">
+            <div className="p-2.5 bg-amber-100 text-amber-900 rounded-xl mt-0.5 shrink-0">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div className="flex-1">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                <h4 className="text-sm font-bold text-amber-950 flex items-center gap-2">
+                  <span>Accreditation Records Locked (Submitted & Under Review)</span>
+                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-amber-200 text-amber-900">
+                    Read-Only For Agent
+                  </span>
+                </h4>
+                <span className="text-xs font-mono font-bold text-amber-800 bg-white/80 px-2 py-0.5 rounded border border-amber-200">
+                  Status: {existingApplication?.status || 'Submitted'}
+                </span>
+              </div>
+              <p className="text-xs text-amber-900/90 mt-1.5 leading-relaxed">
+                You have completely submitted your accreditation details (Personal Details, Banking Information, Team Structure, 1x1 ID Photo, Government ID, and Electronic Signature). 
+                To maintain corporate compliance and contract integrity, <strong>all submitted data cannot be changed, revised, or edited by the agent</strong>. 
+                Only authorized Megaworld International BD Staff and Admin personnel can change, revise, or edit your submitted records if a correction is needed.
+              </p>
+              {existingApplication?.status === 'Approved' && (
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={onCancel}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> View Approved Accreditation & Dashboard
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active Data Entry Banner when not yet submitted/locked */}
+      {!isSubmittedAndLocked && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 sm:p-5 shadow-xs">
+          <div className="flex items-start gap-3.5">
+            <div className="p-2.5 bg-blue-100 text-blue-900 rounded-xl mt-0.5 shrink-0">
+              <ShieldCheck className="w-5 h-5 text-blue-900" />
+            </div>
+            <div className="flex-1 text-xs">
+              <h4 className="text-sm font-bold text-blue-950">
+                Accreditation Data Entry: {applicationType} Application
+              </h4>
+              <p className="text-slate-600 mt-1 leading-relaxed">
+                Welcome to your accreditation portal. Please complete and provide your <strong>Personal Details</strong>, <strong>Bank Details for Commission Disbursements (Optional)</strong>, <strong>Team Details</strong>, <strong>1x1 ID Photo</strong>, <strong>Electronic Signature</strong>, and <strong>Valid Government ID / Passport</strong>.
+              </p>
+              <div className="mt-2.5 p-2.5 bg-white rounded-xl border border-blue-200 flex items-center gap-2 text-slate-700 text-[11px] font-medium">
+                <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>
+                  <strong>Important Notice:</strong> Once your information is completely submitted or saved, all data will be locked in read-only mode and cannot be changed, revised, or edited by the agent. If any corrections are needed thereafter, only Megaworld International BD Staff and Administrators have permission to revise the records.
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Position Cards (MA, MM, MD) */}
       <div>
         <div className="flex items-center justify-between mb-3">
@@ -530,8 +634,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Marketing Associate */}
           <div
-            onClick={() => setSelectedPosition('Marketing Associate')}
-            className={`cursor-pointer relative p-5 rounded-xl border-2 transition-all ${
+            onClick={() => !isSubmittedAndLocked && setSelectedPosition('Marketing Associate')}
+            className={`relative p-5 rounded-xl border-2 transition-all ${
+              isSubmittedAndLocked ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'
+            } ${
               selectedPosition === 'Marketing Associate'
                 ? 'border-blue-900 bg-blue-50/50 shadow-sm'
                 : 'border-slate-200 bg-white hover:border-slate-300'
@@ -554,6 +660,8 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
           {/* Marketing Manager */}
           <div
             className={`relative p-5 rounded-xl border-2 transition-all ${
+              isSubmittedAndLocked ? 'cursor-not-allowed opacity-80' : ''
+            } ${
               isPositionUnlocked('Marketing Manager')
                 ? selectedPosition === 'Marketing Manager'
                   ? 'border-blue-900 bg-blue-50/50 shadow-sm cursor-pointer'
@@ -561,7 +669,7 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 : 'border-slate-200 bg-slate-50/70 opacity-90'
             }`}
             onClick={() => {
-              if (isPositionUnlocked('Marketing Manager')) {
+              if (!isSubmittedAndLocked && isPositionUnlocked('Marketing Manager')) {
                 setSelectedPosition('Marketing Manager');
               }
             }}
@@ -587,11 +695,14 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
               <div className="mt-3 pt-3 border-t border-slate-200">
                 <button
                   type="button"
+                  disabled={isSubmittedAndLocked}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onRequestPositionAccess?.('Marketing Manager');
+                    if (!isSubmittedAndLocked) {
+                      onRequestPositionAccess?.('Marketing Manager');
+                    }
                   }}
-                  className="w-full text-xs font-semibold text-blue-900 bg-white hover:bg-blue-50 border border-blue-200 py-1.5 px-2.5 rounded-lg transition text-center"
+                  className="w-full text-xs font-semibold text-blue-900 bg-white hover:bg-blue-50 disabled:opacity-50 border border-blue-200 py-1.5 px-2.5 rounded-lg transition text-center"
                 >
                   Request Manager Approval
                 </button>
@@ -602,6 +713,8 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
           {/* Marketing Director */}
           <div
             className={`relative p-5 rounded-xl border-2 transition-all ${
+              isSubmittedAndLocked ? 'cursor-not-allowed opacity-80' : ''
+            } ${
               isPositionUnlocked('Marketing Director')
                 ? selectedPosition === 'Marketing Director'
                   ? 'border-blue-900 bg-blue-50/50 shadow-sm cursor-pointer'
@@ -609,7 +722,7 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 : 'border-slate-200 bg-slate-50/70 opacity-90'
             }`}
             onClick={() => {
-              if (isPositionUnlocked('Marketing Director')) {
+              if (!isSubmittedAndLocked && isPositionUnlocked('Marketing Director')) {
                 setSelectedPosition('Marketing Director');
               }
             }}
@@ -635,11 +748,14 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
               <div className="mt-3 pt-3 border-t border-slate-200">
                 <button
                   type="button"
+                  disabled={isSubmittedAndLocked}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onRequestPositionAccess?.('Marketing Director');
+                    if (!isSubmittedAndLocked) {
+                      onRequestPositionAccess?.('Marketing Director');
+                    }
                   }}
-                  className="w-full text-xs font-semibold text-blue-900 bg-white hover:bg-blue-50 border border-blue-200 py-1.5 px-2.5 rounded-lg transition text-center"
+                  className="w-full text-xs font-semibold text-blue-900 bg-white hover:bg-blue-50 disabled:opacity-50 border border-blue-200 py-1.5 px-2.5 rounded-lg transition text-center"
                 >
                   Request Director Approval
                 </button>
@@ -651,7 +767,14 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
 
       {/* Application Type Selection: New vs Renewal */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
-        <h3 className="text-base font-bold text-slate-900 mb-1">2. Type of Contract</h3>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-base font-bold text-slate-900">2. Type of Contract</h3>
+          {isSubmittedAndLocked && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 bg-amber-100 px-2.5 py-0.5 rounded-full">
+              <Lock className="w-3 h-3" /> Locked
+            </span>
+          )}
+        </div>
         <p className="text-xs text-slate-500 mb-4">
           Select whether this is your initial accreditation cycle or a 4-month renewal.
         </p>
@@ -659,8 +782,11 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <button
             type="button"
-            onClick={() => setApplicationType('New')}
+            disabled={isSubmittedAndLocked}
+            onClick={() => !isSubmittedAndLocked && setApplicationType('New')}
             className={`p-4 rounded-xl border-2 text-left transition ${
+              isSubmittedAndLocked ? 'cursor-not-allowed opacity-90' : ''
+            } ${
               applicationType === 'New'
                 ? 'border-blue-900 bg-blue-50/40 text-blue-950 font-semibold'
                 : 'border-slate-200 hover:border-slate-300 text-slate-700'
@@ -677,14 +803,14 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
 
           <button
             type="button"
-            disabled={!isRenewalUnlocked}
+            disabled={!isRenewalUnlocked || isSubmittedAndLocked}
             onClick={() => {
-              if (isRenewalUnlocked) {
+              if (isRenewalUnlocked && !isSubmittedAndLocked) {
                 setApplicationType('Renewal');
               }
             }}
             className={`p-4 rounded-xl border-2 text-left transition relative ${
-              !isRenewalUnlocked
+              !isRenewalUnlocked || isSubmittedAndLocked
                 ? 'opacity-70 cursor-not-allowed bg-slate-50/90 border-slate-200 text-slate-400'
                 : applicationType === 'Renewal'
                 ? 'border-emerald-700 bg-emerald-50/40 text-emerald-950 font-semibold'
@@ -778,14 +904,31 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
         {/* STEP 1: Personal Details */}
         {currentStep === 1 && (
           <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs space-y-5">
-            <div className="border-b border-slate-200 pb-4">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <User className="w-5 h-5 text-blue-900" /> Personal Details
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Required for the Sales Agency Agreement (SAA) and official identity records.
-              </p>
+            <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <User className="w-5 h-5 text-blue-900" /> Personal Details
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Required for the Sales Agency Agreement (SAA) and official identity records.
+                </p>
+              </div>
+              {isSubmittedAndLocked && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-xs font-bold shrink-0 self-start sm:self-auto">
+                  <Lock className="w-3.5 h-3.5" /> Read-Only for Agent
+                </span>
+              )}
             </div>
+
+            {/* Locked Notice Banner */}
+            {isSubmittedAndLocked && (
+              <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-950 flex items-start gap-2.5">
+                <Lock className="w-4 h-4 text-amber-800 shrink-0 mt-0.5" />
+                <p>
+                  <strong>Personal Details Locked:</strong> Your personal information was recorded upon submitting your accreditation application and cannot be revised or edited by the agent. If there is a correction needed, only authorized Megaworld BD Staff and Administrators have permission to edit this data.
+                </p>
+              </div>
+            )}
 
             {/* Warning banner */}
             <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-3">
@@ -804,9 +947,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <input
                   type="text"
                   required
+                  disabled={isSubmittedAndLocked}
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="e.g. Maria Cristina"
                 />
               </div>
@@ -815,9 +959,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Middle Name</label>
                 <input
                   type="text"
+                  disabled={isSubmittedAndLocked}
                   value={middleName}
                   onChange={(e) => setMiddleName(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="e.g. Alcantara"
                 />
               </div>
@@ -827,9 +972,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <input
                   type="text"
                   required
+                  disabled={isSubmittedAndLocked}
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="e.g. Santos"
                 />
               </div>
@@ -838,9 +984,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Suffix</label>
                 <input
                   type="text"
+                  disabled={isSubmittedAndLocked}
                   value={suffix}
                   onChange={(e) => setSuffix(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="e.g. Jr., III"
                 />
               </div>
@@ -857,9 +1004,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <input
                   type="date"
                   required
+                  disabled={isSubmittedAndLocked}
                   value={dateOfBirth}
                   onChange={(e) => handleDateOfBirthChange(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -877,9 +1025,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                   required
                   min={18}
                   max={99}
+                  disabled={isSubmittedAndLocked}
                   value={age}
                   onChange={(e) => setAge(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none bg-slate-50/60"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none bg-slate-50/60 disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="Auto-calculated from DOB"
                 />
               </div>
@@ -888,9 +1037,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Sex *</label>
                 <select
                   required
+                  disabled={isSubmittedAndLocked}
                   value={sex}
                   onChange={(e) => setSex(e.target.value as any)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                 >
                   <option value="">-- Select Sex --</option>
                   <option value="Female">Female</option>
@@ -902,9 +1052,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Civil Status *</label>
                 <select
                   required
+                  disabled={isSubmittedAndLocked}
                   value={civilStatus}
                   onChange={(e) => setCivilStatus(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                 >
                   <option value="">-- Select Civil Status --</option>
                   <option value="Single">Single</option>
@@ -921,9 +1072,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <input
                   type="text"
                   required
+                  disabled={isSubmittedAndLocked}
                   value={citizenship}
                   onChange={(e) => setCitizenship(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="e.g. Filipino"
                 />
               </div>
@@ -932,9 +1084,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Tax Identification Number (TIN) (Optional)</label>
                 <input
                   type="text"
+                  disabled={isSubmittedAndLocked}
                   value={tin}
                   onChange={(e) => setTin(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="e.g. 245-891-304-000"
                 />
               </div>
@@ -945,9 +1098,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Telephone Number (Landline) (Optional)</label>
                 <input
                   type="tel"
+                  disabled={isSubmittedAndLocked}
                   value={telephoneNumber}
                   onChange={(e) => setTelephoneNumber(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="e.g. +63 2 8555 1234"
                 />
               </div>
@@ -957,9 +1111,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <input
                   type="tel"
                   required
+                  disabled={isSubmittedAndLocked}
                   value={mobileNumber}
                   onChange={(e) => setMobileNumber(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="e.g. +63 917 555 1234"
                 />
               </div>
@@ -969,9 +1124,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <input
                   type="email"
                   required
+                  disabled={isSubmittedAndLocked}
                   value={emailAddress}
                   onChange={(e) => setEmailAddress(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="email@example.com"
                 />
               </div>
@@ -982,9 +1138,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
               <textarea
                 rows={2}
                 required
+                disabled={isSubmittedAndLocked}
                 value={residentialAddress}
                 onChange={(e) => setResidentialAddress(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                 placeholder="Unit/Street, Barangay/District, City, Country"
               />
             </div>
@@ -995,9 +1152,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <input
                   type="text"
                   required
+                  disabled={isSubmittedAndLocked}
                   value={country}
                   onChange={(e) => setCountry(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="e.g. Philippines"
                 />
               </div>
@@ -1007,22 +1165,24 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <input
                   type="text"
                   required
+                  disabled={isSubmittedAndLocked}
                   value={state}
                   onChange={(e) => setState(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="e.g. Metro Manila"
                 />
               </div>
             </div>
 
             <div className="pt-3 border-t border-slate-200">
-              <label className="flex items-start gap-2.5 cursor-pointer">
+              <label className={`flex items-start gap-2.5 ${isSubmittedAndLocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                 <input
                   type="checkbox"
                   required
+                  disabled={isSubmittedAndLocked}
                   checked={idMatchConfirmed}
                   onChange={(e) => setIdMatchConfirmed(e.target.checked)}
-                  className="mt-0.5 rounded border-slate-300 text-blue-900 focus:ring-blue-900"
+                  className="mt-0.5 rounded border-slate-300 text-blue-900 focus:ring-blue-900 disabled:cursor-not-allowed"
                 />
                 <span className="text-xs text-slate-700 font-medium">
                   I confirm that my personal information (Full Legal Name & Date of Birth) exactly matches my submitted valid government ID or passport.
@@ -1045,23 +1205,41 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
         {/* STEP 2: Bank Details */}
         {currentStep === 2 && (
           <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs space-y-5">
-            <div className="border-b border-slate-200 pb-4">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-blue-900" /> Bank Details for Commission Disbursements (Optional)
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Designated financial information for international and local commission processing. (You may provide this now or update later).
-              </p>
+            <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-blue-900" /> Bank Details for Commission Disbursements (Optional)
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Designated financial information for international and local commission processing.
+                </p>
+              </div>
+              {isSubmittedAndLocked && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-xs font-bold shrink-0 self-start sm:self-auto">
+                  <Lock className="w-3.5 h-3.5" /> Read-Only for Agent
+                </span>
+              )}
             </div>
+
+            {/* Locked Notice Banner */}
+            {isSubmittedAndLocked && (
+              <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-950 flex items-start gap-2.5">
+                <Lock className="w-4 h-4 text-amber-800 shrink-0 mt-0.5" />
+                <p>
+                  <strong>Bank Details Locked:</strong> Once submitted, banking information cannot be revised or edited by the agent. If you need to correct your account number, bank branch, or disbursement destination, please contact your authorized Megaworld BD Staff or Administrator.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Bank Name (Optional)</label>
                 <input
                   type="text"
+                  disabled={isSubmittedAndLocked}
                   value={bankName}
                   onChange={(e) => setBankName(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="e.g. BDO Unibank, BPI, HSBC, Citibank"
                 />
               </div>
@@ -1070,9 +1248,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Account Holder Name (Optional)</label>
                 <input
                   type="text"
+                  disabled={isSubmittedAndLocked}
                   value={accountName}
                   onChange={(e) => setAccountName(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="Exact name registered with bank"
                 />
               </div>
@@ -1081,9 +1260,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Bank Account Number / IBAN (Optional)</label>
                 <input
                   type="text"
+                  disabled={isSubmittedAndLocked}
                   value={accountNumber}
                   onChange={(e) => setAccountNumber(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed font-mono"
                   placeholder="e.g. 1092837465"
                 />
               </div>
@@ -1092,9 +1272,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Bank Branch / Address (Optional)</label>
                 <input
                   type="text"
+                  disabled={isSubmittedAndLocked}
                   value={bankAddress}
                   onChange={(e) => setBankAddress(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="Branch city or postal address"
                 />
               </div>
@@ -1122,14 +1303,31 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
         {/* STEP 3: Team Details */}
         {currentStep === 3 && (
           <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs space-y-5">
-            <div className="border-b border-slate-200 pb-4">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Users className="w-5 h-5 text-blue-900" /> Team Details
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Designated sales group and upline structure within Megaworld International.
-              </p>
+            <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-blue-900" /> Team Details & Leadership Structure
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Designated sales group, upline structure, and leadership hierarchy within Megaworld International.
+                </p>
+              </div>
+              {isSubmittedAndLocked && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-xs font-bold shrink-0 self-start sm:self-auto">
+                  <Lock className="w-3.5 h-3.5" /> Read-Only for Agent
+                </span>
+              )}
             </div>
+
+            {/* Locked Notice Banner */}
+            {isSubmittedAndLocked && (
+              <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-950 flex items-start gap-2.5">
+                <Lock className="w-4 h-4 text-amber-800 shrink-0 mt-0.5" />
+                <p>
+                  <strong>Team Structure Locked:</strong> Team names and leadership hierarchy assignments are locked against agent revisions upon submission. If team re-assignment or leadership hierarchy corrections are required, please contact your BD Staff or Administrator.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -1137,9 +1335,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 <input
                   type="text"
                   required
+                  disabled={isSubmittedAndLocked}
                   value={teamName}
                   onChange={(e) => setTeamName(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                   placeholder="e.g. Territory Head Name"
                 />
               </div>
@@ -1186,9 +1385,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                     <input
                       type="text"
                       required
+                      disabled={isSubmittedAndLocked}
                       value={seniorMarketingAssociate}
                       onChange={(e) => setSeniorMarketingAssociate(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                      className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                       placeholder="e.g. Ricardo Gomez"
                     />
                   </div>
@@ -1203,9 +1403,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                     <input
                       type="text"
                       required
+                      disabled={isSubmittedAndLocked}
                       value={marketingManager}
                       onChange={(e) => setMarketingManager(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                      className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                       placeholder="e.g. Jonathan Cruz"
                     />
                   </div>
@@ -1220,9 +1421,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                     <input
                       type="text"
                       required
+                      disabled={isSubmittedAndLocked}
                       value={marketingDirector}
                       onChange={(e) => setMarketingDirector(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                      className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                       placeholder="e.g. Victoria Del Rosario"
                     />
                   </div>
@@ -1236,9 +1438,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                   <input
                     type="text"
                     required
+                    disabled={isSubmittedAndLocked}
                     value={assistanceCountryManager}
                     onChange={(e) => setAssistanceCountryManager(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                     placeholder="e.g. Ferdinand Marcos Jr."
                   />
                 </div>
@@ -1251,9 +1454,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                   <input
                     type="text"
                     required
+                    disabled={isSubmittedAndLocked}
                     value={countryManager}
                     onChange={(e) => setCountryManager(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                     placeholder="e.g. Eduardo Valenzuela"
                   />
                 </div>
@@ -1266,9 +1470,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                   <input
                     type="text"
                     required
+                    disabled={isSubmittedAndLocked}
                     value={seniorCountryManager}
                     onChange={(e) => setSeniorCountryManager(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                     placeholder="e.g. Grace P. Tan"
                   />
                 </div>
@@ -1281,9 +1486,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                   <input
                     type="text"
                     required
+                    disabled={isSubmittedAndLocked}
                     value={assistanceVicePresident}
                     onChange={(e) => setAssistanceVicePresident(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                     placeholder="e.g. Roberto De Leon"
                   />
                 </div>
@@ -1296,9 +1502,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                   <input
                     type="text"
                     required
+                    disabled={isSubmittedAndLocked}
                     value={vicePresident}
                     onChange={(e) => setVicePresident(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                     placeholder="e.g. Ma. Lourdes Santos"
                   />
                 </div>
@@ -1311,9 +1518,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                   <input
                     type="text"
                     required
+                    disabled={isSubmittedAndLocked}
                     value={seniorVicePresident}
                     onChange={(e) => setSeniorVicePresident(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                     placeholder="e.g. Antonio Morales"
                   />
                 </div>
@@ -1327,9 +1535,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                       </label>
                       <input
                         type="text"
+                        disabled={isSubmittedAndLocked}
                         value={referrerName}
                         onChange={(e) => setReferrerName(e.target.value)}
-                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                         placeholder="e.g. Ricardo Gomez"
                       />
                     </div>
@@ -1339,9 +1548,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                       </label>
                       <input
                         type="text"
+                        disabled={isSubmittedAndLocked}
                         value={referrerPosition}
                         onChange={(e) => setReferrerPosition(e.target.value)}
-                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                         placeholder="e.g. Senior Marketing Associate"
                       />
                     </div>
@@ -1372,20 +1582,44 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
         {/* STEP 4: 1x1 Photo Upload */}
         {currentStep === 4 && (
           <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs space-y-5">
-            <div className="border-b border-slate-200 pb-4">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Camera className="w-5 h-5 text-blue-900" /> 1x1 ID Photo Submission
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Plain background, clear front-facing portrait, professional appearance (JPG or PNG).
-              </p>
+            <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <Camera className="w-5 h-5 text-blue-900" /> 1x1 ID Photo Submission
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Plain background, clear front-facing portrait, professional appearance (JPG or PNG).
+                </p>
+              </div>
+              {isSubmittedAndLocked && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-xs font-bold shrink-0 self-start sm:self-auto">
+                  <Lock className="w-3.5 h-3.5" /> Read-Only for Agent
+                </span>
+              )}
             </div>
+
+            {/* Locked Notice Banner */}
+            {isSubmittedAndLocked && (
+              <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-950 flex items-start gap-2.5">
+                <Lock className="w-4 h-4 text-amber-800 shrink-0 mt-0.5" />
+                <p>
+                  <strong>1x1 Photo Locked:</strong> Your 1x1 identification photo has been recorded and locked against changes by the agent. If this photo needs to be replaced due to image quality or correction, only Megaworld BD Staff or Administrator can replace it.
+                </p>
+              </div>
+            )}
 
             <div className="flex flex-col sm:flex-row items-center gap-6 p-6 bg-slate-50 rounded-xl border border-slate-200">
               {/* Photo preview */}
               <div className="relative w-36 h-36 rounded-xl border-2 border-slate-300 bg-white shadow-inner flex items-center justify-center overflow-hidden shrink-0">
                 {idPhotoUrl ? (
-                  <img src={idPhotoUrl} alt="1x1 Preview" className="w-full h-full object-cover" />
+                  <>
+                    <img src={idPhotoUrl} alt="1x1 Preview" className="w-full h-full object-cover" />
+                    {isSubmittedAndLocked && (
+                      <span className="absolute bottom-1 right-1 bg-amber-500 text-slate-950 p-1 rounded-md shadow-xs" title="Submitted and Locked">
+                        <Lock className="w-3 h-3 text-white" />
+                      </span>
+                    )}
+                  </>
                 ) : (
                   <div className="text-center text-slate-400 p-2">
                     <User className="w-12 h-12 mx-auto mb-1 text-slate-300" />
@@ -1399,14 +1633,21 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                   <label className="block text-xs font-semibold text-slate-800 mb-1">
                     Upload from Device (JPG or PNG only, Max 10MB)
                   </label>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png"
-                    onChange={(e) => handleFileUpload(e, 'photo')}
-                    className="block w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-900 file:text-white hover:file:bg-blue-800 cursor-pointer"
-                  />
+                  {!isSubmittedAndLocked ? (
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      onChange={(e) => handleFileUpload(e, 'photo')}
+                      className="block w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-900 file:text-white hover:file:bg-blue-800 cursor-pointer"
+                    />
+                  ) : (
+                    <div className="p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-xs text-slate-600 flex items-center gap-2">
+                      <Lock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                      <span>Photo file upload is locked. Only BD Staff / Admin can replace this photo.</span>
+                    </div>
+                  )}
                   {idPhotoName && (
-                    <p className="text-xs text-emerald-700 font-medium mt-1">Selected: {idPhotoName}</p>
+                    <p className="text-xs text-emerald-700 font-medium mt-1">Submitted file: {idPhotoName}</p>
                   )}
                 </div>
               </div>
@@ -1434,31 +1675,52 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
         {/* STEP 5: E-Signature */}
         {currentStep === 5 && (
           <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs space-y-5">
-            <div className="border-b border-slate-200 pb-4">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <FileCheck className="w-5 h-5 text-blue-900" /> Electronic Signature
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Draw your signature using your mouse or touchscreen. This will be embedded onto your official Sales Agreement contract.
-              </p>
+            <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <FileCheck className="w-5 h-5 text-blue-900" /> Electronic Signature
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Official electronic signature embedded onto your Sales Agency Agreement (SAA).
+                </p>
+              </div>
+              {isSubmittedAndLocked && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-xs font-bold shrink-0 self-start sm:self-auto">
+                  <Lock className="w-3.5 h-3.5" /> Read-Only for Agent
+                </span>
+              )}
             </div>
+
+            {/* Locked Notice Banner */}
+            {isSubmittedAndLocked && (
+              <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-950 flex items-start gap-2.5">
+                <Lock className="w-4 h-4 text-amber-800 shrink-0 mt-0.5" />
+                <p>
+                  <strong>Signature Locked:</strong> Your electronic signature is legally affixed to your submitted accreditation documents and contract. It cannot be altered or cleared by the agent.
+                </p>
+              </div>
+            )}
 
             <SignaturePad
               initialValue={eSignatureUrl}
+              disabled={isSubmittedAndLocked}
               onSave={(dataUrl) => {
-                setESignatureUrl(dataUrl);
-                setESignatureConfirmed(Boolean(dataUrl));
+                if (!isSubmittedAndLocked) {
+                  setESignatureUrl(dataUrl);
+                  setESignatureConfirmed(Boolean(dataUrl));
+                }
               }}
             />
 
             <div className="pt-3 border-t border-slate-200">
-              <label className="flex items-start gap-2.5 cursor-pointer">
+              <label className={`flex items-start gap-2.5 ${isSubmittedAndLocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                 <input
                   type="checkbox"
                   required
+                  disabled={isSubmittedAndLocked}
                   checked={eSignatureConfirmed}
-                  onChange={(e) => setESignatureConfirmed(e.target.checked)}
-                  className="mt-0.5 rounded border-slate-300 text-blue-900 focus:ring-blue-900"
+                  onChange={(e) => setIdBelongsConfirmed(e.target.checked)}
+                  className="mt-0.5 rounded border-slate-300 text-blue-900 focus:ring-blue-900 disabled:cursor-not-allowed"
                 />
                 <span className="text-xs text-slate-700 font-medium">
                   I confirm that this electronic signature represents my legal signature and may be used for my accreditation documents and official Sales Agency Agreement.
@@ -1488,33 +1750,62 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
         {/* STEP 6: Government ID / Passport */}
         {currentStep === 6 && (
           <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs space-y-5">
-            <div className="border-b border-slate-200 pb-4">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-blue-900" /> Valid Government ID / Passport
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Upload a clear copy of your passport or government-issued identification card (JPG or PNG only).
-              </p>
+            <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-blue-900" /> Valid Government ID / Passport
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Upload a clear copy of your passport or government-issued identification card (JPG or PNG only).
+                </p>
+              </div>
+              {isSubmittedAndLocked && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-xs font-bold shrink-0 self-start sm:self-auto">
+                  <Lock className="w-3.5 h-3.5" /> Read-Only for Agent
+                </span>
+              )}
             </div>
+
+            {/* Locked Notice Banner */}
+            {isSubmittedAndLocked && (
+              <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-950 flex items-start gap-2.5">
+                <Lock className="w-4 h-4 text-amber-800 shrink-0 mt-0.5" />
+                <p>
+                  <strong>Government ID Document Locked:</strong> Your submitted identification document is held for official verification by Megaworld BD Compliance. The file cannot be removed or replaced by the agent. If a clearer copy or correction is required, only authorized BD Staff or Admin can update this file.
+                </p>
+              </div>
+            )}
 
             <div className="p-6 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-800 mb-1">
                   Upload Government ID / Passport Document (JPG or PNG only)
                 </label>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png"
-                  onChange={(e) => handleFileUpload(e, 'id')}
-                  className="block w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-900 file:text-white hover:file:bg-blue-800 cursor-pointer"
-                />
+                {!isSubmittedAndLocked ? (
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    onChange={(e) => handleFileUpload(e, 'id')}
+                    className="block w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-900 file:text-white hover:file:bg-blue-800 cursor-pointer"
+                  />
+                ) : (
+                  <div className="p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-xs text-slate-600 flex items-center gap-2">
+                    <Lock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                    <span>ID document upload is locked. Only BD Staff / Admin can replace this document.</span>
+                  </div>
+                )}
               </div>
 
               {/* ID preview */}
               {governmentIdUrl && (
                 <div className="p-3 bg-white rounded-lg border border-slate-200 flex items-center gap-3">
-                  <div className="w-16 h-12 bg-slate-100 rounded border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                  <div className="w-16 h-12 bg-slate-100 rounded border border-slate-200 flex items-center justify-center overflow-hidden shrink-0 relative">
                     <img src={governmentIdUrl} alt="ID Document Preview" className="w-full h-full object-cover" />
+                    {isSubmittedAndLocked && (
+                      <span className="absolute bottom-0 right-0 bg-amber-500 text-white p-0.5 rounded-tl">
+                        <Lock className="w-2.5 h-2.5" />
+                      </span>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs font-bold text-slate-900">{governmentIdName || 'Valid ID Document'}</p>
@@ -1526,13 +1817,14 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
               )}
 
               <div className="pt-3 border-t border-slate-200">
-                <label className="flex items-start gap-2.5 cursor-pointer">
+                <label className={`flex items-start gap-2.5 ${isSubmittedAndLocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                   <input
                     type="checkbox"
                     required
+                    disabled={isSubmittedAndLocked}
                     checked={idBelongsConfirmed}
                     onChange={(e) => setIdBelongsConfirmed(e.target.checked)}
-                    className="mt-0.5 rounded border-slate-300 text-blue-900 focus:ring-blue-900"
+                    className="mt-0.5 rounded border-slate-300 text-blue-900 focus:ring-blue-900 disabled:cursor-not-allowed"
                   />
                   <span className="text-xs text-slate-700 font-medium">
                     I confirm that the submitted ID/passport is valid and belongs to me.
@@ -1563,14 +1855,36 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
         {/* STEP 7: Final Checklist & Submit */}
         {currentStep === 7 && (
           <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs space-y-6">
-            <div className="border-b border-slate-200 pb-4">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-blue-900" /> Accreditation Submission Checklist
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Please verify all requirements before submitting for Admin / BD Staff review.
-              </p>
+            <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-blue-900" /> Accreditation Submission Checklist
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Please verify all requirements before submitting for Admin / BD Staff review.
+                </p>
+              </div>
+              {isSubmittedAndLocked && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-xs font-bold shrink-0 self-start sm:self-auto">
+                  <Lock className="w-3.5 h-3.5" /> Read-Only for Agent
+                </span>
+              )}
             </div>
+
+            {/* Locked Notice Banner in Step 7 */}
+            {isSubmittedAndLocked && (
+              <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-xl text-xs text-amber-950 flex items-start gap-3">
+                <Lock className="w-5 h-5 text-amber-800 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-amber-950 text-sm">All Application Details Fully Submitted & Locked</h4>
+                  <p className="text-amber-900 mt-1 leading-relaxed">
+                    All details on Personal Details, Bank Details, Team Details, 1x1 Photo, Electronic Signature, and Valid Government ID / Passport have been recorded.
+                    In accordance with corporate governance and contract integrity rules, <strong>all data cannot be changed, revised, or edited by the agent</strong>.
+                    Only authorized Megaworld International BD Staff and Admin personnel can change, revise, or edit your submitted records if a correction is needed.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {errorMessage && (
               <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center gap-2">
@@ -1665,26 +1979,28 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
 
             {/* Mandatory checkboxes before final submit button */}
             <div className="space-y-3 pt-2">
-              <label className="flex items-start gap-2.5 cursor-pointer">
+              <label className={`flex items-start gap-2.5 ${isSubmittedAndLocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                 <input
                   type="checkbox"
                   required
+                  disabled={isSubmittedAndLocked}
                   checked={allInfoReviewed}
                   onChange={(e) => setAllInfoReviewed(e.target.checked)}
-                  className="mt-0.5 rounded border-slate-300 text-blue-900 focus:ring-blue-900"
+                  className="mt-0.5 rounded border-slate-300 text-blue-900 focus:ring-blue-900 disabled:cursor-not-allowed"
                 />
                 <span className="text-xs text-slate-800 font-medium">
                   ☑ I have reviewed all personal details, banking accounts, and uploaded documents, and certify they are accurate.
                 </span>
               </label>
 
-              <label className="flex items-start gap-2.5 cursor-pointer">
+              <label className={`flex items-start gap-2.5 ${isSubmittedAndLocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                 <input
                   type="checkbox"
                   required
+                  disabled={isSubmittedAndLocked}
                   checked={declarationAccepted}
                   onChange={(e) => setDeclarationAccepted(e.target.checked)}
-                  className="mt-0.5 rounded border-slate-300 text-blue-900 focus:ring-blue-900"
+                  className="mt-0.5 rounded border-slate-300 text-blue-900 focus:ring-blue-900 disabled:cursor-not-allowed"
                 />
                 <span className="text-xs text-slate-800 font-medium leading-relaxed">
                   I declare that all information provided herein have been made by me in good faith, verified by me, and to the best of my knowledge and belief, are true and correct as of the date indicated herein; that my signature appearing hereunder is genuine; and that I have not withheld anything which would affect the processing and evaluation of my accreditation. I authorize Megaworld Corporation, its employees, representatives, related companies, and third-party service providers to use, process, and share the information provided herein, with any person or organization, such as banks or other financial institutions, who may assist in the fulfillment of my obligation and to use my contact details to contact me by phone, text, SMS, email, or other electronic communication for marketing of other products or services to provide other services related to my function.
@@ -1701,22 +2017,40 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                 Back to Documents
               </button>
 
-              <button
-                type="submit"
-                id="submit-accreditation-btn"
-                disabled={!canSubmit || isSubmitting}
-                className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white bg-blue-900 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl shadow-md transition"
-              >
-                {isSubmitting ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" /> Submitting Application...
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-4 h-4" /> Submit {applicationType} Application
-                  </>
-                )}
-              </button>
+              {isSubmittedAndLocked ? (
+                <div className="flex items-center gap-3">
+                  <div className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-amber-900 bg-amber-100 border border-amber-300 rounded-xl shadow-xs">
+                    <Lock className="w-4 h-4 text-amber-700" />
+                    Application Submitted & Locked (Read-Only)
+                  </div>
+                  {onCancel && (
+                    <button
+                      type="button"
+                      onClick={onCancel}
+                      className="px-4 py-2 text-xs font-bold text-blue-900 bg-white hover:bg-blue-50 border border-blue-200 rounded-xl transition"
+                    >
+                      Dashboard
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="submit"
+                  id="submit-accreditation-btn"
+                  disabled={!canSubmit || isSubmitting}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white bg-blue-900 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl shadow-md transition"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Submitting Application...
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-4 h-4" /> Save & Submit {applicationType} Application
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         )}

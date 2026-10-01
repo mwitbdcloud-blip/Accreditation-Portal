@@ -33,6 +33,11 @@ service cloud.firestore {
       );
     }
 
+    // Connection test probe
+    match /test/{docId} {
+      allow read: if true;
+    }
+
     // User accounts
     match /users/{userId} {
       allow read: if isOwner(userId) || isStaffOrAdmin();

@@ -18,6 +18,8 @@ import {
   FileCheck,
   Trash2,
   Network,
+  Save,
+  Lock,
 } from 'lucide-react';
 import {
   AccreditationApplication,
@@ -29,7 +31,7 @@ import {
   TeamDetails,
   TeamLeadershipDetails,
 } from '../types';
-import { formatDate } from '../utils/dateFormatter';
+import { formatDate, calculateAgeFromDob } from '../utils/dateFormatter';
 
 const DEFAULT_LEADERSHIP: TeamLeadershipDetails = {
   seniorMarketingAssociate: 'Ricardo Gomez',
@@ -71,6 +73,10 @@ interface ApplicationsManagerProps {
     notes?: string,
     updatedTeamDetails?: TeamDetails
   ) => void;
+  onUpdateApplicationDetails?: (
+    id: string,
+    updatedData: Partial<AccreditationApplication>
+  ) => Promise<void> | void;
   onViewContractForApp: (app: AccreditationApplication) => void;
   onDeleteApplication?: (id: string) => void;
   currentUserRole: string;
@@ -80,6 +86,7 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
   applications,
   agents,
   onReviewApplication,
+  onUpdateApplicationDetails,
   onViewContractForApp,
   onDeleteApplication,
   currentUserRole,
@@ -92,13 +99,57 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
 
   // Selected application for detail review modal
   const [selectedApp, setSelectedApp] = useState<AccreditationApplication | null>(null);
+  
+  // Editable fields for Staff & Admin corrections
+  const [editablePersonalDetails, setEditablePersonalDetails] = useState<any>(null);
+  const [editableBankDetails, setEditableBankDetails] = useState<any>(null);
   const [editableTeamDetails, setEditableTeamDetails] = useState<TeamDetails | null>(null);
+  const [editableDocPhotoUrl, setEditableDocPhotoUrl] = useState<string | null>(null);
+  const [editableGovernmentIdUrl, setEditableGovernmentIdUrl] = useState<string | null>(null);
+  const [editableESignatureUrl, setEditableESignatureUrl] = useState<string | null>(null);
+  const [editableDocStatus, setEditableDocStatus] = useState<string>('Pending');
+
+  // Edit mode toggles per section
+  const [isEditingPersonal, setIsEditingPersonal] = useState(false);
+  const [isEditingBank, setIsEditingBank] = useState(false);
   const [isEditingHierarchy, setIsEditingHierarchy] = useState(false);
+  const [isEditingDocuments, setIsEditingDocuments] = useState(false);
+  const [isSavingCorrections, setIsSavingCorrections] = useState(false);
+  const [correctionSuccessMsg, setCorrectionSuccessMsg] = useState<string | null>(null);
+
   const [reviewNotes, setReviewNotes] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
   const handleOpenReviewModal = (app: AccreditationApplication) => {
     setSelectedApp(app);
+    const p = app.personalDetails;
+    const b = app.bankDetails;
+    setEditablePersonalDetails({
+      firstName: p?.firstName || p?.fullName?.split(' ')[0] || '',
+      middleName: p?.middleName || '',
+      lastName: p?.lastName || p?.fullName?.split(' ').slice(1).join(' ') || '',
+      suffix: p?.suffix || '',
+      fullName: p?.fullName || '',
+      dateOfBirth: p?.dateOfBirth || '',
+      age: p?.age ?? (p?.dateOfBirth ? calculateAgeFromDob(p.dateOfBirth) : ''),
+      sex: p?.sex || '',
+      civilStatus: p?.civilStatus || '',
+      citizenship: p?.citizenship || p?.nationality || '',
+      tin: p?.tin || '',
+      telephoneNumber: p?.telephoneNumber || '',
+      mobileNumber: p?.mobileNumber || '',
+      emailAddress: p?.emailAddress || '',
+      residentialAddress: p?.residentialAddress || '',
+      country: p?.country || '',
+      state: p?.state || '',
+    });
+    setEditableBankDetails({
+      bankName: b?.bankName || '',
+      accountName: b?.accountName || '',
+      accountNumber: b?.accountNumber || '',
+      bankAddress: b?.bankAddress || '',
+      swiftCode: b?.swiftCode || '',
+    });
     setEditableTeamDetails({
       teamName: app.teamDetails?.teamName || 'Team Apex Horizon',
       brokerGroup: app.teamDetails?.brokerGroup || 'Megaworld International AP2 Hub',
@@ -106,15 +157,50 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
       teamLeader: app.teamDetails?.teamLeader || 'Victoria Del Rosario',
       leadership: resolveTeamLeadership(app),
     });
+    setEditableDocPhotoUrl(app.idPhotoUrl || null);
+    setEditableGovernmentIdUrl(app.governmentIdUrl || null);
+    setEditableESignatureUrl(app.eSignatureUrl || null);
+    setEditableDocStatus(app.idVerificationStatus || 'Pending');
+    setIsEditingPersonal(false);
+    setIsEditingBank(false);
     setIsEditingHierarchy(false);
+    setIsEditingDocuments(false);
+    setCorrectionSuccessMsg(null);
     setReviewNotes(app.reviewNotes || '');
   };
 
   const handleCloseModal = () => {
     setSelectedApp(null);
+    setEditablePersonalDetails(null);
+    setEditableBankDetails(null);
     setEditableTeamDetails(null);
+    setEditableDocPhotoUrl(null);
+    setEditableGovernmentIdUrl(null);
+    setEditableESignatureUrl(null);
+    setIsEditingPersonal(false);
+    setIsEditingBank(false);
     setIsEditingHierarchy(false);
+    setIsEditingDocuments(false);
+    setCorrectionSuccessMsg(null);
     setReviewNotes('');
+  };
+
+  const handlePersonalFieldChange = (field: string, value: any) => {
+    if (!editablePersonalDetails) return;
+    const next = { ...editablePersonalDetails, [field]: value };
+    if (['firstName', 'middleName', 'lastName', 'suffix'].includes(field)) {
+      next.fullName = [next.firstName, next.middleName, next.lastName, next.suffix].filter(Boolean).join(' ');
+    }
+    if (field === 'dateOfBirth') {
+      const calcAge = calculateAgeFromDob(value);
+      if (calcAge !== '') next.age = calcAge;
+    }
+    setEditablePersonalDetails(next);
+  };
+
+  const handleBankFieldChange = (field: string, value: any) => {
+    if (!editableBankDetails) return;
+    setEditableBankDetails({ ...editableBankDetails, [field]: value });
   };
 
   const handleLeadershipFieldChange = (field: keyof TeamLeadershipDetails, value: string) => {
@@ -136,6 +222,75 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
     });
   };
 
+  const handleFileUploadHelper = (file: File, callback: (dataUrl: string) => void) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        callback(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveCorrections = async () => {
+    if (!selectedApp) return;
+    setIsSavingCorrections(true);
+    setCorrectionSuccessMsg(null);
+
+    const updatedPersonal = editablePersonalDetails ? {
+      ...selectedApp.personalDetails,
+      ...editablePersonalDetails,
+      fullName: [
+        editablePersonalDetails.firstName,
+        editablePersonalDetails.middleName,
+        editablePersonalDetails.lastName,
+        editablePersonalDetails.suffix,
+      ].filter(Boolean).join(' ') || editablePersonalDetails.fullName,
+      nationality: editablePersonalDetails.citizenship || selectedApp.personalDetails.nationality,
+    } : selectedApp.personalDetails;
+
+    const updatedBank = editableBankDetails ? {
+      ...selectedApp.bankDetails,
+      ...editableBankDetails,
+    } : selectedApp.bankDetails;
+
+    const updatedTeam = editableTeamDetails || selectedApp.teamDetails;
+
+    const payload: Partial<AccreditationApplication> = {
+      personalDetails: updatedPersonal,
+      bankDetails: updatedBank,
+      teamDetails: updatedTeam,
+      idVerificationStatus: editableDocStatus as any,
+    };
+
+    if (editableDocPhotoUrl !== null) {
+      payload.idPhotoUrl = editableDocPhotoUrl;
+    }
+    if (editableGovernmentIdUrl !== null) {
+      payload.governmentIdUrl = editableGovernmentIdUrl;
+    }
+    if (editableESignatureUrl !== null) {
+      payload.eSignatureUrl = editableESignatureUrl;
+    }
+
+    try {
+      if (onUpdateApplicationDetails) {
+        await onUpdateApplicationDetails(selectedApp.id, payload);
+      }
+      setSelectedApp((prev) => prev ? { ...prev, ...payload } : null);
+      setCorrectionSuccessMsg('Application data corrections saved successfully.');
+      setTimeout(() => setCorrectionSuccessMsg(null), 4000);
+      setIsEditingPersonal(false);
+      setIsEditingBank(false);
+      setIsEditingHierarchy(false);
+      setIsEditingDocuments(false);
+    } catch (err: any) {
+      console.error('Failed to save corrections:', err);
+    } finally {
+      setIsSavingCorrections(false);
+    }
+  };
+
   // Filter applications
   const filteredApps = applications.filter((app) => {
     const matchesSearch =
@@ -154,11 +309,49 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
   const handleExecuteReview = async (action: 'Approve' | 'Reject' | 'Revision Required') => {
     if (!selectedApp) return;
     setIsProcessing(true);
+
+    const updatedPersonal = editablePersonalDetails ? {
+      ...selectedApp.personalDetails,
+      ...editablePersonalDetails,
+      fullName: [
+        editablePersonalDetails.firstName,
+        editablePersonalDetails.middleName,
+        editablePersonalDetails.lastName,
+        editablePersonalDetails.suffix,
+      ].filter(Boolean).join(' ') || editablePersonalDetails.fullName,
+      nationality: editablePersonalDetails.citizenship || selectedApp.personalDetails.nationality,
+    } : selectedApp.personalDetails;
+
+    const updatedBank = editableBankDetails ? {
+      ...selectedApp.bankDetails,
+      ...editableBankDetails,
+    } : selectedApp.bankDetails;
+
+    const updatedTeam = editableTeamDetails || selectedApp.teamDetails;
+
+    if (onUpdateApplicationDetails && (isEditingPersonal || isEditingBank || isEditingHierarchy || isEditingDocuments)) {
+      try {
+        const patchPayload: Partial<AccreditationApplication> = {
+          personalDetails: updatedPersonal,
+          bankDetails: updatedBank,
+          teamDetails: updatedTeam,
+          idVerificationStatus: editableDocStatus as any,
+        };
+        if (editableDocPhotoUrl !== null) patchPayload.idPhotoUrl = editableDocPhotoUrl;
+        if (editableGovernmentIdUrl !== null) patchPayload.governmentIdUrl = editableGovernmentIdUrl;
+        if (editableESignatureUrl !== null) patchPayload.eSignatureUrl = editableESignatureUrl;
+
+        await onUpdateApplicationDetails(selectedApp.id, patchPayload);
+      } catch (e) {
+        console.error('Error saving pending edits before review:', e);
+      }
+    }
+
     await onReviewApplication(
       selectedApp.id,
       action,
       reviewNotes,
-      editableTeamDetails || undefined
+      updatedTeam
     );
     setIsProcessing(false);
     handleCloseModal();
@@ -408,6 +601,52 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
 
             {/* Modal Content */}
             <div className="p-6 max-h-[75vh] overflow-y-auto space-y-6 text-xs text-slate-700">
+              {/* Staff/Admin Correction Console Banner */}
+              <div className="p-3.5 bg-blue-50/90 border border-blue-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
+                <div className="flex items-start gap-2.5">
+                  <ShieldCheck className="w-4 h-4 text-blue-900 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-blue-950">Staff & Admin Data Correction Console</span>
+                    <p className="text-slate-600 text-[11px] mt-0.5">
+                      Submitted application records are locked against edits by agents. As an authorized <strong>{currentUserRole}</strong>, you can change, revise, or edit any details (Personal, Bank, Team, Documents) if correction is needed.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const willEnable = !isEditingPersonal || !isEditingBank || !isEditingHierarchy || !isEditingDocuments;
+                      setIsEditingPersonal(willEnable);
+                      setIsEditingBank(willEnable);
+                      setIsEditingHierarchy(willEnable);
+                      setIsEditingDocuments(willEnable);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-blue-300 text-blue-900 hover:bg-blue-50 transition shadow-2xs"
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                    {isEditingPersonal && isEditingBank && isEditingHierarchy && isEditingDocuments ? 'Exit Edit Mode' : 'Edit All Sections'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveCorrections}
+                    disabled={isSavingCorrections}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-900 text-white hover:bg-blue-800 transition shadow-xs disabled:opacity-50"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    {isSavingCorrections ? 'Saving...' : 'Save Corrections'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Toast / Notification when saved */}
+              {correctionSuccessMsg && (
+                <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-900 flex items-center gap-2 font-medium">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <span>{correctionSuccessMsg}</span>
+                </div>
+              )}
+
               {/* Review status summary */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
                 <div>
@@ -430,55 +669,339 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
 
               {/* Personal Details */}
               <div className="space-y-2">
-                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                  <User className="w-4 h-4 text-blue-900" /> Personal Identity
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 bg-white rounded-xl border border-slate-200">
-                  <div>
-                    <span className="text-slate-400 block">Full Legal Name:</span>
-                    <span className="font-semibold text-slate-800">{selectedApp.personalDetails.fullName}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block">Date of Birth & Age:</span>
-                    <span className="font-semibold text-slate-800">
-                      {formatDate(selectedApp.personalDetails.dateOfBirth)}
-                      {selectedApp.personalDetails.age ? ` (${selectedApp.personalDetails.age} yrs old)` : ''}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block">Nationality:</span>
-                    <span className="font-semibold text-slate-800">{selectedApp.personalDetails.nationality}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block">Contact Mobile:</span>
-                    <span className="font-semibold text-slate-800">{selectedApp.personalDetails.mobileNumber}</span>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-slate-400 block">Residential Address:</span>
-                    <span className="font-semibold text-slate-800">{selectedApp.personalDetails.residentialAddress}</span>
-                  </div>
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                    <User className="w-4 h-4 text-blue-900" /> Personal Identity & Details
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingPersonal((prev) => !prev)}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border transition ${
+                      isEditingPersonal
+                        ? 'bg-blue-900 text-white border-blue-900 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Edit className="w-3 h-3" />
+                    {isEditingPersonal ? 'Lock Personal Details' : 'Edit Personal Details'}
+                  </button>
                 </div>
+
+                {!isEditingPersonal ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 bg-white rounded-xl border border-slate-200">
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Full Legal Name:</span>
+                      <strong className="text-slate-900 text-xs">{editablePersonalDetails?.fullName || selectedApp.personalDetails.fullName}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Date of Birth & Age:</span>
+                      <strong className="text-slate-900 text-xs">
+                        {formatDate(editablePersonalDetails?.dateOfBirth || selectedApp.personalDetails.dateOfBirth)}
+                        {(editablePersonalDetails?.age || selectedApp.personalDetails.age) ? ` (${editablePersonalDetails?.age || selectedApp.personalDetails.age} yrs old)` : ''}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Sex & Civil Status:</span>
+                      <strong className="text-slate-900 text-xs">
+                        {editablePersonalDetails?.sex || selectedApp.personalDetails.sex || '—'} / {editablePersonalDetails?.civilStatus || selectedApp.personalDetails.civilStatus || '—'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Citizenship:</span>
+                      <strong className="text-slate-900 text-xs">{editablePersonalDetails?.citizenship || selectedApp.personalDetails.citizenship || selectedApp.personalDetails.nationality}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">TIN (Tax ID):</span>
+                      <strong className="text-slate-900 text-xs font-mono">{editablePersonalDetails?.tin || selectedApp.personalDetails.tin || 'Not Provided'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Contact Mobile:</span>
+                      <strong className="text-slate-900 text-xs">{editablePersonalDetails?.mobileNumber || selectedApp.personalDetails.mobileNumber}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Landline:</span>
+                      <strong className="text-slate-900 text-xs">{editablePersonalDetails?.telephoneNumber || selectedApp.personalDetails.telephoneNumber || '—'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Email Address:</span>
+                      <strong className="text-slate-900 text-xs">{editablePersonalDetails?.emailAddress || selectedApp.personalDetails.emailAddress}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Country & State:</span>
+                      <strong className="text-slate-900 text-xs">{editablePersonalDetails?.state || selectedApp.personalDetails.state || '—'}, {editablePersonalDetails?.country || selectedApp.personalDetails.country || '—'}</strong>
+                    </div>
+                    <div className="col-span-2 sm:col-span-3">
+                      <span className="text-slate-400 block text-[11px]">Residential Address:</span>
+                      <strong className="text-slate-900 text-xs">{editablePersonalDetails?.residentialAddress || selectedApp.personalDetails.residentialAddress}</strong>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-300 space-y-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">First Name</label>
+                        <input
+                          type="text"
+                          value={editablePersonalDetails?.firstName || ''}
+                          onChange={(e) => handlePersonalFieldChange('firstName', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Middle Name</label>
+                        <input
+                          type="text"
+                          value={editablePersonalDetails?.middleName || ''}
+                          onChange={(e) => handlePersonalFieldChange('middleName', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Last Name</label>
+                        <input
+                          type="text"
+                          value={editablePersonalDetails?.lastName || ''}
+                          onChange={(e) => handlePersonalFieldChange('lastName', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Suffix</label>
+                        <input
+                          type="text"
+                          value={editablePersonalDetails?.suffix || ''}
+                          onChange={(e) => handlePersonalFieldChange('suffix', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                          placeholder="e.g. Jr."
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Date of Birth</label>
+                        <input
+                          type="date"
+                          value={editablePersonalDetails?.dateOfBirth || ''}
+                          onChange={(e) => handlePersonalFieldChange('dateOfBirth', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Age</label>
+                        <input
+                          type="number"
+                          value={editablePersonalDetails?.age || ''}
+                          onChange={(e) => handlePersonalFieldChange('age', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Sex</label>
+                        <select
+                          value={editablePersonalDetails?.sex || ''}
+                          onChange={(e) => handlePersonalFieldChange('sex', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        >
+                          <option value="">Select Sex</option>
+                          <option value="Female">Female</option>
+                          <option value="Male">Male</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Civil Status</label>
+                        <select
+                          value={editablePersonalDetails?.civilStatus || ''}
+                          onChange={(e) => handlePersonalFieldChange('civilStatus', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        >
+                          <option value="">Select Status</option>
+                          <option value="Single">Single</option>
+                          <option value="Married">Married</option>
+                          <option value="Widowed">Widowed</option>
+                          <option value="Separated">Separated</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Citizenship</label>
+                        <input
+                          type="text"
+                          value={editablePersonalDetails?.citizenship || ''}
+                          onChange={(e) => handlePersonalFieldChange('citizenship', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">TIN (Tax ID)</label>
+                        <input
+                          type="text"
+                          value={editablePersonalDetails?.tin || ''}
+                          onChange={(e) => handlePersonalFieldChange('tin', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Mobile Number</label>
+                        <input
+                          type="text"
+                          value={editablePersonalDetails?.mobileNumber || ''}
+                          onChange={(e) => handlePersonalFieldChange('mobileNumber', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Email Address</label>
+                        <input
+                          type="email"
+                          value={editablePersonalDetails?.emailAddress || ''}
+                          onChange={(e) => handlePersonalFieldChange('emailAddress', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Country</label>
+                        <input
+                          type="text"
+                          value={editablePersonalDetails?.country || ''}
+                          onChange={(e) => handlePersonalFieldChange('country', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">State / Province</label>
+                        <input
+                          type="text"
+                          value={editablePersonalDetails?.state || ''}
+                          onChange={(e) => handlePersonalFieldChange('state', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Landline</label>
+                        <input
+                          type="text"
+                          value={editablePersonalDetails?.telephoneNumber || ''}
+                          onChange={(e) => handlePersonalFieldChange('telephoneNumber', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Residential Address</label>
+                      <input
+                        type="text"
+                        value={editablePersonalDetails?.residentialAddress || ''}
+                        onChange={(e) => handlePersonalFieldChange('residentialAddress', e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Banking Details */}
               <div className="space-y-2">
-                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                  <CreditCard className="w-4 h-4 text-blue-900" /> Banking Details
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-white rounded-xl border border-slate-200">
-                  <div>
-                    <span className="text-slate-400 block text-[11px]">Bank Name:</span>
-                    <span className="font-semibold text-slate-800">{selectedApp.bankDetails.bankName}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[11px]">Account Name:</span>
-                    <span className="font-semibold text-slate-800">{selectedApp.bankDetails.accountName}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[11px]">Account Number:</span>
-                    <span className="font-semibold text-slate-800 font-mono">{selectedApp.bankDetails.accountNumber}</span>
-                  </div>
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                    <CreditCard className="w-4 h-4 text-blue-900" /> Banking Details for Disbursements
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingBank((prev) => !prev)}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border transition ${
+                      isEditingBank
+                        ? 'bg-blue-900 text-white border-blue-900 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Edit className="w-3 h-3" />
+                    {isEditingBank ? 'Lock Bank Details' : 'Edit Bank Details'}
+                  </button>
                 </div>
+
+                {!isEditingBank ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-white rounded-xl border border-slate-200">
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Bank Name:</span>
+                      <strong className="text-slate-900 text-xs">{editableBankDetails?.bankName || selectedApp.bankDetails.bankName || 'Not Provided'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Account Name:</span>
+                      <strong className="text-slate-900 text-xs">{editableBankDetails?.accountName || selectedApp.bankDetails.accountName || '—'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Account Number:</span>
+                      <strong className="text-slate-900 text-xs font-mono">{editableBankDetails?.accountNumber || selectedApp.bankDetails.accountNumber || '—'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Bank Branch / Address:</span>
+                      <strong className="text-slate-900 text-xs">{editableBankDetails?.bankAddress || selectedApp.bankDetails.bankAddress || '—'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Swift Code:</span>
+                      <strong className="text-slate-900 text-xs font-mono">{editableBankDetails?.swiftCode || selectedApp.bankDetails.swiftCode || '—'}</strong>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-300 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Bank Name</label>
+                        <input
+                          type="text"
+                          value={editableBankDetails?.bankName || ''}
+                          onChange={(e) => handleBankFieldChange('bankName', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Account Holder Name</label>
+                        <input
+                          type="text"
+                          value={editableBankDetails?.accountName || ''}
+                          onChange={(e) => handleBankFieldChange('accountName', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Bank Account Number</label>
+                        <input
+                          type="text"
+                          value={editableBankDetails?.accountNumber || ''}
+                          onChange={(e) => handleBankFieldChange('accountNumber', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900 font-mono"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Bank Branch / Address</label>
+                        <input
+                          type="text"
+                          value={editableBankDetails?.bankAddress || ''}
+                          onChange={(e) => handleBankFieldChange('bankAddress', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Swift Code (Optional)</label>
+                        <input
+                          type="text"
+                          value={editableBankDetails?.swiftCode || ''}
+                          onChange={(e) => handleBankFieldChange('swiftCode', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900 font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Team and Leadership Complete Structure & Hierarchy */}
@@ -828,50 +1351,200 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
               </div>
 
               {/* Documents Review: 1x1 Photo & Government ID & E-Signature */}
-              <div className="space-y-2">
-                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                  <Camera className="w-4 h-4 text-blue-900" /> Uploaded Document Verification
-                </h4>
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2">
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                      <Camera className="w-4 h-4 text-blue-900" /> Uploaded Document Verification & Corrections
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Agent submissions are locked. Authorized Staff and Admins can replace photos, government IDs, signatures, or update verification statuses.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                      <span className="text-[10px] font-bold text-slate-600">ID Status:</span>
+                      <select
+                        value={editableDocStatus}
+                        onChange={(e) => setEditableDocStatus(e.target.value)}
+                        className="text-xs font-semibold bg-white border border-slate-300 rounded px-1.5 py-0.5 focus:ring-1 focus:ring-blue-900 text-slate-800"
+                      >
+                        <option value="Pending">Pending Review</option>
+                        <option value="Verified">Verified Official</option>
+                        <option value="Invalid">Invalid / Unclear</option>
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingDocuments((prev) => !prev)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border transition ${
+                        isEditingDocuments
+                          ? 'bg-blue-900 text-white border-blue-900 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Edit className="w-3 h-3" />
+                      {isEditingDocuments ? 'Lock Documents' : 'Edit Documents'}
+                    </button>
+                  </div>
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {/* 1x1 Photo */}
-                  <div className="p-3 bg-white rounded-xl border border-slate-200 text-center">
-                    <span className="text-slate-500 font-semibold block mb-2">1x1 ID Photo</span>
-                    {selectedApp.idPhotoUrl ? (
-                      <div className="w-24 h-24 mx-auto rounded-lg overflow-hidden border border-slate-300">
-                        <img src={selectedApp.idPhotoUrl} alt="1x1" className="w-full h-full object-cover" />
+                  <div className="p-3.5 bg-white rounded-xl border border-slate-200 text-center flex flex-col justify-between space-y-2">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-slate-700 font-bold text-xs">1x1 ID Photo</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-900 font-semibold">
+                          Formal Attire
+                        </span>
                       </div>
-                    ) : (
-                      <div className="w-24 h-24 mx-auto rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
-                        Missing
+                      {(editableDocPhotoUrl || selectedApp.idPhotoUrl) ? (
+                        <div className="w-24 h-24 mx-auto rounded-lg overflow-hidden border border-slate-300 relative shadow-2xs">
+                          <img
+                            src={editableDocPhotoUrl || selectedApp.idPhotoUrl}
+                            alt="1x1"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-24 h-24 mx-auto rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 text-xs">
+                          Missing Photo
+                        </div>
+                      )}
+                    </div>
+
+                    {isEditingDocuments && (
+                      <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                        <label className="cursor-pointer block text-center px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-900 text-[11px] font-semibold rounded border border-blue-200 transition">
+                          <span>Upload / Replace Photo</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleFileUploadHelper(f, setEditableDocPhotoUrl);
+                            }}
+                          />
+                        </label>
+                        {editableDocPhotoUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setEditableDocPhotoUrl(null)}
+                            className="text-[10px] text-rose-600 hover:underline block mx-auto"
+                          >
+                            Revert Photo
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
 
                   {/* Government ID */}
-                  <div className="p-3 bg-white rounded-xl border border-slate-200 text-center">
-                    <span className="text-slate-500 font-semibold block mb-2">Valid ID / Passport</span>
-                    {selectedApp.governmentIdUrl ? (
-                      <div className="w-32 h-24 mx-auto rounded-lg overflow-hidden border border-slate-300">
-                        <img src={selectedApp.governmentIdUrl} alt="ID Document" className="w-full h-full object-cover" />
+                  <div className="p-3.5 bg-white rounded-xl border border-slate-200 text-center flex flex-col justify-between space-y-2">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-slate-700 font-bold text-xs">Valid Government ID / Passport</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                          editableDocStatus === 'Verified'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : editableDocStatus === 'Invalid'
+                            ? 'bg-rose-100 text-rose-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {editableDocStatus}
+                        </span>
                       </div>
-                    ) : (
-                      <div className="w-32 h-24 mx-auto rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
-                        Missing
+                      {(editableGovernmentIdUrl || selectedApp.governmentIdUrl) ? (
+                        <div className="w-36 h-24 mx-auto rounded-lg overflow-hidden border border-slate-300 relative shadow-2xs">
+                          <img
+                            src={editableGovernmentIdUrl || selectedApp.governmentIdUrl}
+                            alt="ID Document"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-36 h-24 mx-auto rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 text-xs">
+                          Missing Document
+                        </div>
+                      )}
+                    </div>
+
+                    {isEditingDocuments && (
+                      <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                        <label className="cursor-pointer block text-center px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-900 text-[11px] font-semibold rounded border border-blue-200 transition">
+                          <span>Upload / Replace ID Document</span>
+                          <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleFileUploadHelper(f, setEditableGovernmentIdUrl);
+                            }}
+                          />
+                        </label>
+                        {editableGovernmentIdUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setEditableGovernmentIdUrl(null)}
+                            className="text-[10px] text-rose-600 hover:underline block mx-auto"
+                          >
+                            Revert ID Document
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
 
                   {/* E-Signature */}
-                  <div className="p-3 bg-white rounded-xl border border-slate-200 text-center">
-                    <span className="text-slate-500 font-semibold block mb-2">Electronic Signature</span>
-                    {selectedApp.eSignatureUrl ? (
-                      <div className="w-32 h-24 mx-auto rounded-lg overflow-hidden border border-slate-300 flex items-center justify-center bg-slate-50">
-                        <img src={selectedApp.eSignatureUrl} alt="Signature" className="max-h-16 object-contain" />
+                  <div className="p-3.5 bg-white rounded-xl border border-slate-200 text-center flex flex-col justify-between space-y-2">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-slate-700 font-bold text-xs">Electronic Signature</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 font-semibold">
+                          Contract Signer
+                        </span>
                       </div>
-                    ) : (
-                      <div className="w-32 h-24 mx-auto rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
-                        Unsigned
+                      {(editableESignatureUrl || selectedApp.eSignatureUrl) ? (
+                        <div className="w-36 h-24 mx-auto rounded-lg overflow-hidden border border-slate-300 flex items-center justify-center bg-slate-50 relative shadow-2xs">
+                          <img
+                            src={editableESignatureUrl || selectedApp.eSignatureUrl}
+                            alt="Signature"
+                            className="max-h-20 object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-36 h-24 mx-auto rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 text-xs">
+                          Unsigned
+                        </div>
+                      )}
+                    </div>
+
+                    {isEditingDocuments && (
+                      <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                        <label className="cursor-pointer block text-center px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-900 text-[11px] font-semibold rounded border border-blue-200 transition">
+                          <span>Upload / Replace Signature</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleFileUploadHelper(f, setEditableESignatureUrl);
+                            }}
+                          />
+                        </label>
+                        {editableESignatureUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setEditableESignatureUrl(null)}
+                            className="text-[10px] text-rose-600 hover:underline block mx-auto"
+                          >
+                            Revert Signature
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>

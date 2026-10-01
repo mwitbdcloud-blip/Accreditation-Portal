@@ -8,6 +8,7 @@ import {
   User as FirebaseUser,
 } from 'firebase/auth';
 import {
+  initializeFirestore,
   getFirestore,
   doc,
   getDocFromServer,
@@ -27,8 +28,14 @@ import { AgentProfile, AccreditationApplication, NotificationItem, AuditLog } fr
 // Initialize Firebase App
 export const app = initializeApp(firebaseConfig);
 
-// CRITICAL: The app will break without providing firestoreDatabaseId
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// CRITICAL: Configure Firestore with experimentalForceLongPolling to prevent connection drops in iframes and proxies
+export const db = initializeFirestore(
+  app,
+  {
+    experimentalForceLongPolling: true,
+  },
+  firebaseConfig.firestoreDatabaseId
+);
 export const auth = getAuth(app);
 
 // Authentication Provider (Google Login configured)
@@ -94,23 +101,19 @@ export function handleFirestoreError(
  */
 export async function testFirestoreConnection(): Promise<boolean> {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log('Firebase Firestore connection verified.');
-    return true;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
-      return false;
-    }
-    // A document not found or permission check still confirms network reachability
-    return true;
+    const res = await Promise.race([
+      getDoc(doc(db, 'test', 'connection')),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+    ]);
+    return !!res;
+  } catch (error: any) {
+    // Graceful offline fallback - application operates via Express proxy & clientStorage
+    return false;
   }
 }
 
-// Automatically test connection on boot
-testFirestoreConnection().catch((err) => {
-  console.warn('Initial Firestore ping note:', err?.message || err);
-});
+// Automatically test connection on boot without throwing
+testFirestoreConnection().catch(() => {});
 
 // Authentication helpers
 export async function signInWithGoogle() {
@@ -144,7 +147,14 @@ export async function syncAgentToFirestore(agent: AgentProfile): Promise<void> {
       ...agent,
       updatedAt: Timestamp.now(),
     }, { merge: true });
-  } catch (err) {
+  } catch (err: any) {
+    if (
+      err?.code === 'unavailable' ||
+      (err instanceof Error && (err.message.includes('unavailable') || err.message.includes('Could not reach')))
+    ) {
+      console.warn(`Firestore sync queued offline for ${docPath}`);
+      return;
+    }
     handleFirestoreError(err, OperationType.WRITE, docPath);
   }
 }
@@ -157,7 +167,14 @@ export async function fetchAgentFromFirestore(affiliateCode: string): Promise<Ag
       return snap.data() as AgentProfile;
     }
     return null;
-  } catch (err) {
+  } catch (err: any) {
+    if (
+      err?.code === 'unavailable' ||
+      (err instanceof Error && (err.message.includes('unavailable') || err.message.includes('Could not reach')))
+    ) {
+      console.warn(`Firestore get queued offline for ${docPath}`);
+      return null;
+    }
     handleFirestoreError(err, OperationType.GET, docPath);
   }
 }
@@ -170,7 +187,14 @@ export async function saveApplicationToFirestore(application: AccreditationAppli
       ...application,
       syncedAt: Timestamp.now(),
     }, { merge: true });
-  } catch (err) {
+  } catch (err: any) {
+    if (
+      err?.code === 'unavailable' ||
+      (err instanceof Error && (err.message.includes('unavailable') || err.message.includes('Could not reach')))
+    ) {
+      console.warn(`Firestore sync queued offline for ${docPath}`);
+      return;
+    }
     handleFirestoreError(err, OperationType.WRITE, docPath);
   }
 }

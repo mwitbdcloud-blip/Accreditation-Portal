@@ -323,6 +323,8 @@ export interface PositionContractTemplate {
   fileType: string;
   fileSize: string;
   fileData?: string;
+  templateUrl?: string;
+  detectedTags?: string[];
   rawText?: string;
   lastUpdatedBy: string;
   lastUpdatedAt: string;

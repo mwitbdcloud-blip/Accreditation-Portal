@@ -1,5 +1,7 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
+import JSZip from 'jszip';
 import { createServer as createViteServer } from 'vite';
 import {
   AgentProfile,
@@ -391,7 +393,7 @@ async function startServer() {
       position,
       region,
       status: 'Draft',
-      dateSubmitted: new Date().toISOString(),
+      dateSubmitted: '',
       personalDetails: {
         firstName: fullName.trim().split(' ')[0] || '',
         middleName: '',
@@ -630,7 +632,7 @@ async function startServer() {
         position: 'Marketing Associate',
         region: 'Asia Pacific 2',
         status: 'Draft',
-        dateSubmitted: new Date().toISOString(),
+        dateSubmitted: '',
         personalDetails: {
           firstName: newAgent.fullName.split(' ')[0] || '',
           middleName: '',
@@ -1803,6 +1805,102 @@ async function startServer() {
     res.json({ success: true, message: 'Application deleted successfully.' });
   });
 
+  // Staff and Admin endpoint to change, revise, and edit application data if correction is needed
+  app.patch('/api/applications/:id', (req, res) => {
+    const targetApp = db.applications.find((a) => a.id === req.params.id);
+    if (!targetApp) {
+      return res.status(404).json({ error: 'Application not found.' });
+    }
+
+    const {
+      personalDetails,
+      bankDetails,
+      teamDetails,
+      position,
+      region,
+      idPhotoUrl,
+      idPhotoName,
+      governmentIdUrl,
+      governmentIdName,
+      idVerificationStatus,
+      eSignatureUrl,
+      editorName,
+      editorRole,
+      notes,
+    } = req.body;
+
+    if (personalDetails) {
+      targetApp.personalDetails = { ...targetApp.personalDetails, ...personalDetails };
+    }
+    if (bankDetails) {
+      targetApp.bankDetails = { ...targetApp.bankDetails, ...bankDetails };
+    }
+    if (teamDetails) {
+      targetApp.teamDetails = {
+        ...targetApp.teamDetails,
+        ...teamDetails,
+        leadership: {
+          ...targetApp.teamDetails?.leadership,
+          ...teamDetails.leadership,
+        },
+      };
+    }
+    if (position) targetApp.position = position;
+    if (region) targetApp.region = region;
+    if (idPhotoUrl !== undefined) targetApp.idPhotoUrl = idPhotoUrl;
+    if (idPhotoName !== undefined) targetApp.idPhotoName = idPhotoName;
+    if (governmentIdUrl !== undefined) targetApp.governmentIdUrl = governmentIdUrl;
+    if (governmentIdName !== undefined) targetApp.governmentIdName = governmentIdName;
+    if (idVerificationStatus !== undefined) targetApp.idVerificationStatus = idVerificationStatus;
+    if (eSignatureUrl !== undefined) targetApp.eSignatureUrl = eSignatureUrl;
+    if (notes) targetApp.reviewNotes = notes;
+
+    // Sync changes to the associated agent profile
+    const agent = db.agents.find((a) => a.affiliateCode === targetApp.affiliateCode);
+    if (agent) {
+      if (personalDetails) {
+        agent.fullName = personalDetails.fullName || agent.fullName;
+        agent.email = personalDetails.emailAddress || agent.email;
+        agent.mobileNumber = personalDetails.mobileNumber || agent.mobileNumber;
+        agent.personalDetails = { ...agent.personalDetails, ...personalDetails };
+      }
+      if (bankDetails) {
+        agent.bankDetails = { ...agent.bankDetails, ...bankDetails };
+      }
+      if (teamDetails) {
+        agent.teamDetails = { ...agent.teamDetails, ...targetApp.teamDetails };
+      }
+      if (idPhotoUrl) {
+        agent.photoUrl = idPhotoUrl;
+      }
+      if (position) {
+        agent.position = position;
+      }
+    }
+
+    db.log(
+      editorName || 'Staff/Admin',
+      editorRole || 'staff',
+      'Application Data Corrected by Staff/Admin',
+      targetApp.affiliateCode,
+      `Staff/Admin edited and corrected submitted details on application ${targetApp.id}`
+    );
+
+    res.json({ success: true, application: targetApp });
+  });
+
+  app.put('/api/applications/:id', (req, res) => {
+    const targetApp = db.applications.find((a) => a.id === req.params.id);
+    if (!targetApp) return res.status(404).json({ error: 'Application not found.' });
+    Object.assign(targetApp, req.body);
+    const agent = db.agents.find((a) => a.affiliateCode === targetApp.affiliateCode);
+    if (agent && req.body.personalDetails) {
+      agent.fullName = req.body.personalDetails.fullName || agent.fullName;
+      agent.personalDetails = { ...agent.personalDetails, ...req.body.personalDetails };
+    }
+    res.json({ success: true, application: targetApp });
+  });
+
   // Submit or Update Application (New or Renewal)
   app.post('/api/applications/submit', (req, res) => {
     const data: Partial<AccreditationApplication> = req.body;
@@ -1930,7 +2028,7 @@ async function startServer() {
 
   // Staff / Admin Application Review (Approve, Reject, Request Revision)
   app.post('/api/applications/:id/review', (req, res) => {
-    const { action, reviewerName, reviewerRole, notes, updatedTeamDetails } = req.body;
+    const { action, reviewerName, reviewerRole, notes, updatedTeamDetails, updatedData } = req.body;
     const targetApp = db.applications.find((a) => a.id === req.params.id);
 
     if (!targetApp) {
@@ -1940,6 +2038,34 @@ async function startServer() {
     const agent = db.agents.find((a) => a.affiliateCode === targetApp.affiliateCode);
     if (!agent) {
       return res.status(404).json({ error: 'Associated agent not found.' });
+    }
+
+    if (updatedData) {
+      if (updatedData.personalDetails) {
+        targetApp.personalDetails = { ...targetApp.personalDetails, ...updatedData.personalDetails };
+        agent.fullName = updatedData.personalDetails.fullName || agent.fullName;
+        agent.email = updatedData.personalDetails.emailAddress || agent.email;
+        agent.mobileNumber = updatedData.personalDetails.mobileNumber || agent.mobileNumber;
+        agent.personalDetails = { ...agent.personalDetails, ...updatedData.personalDetails };
+      }
+      if (updatedData.bankDetails) {
+        targetApp.bankDetails = { ...targetApp.bankDetails, ...updatedData.bankDetails };
+        agent.bankDetails = { ...agent.bankDetails, ...updatedData.bankDetails };
+      }
+      if (updatedData.teamDetails) {
+        targetApp.teamDetails = {
+          ...targetApp.teamDetails,
+          ...updatedData.teamDetails,
+          leadership: {
+            ...targetApp.teamDetails?.leadership,
+            ...updatedData.teamDetails.leadership,
+          },
+        };
+        agent.teamDetails = { ...agent.teamDetails, ...targetApp.teamDetails };
+      }
+      if (updatedData.idPhotoUrl) targetApp.idPhotoUrl = updatedData.idPhotoUrl;
+      if (updatedData.governmentIdUrl) targetApp.governmentIdUrl = updatedData.governmentIdUrl;
+      if (updatedData.idVerificationStatus) targetApp.idVerificationStatus = updatedData.idVerificationStatus;
     }
 
     if (updatedTeamDetails) {
@@ -2405,6 +2531,246 @@ async function startServer() {
     );
 
     res.json({ success: true, template });
+  });
+
+  // Helper for server-side contract generation
+  const generateServerDocx = async (
+    targetPosition: string,
+    agent: AgentProfile,
+    application?: AccreditationApplication | null
+  ) => {
+    const tpl = db.positionContracts.find(
+      (c) => c.position.toLowerCase() === targetPosition.toLowerCase()
+    );
+
+    let templateBuffer: Buffer;
+    if (tpl?.fileData && tpl.fileData.includes('base64,')) {
+      templateBuffer = Buffer.from(tpl.fileData.split('base64,')[1], 'base64');
+    } else {
+      let diskFileName = `${targetPosition}.docx`;
+      if (targetPosition === 'Marketing Partner') diskFileName = 'Marketing Partner (Standard).docx';
+      const diskPath = path.join(process.cwd(), 'public', 'templates', diskFileName);
+      if (fs.existsSync(diskPath)) {
+        templateBuffer = fs.readFileSync(diskPath);
+      } else {
+        throw new Error(`Official template file not found on server for ${targetPosition}`);
+      }
+    }
+
+    const zip = await JSZip.loadAsync(templateBuffer);
+
+    const p = application?.personalDetails;
+    const b = application?.bankDetails;
+    const t = application?.teamDetails;
+
+    const fullName = p?.fullName || agent.fullName || 'Elena Patricia Reyes';
+    const firstName = p?.firstName || fullName.split(' ')[0] || 'Elena';
+    const middleName = p?.middleName || '';
+    const lastName = p?.lastName || fullName.split(' ').slice(1).join(' ') || '';
+    const address = p?.residentialAddress || 'Unit 28B One Eastwood Avenue, Eastwood City, Bagumbayan, Quezon City';
+    const country = p?.country || 'Philippines';
+    const state = p?.state || 'Metro Manila';
+    const territory = t?.brokerGroup || `${agent.region || 'Asia Pacific 2'} Hub`;
+    const citizenship = p?.citizenship || 'Filipino';
+    const sex = p?.sex || 'Female';
+    const birthday = p?.dateOfBirth || '1987-05-18';
+    const age = String(p?.age || '38');
+    const civilstatus = p?.civilStatus || 'Single';
+    const tin = p?.tin || '198-442-780-000';
+    const email = p?.emailAddress || agent.email;
+    const telephone = p?.telephoneNumber || '+63 2 8633 4567';
+    const mobile = p?.mobileNumber || agent.mobileNumber || '+63 917 888 2345';
+    const localbank = b?.bankName || 'BDO Unibank, Inc.';
+    const bankacctnumber = b?.accountNumber || '004928172645';
+    const bankacctname = b?.accountName || fullName;
+    const marketingmanager = t?.leadership?.marketingManager || 'Jonathan Cruz';
+    const marketingdirector = t?.leadership?.marketingDirector || 'Victoria Del Rosario';
+    const refname = t?.leadership?.referrerName || 'Ricardo Gomez';
+    const refposition = t?.leadership?.referrerPosition || 'Senior Marketing Associate';
+    const territoryhead = t?.leadership?.countryManager || 'Eduardo Valenzuela';
+    const countrymanager = t?.leadership?.countryManager || 'Eduardo Valenzuela';
+    const asstcountrymanager = t?.leadership?.assistanceCountryManager || 'Ferdinand Marcos Jr.';
+    const seniorcountrymanager = t?.leadership?.seniorCountryManager || 'Grace P. Tan';
+    const vicepresident = t?.leadership?.vicePresident || 'Ma. Lourdes Santos';
+
+    const todayFormatted = new Date().toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    const startDate = agent.accreditationStartDate || todayFormatted;
+    const expiryDate = agent.accreditationExpiryDate || 'October 16, 2026';
+
+    const tagDictionary = [
+      { pattern: /\{\{\s*firstname\s*\}\}/gi, value: firstName },
+      { pattern: /\{\{\s*middlename\s*\}\}/gi, value: middleName },
+      { pattern: /\{\{\s*surname\s*\}\}/gi, value: lastName },
+      { pattern: /\{\{\s*address\s*\}\}/gi, value: address },
+      { pattern: /\{\{\s*country\s*\}\}/gi, value: country },
+      { pattern: /\{\{\s*state\s*\}\}/gi, value: state },
+      { pattern: /\{\{\s*territory\s*\}\}/gi, value: territory },
+      { pattern: /\{\{\s*citizenship\s*\}\}/gi, value: citizenship },
+      { pattern: /\{\{\s*sex\s*\}\}/gi, value: sex },
+      { pattern: /\{\{\s*birthday\s*\}\}/gi, value: birthday },
+      { pattern: /\{\{\s*age\s*\}\}/gi, value: age },
+      { pattern: /\{\{\s*civilstatus\s*\}\}/gi, value: civilstatus },
+      { pattern: /\{\{\s*tin\s*\}\}/gi, value: tin },
+      { pattern: /\{\{\s*email\s*\}\}/gi, value: email },
+      { pattern: /\{\{\s*telephone\s*\}\}/gi, value: telephone },
+      { pattern: /\{\{\s*mobile\s*\}\}/gi, value: mobile },
+      { pattern: /\{\{\s*localbank\s*\}\}/gi, value: localbank },
+      { pattern: /\{\{\s*bankacctnumber\s*\}\}/gi, value: bankacctnumber },
+      { pattern: /\{\{\s*bankacctname\s*\}\}/gi, value: bankacctname },
+      { pattern: /\{\{\s*contract\s*\}\}/gi, value: `SPECIAL AFFILIATE AGREEMENT — ${targetPosition.toUpperCase()}` },
+      { pattern: /\{\{\s*marketingmanager\s*\}\}/gi, value: marketingmanager },
+      { pattern: /\{\{\s*marketingdirector\s*\}\}/gi, value: marketingdirector },
+      { pattern: /\{\{\s*refname\s*\}\}/gi, value: refname },
+      { pattern: /\{\{\s*refposition\s*\}\}/gi, value: refposition },
+      { pattern: /\{\{\s*territoryhead\s*\}\}/gi, value: territoryhead },
+      { pattern: /\{\{\s*countrymanager\s*\}\}/gi, value: countrymanager },
+      { pattern: /\{\{\s*asst\.?\s*countrymanager\s*\}\}/gi, value: asstcountrymanager },
+      { pattern: /\{\{\s*seniorcountrymanager\s*\}\}/gi, value: seniorcountrymanager },
+      { pattern: /\{\{\s*vicepresident\s*\}\}/gi, value: vicepresident },
+      { pattern: /\{\{\s*corpname\s*\}\}/gi, value: `${fullName} Properties Inc.` },
+      { pattern: /\{\{\s*corprepresentative\s*\}\}/gi, value: fullName },
+      { pattern: /\{\{\s*corptin\s*\}\}/gi, value: tin },
+      { pattern: /\{\{\s*corpaddress\s*\}\}/gi, value: address },
+      { pattern: /\{\{\s*corptelephone\s*\}\}/gi, value: telephone },
+      { pattern: /\{\{\s*corpmobile\s*\}\}/gi, value: mobile },
+      { pattern: /\{\{\s*corpemail\s*\}\}/gi, value: email },
+      { pattern: /\{\{\s*format_date\s+ADate\s+[^}]*?\+4months[^}]*?\}\}/gi, value: expiryDate },
+      { pattern: /\{\{\s*format_date\s+ADate\s+[^}]*?\}\}/gi, value: startDate },
+      { pattern: /\{\{\s*format_date\s+_date\s+[^}]*?\}\}/gi, value: todayFormatted },
+    ];
+
+    const processXml = (xmlText: string) => {
+      return xmlText.replace(/<w:p[\s>].*?<\/w:p>/gs, (paragraphXml) => {
+        const tRegex = /<w:t([^>]*)>(.*?)<\/w:t>/gs;
+        let fullText = '';
+        let hasT = false;
+        paragraphXml.replace(tRegex, (_m, _attrs, content) => {
+          hasT = true;
+          fullText += content;
+          return _m;
+        });
+
+        if (!hasT || !/\{\{.*?\}\}/.test(fullText)) {
+          return paragraphXml;
+        }
+
+        let newFullText = fullText;
+
+        if (/\{\{\s*insert_image\s+signature\s*[^}]*\}\}/i.test(newFullText)) {
+          newFullText = newFullText.replace(/\{\{\s*insert_image\s+signature\s*[^}]*\}\}/gi, `[ ELECTRONIC SIGNATURE: ${fullName.toUpperCase()} ]`);
+        }
+        if (/\{\{\s*insert_image\s+photo\s*[^}]*\}\}/i.test(newFullText)) {
+          newFullText = newFullText.replace(/\{\{\s*insert_image\s+photo\s*[^}]*\}\}/gi, `[ 1X1 ID PHOTO ATTACHED: ${fullName.toUpperCase()} ]`);
+        }
+        if (/\{\{\s*insert_image\s+(ID2|passport)\s*[^}]*\}\}/i.test(newFullText)) {
+          newFullText = newFullText.replace(/\{\{\s*insert_image\s+(ID2|passport)\s*[^}]*\}\}/gi, `[ VALID GOVERNMENT IDENTIFICATION DOCUMENT ]`);
+        }
+
+        for (const item of tagDictionary) {
+          newFullText = newFullText.replace(item.pattern, item.value);
+        }
+
+        if (newFullText === fullText) return paragraphXml;
+
+        let first = true;
+        return paragraphXml.replace(tRegex, (_m, attrs, _c) => {
+          if (first) {
+            first = false;
+            const finalAttrs = attrs.includes('xml:space') ? attrs : `${attrs} xml:space="preserve"`;
+            const safeText = newFullText
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;');
+            return `<w:t${finalAttrs}>${safeText}</w:t>`;
+          } else {
+            return `<w:t></w:t>`;
+          }
+        });
+      });
+    };
+
+    let docXml = await zip.file('word/document.xml')?.async('text');
+    if (docXml) {
+      docXml = processXml(docXml);
+      zip.file('word/document.xml', docXml);
+    }
+
+    for (const name of Object.keys(zip.files)) {
+      if (name.startsWith('word/header') || name.startsWith('word/footer')) {
+        let hfXml = await zip.file(name)?.async('text');
+        if (hfXml) {
+          hfXml = processXml(hfXml);
+          zip.file(name, hfXml);
+        }
+      }
+    }
+
+    const outBuffer = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 },
+    });
+
+    const fileName = `Megaworld_${targetPosition.replace(/\s+/g, '_')}_Official_SAA_${agent.affiliateCode}.docx`;
+    return { buffer: outBuffer, fileName };
+  };
+
+  // 11. Generate Contract Docx with Agent Data mapped to Template Tags
+  app.post('/api/contracts/generate', async (req, res) => {
+    try {
+      const { affiliateCode, position } = req.body;
+      if (!affiliateCode) {
+        return res.status(400).json({ error: 'affiliateCode is required' });
+      }
+
+      const agent = db.agents.find((a) => a.affiliateCode === affiliateCode);
+      if (!agent) {
+        return res.status(404).json({ error: `Agent ${affiliateCode} not found` });
+      }
+
+      const application = db.applications.find((a) => a.affiliateCode === affiliateCode);
+      const targetPos = position || application?.position || agent.position || 'Marketing Associate';
+
+      const { buffer, fileName } = await generateServerDocx(targetPos, agent, application);
+
+      res.json({
+        success: true,
+        fileName,
+        fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        fileData: `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${buffer.toString('base64')}`,
+        message: `Contract generated from official ${targetPos} template with all placeholder tags mapped.`,
+      });
+    } catch (err: any) {
+      console.error('Error generating contract docx:', err);
+      res.status(500).json({ error: err.message || 'Failed to generate contract' });
+    }
+  });
+
+  // Direct binary download endpoint for generated contract
+  app.get('/api/contracts/download/:position/:affiliateCode', async (req, res) => {
+    try {
+      const { position, affiliateCode } = req.params;
+      const agent = db.agents.find((a) => a.affiliateCode === affiliateCode);
+      if (!agent) {
+        return res.status(404).send('Agent not found');
+      }
+
+      const application = db.applications.find((a) => a.affiliateCode === affiliateCode);
+      const targetPos = decodeURIComponent(position) || application?.position || agent.position || 'Marketing Associate';
+
+      const { buffer, fileName } = await generateServerDocx(targetPos, agent, application);
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.send(buffer);
+    } catch (err: any) {
+      console.error('Download contract error:', err);
+      res.status(500).send(err.message || 'Failed to download contract');
+    }
   });
 
   // ==========================================

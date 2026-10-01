@@ -491,20 +491,18 @@ export const api = {
     };
   },
 
-  async reviewApplication(
+  async updateApplication(
     id: string,
-    action: 'Approve' | 'Reject' | 'Revision Required',
-    reviewerName: string,
-    reviewerRole: string,
-    notes?: string,
-    updatedTeamDetails?: any
-  ): Promise<{ success: boolean; message: string; application: AccreditationApplication }> {
-    const res = await safeFetch<{ success: boolean; message: string; application: AccreditationApplication }>(
-      `${BASE_URL}/applications/${id}/review`,
+    updatedData: Partial<AccreditationApplication>,
+    editorName?: string,
+    editorRole?: string
+  ): Promise<{ success: boolean; application: AccreditationApplication }> {
+    const res = await safeFetch<{ success: boolean; application: AccreditationApplication }>(
+      `${BASE_URL}/applications/${encodeURIComponent(id)}`,
       {
-        method: 'POST',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, reviewerName, reviewerRole, notes, updatedTeamDetails }),
+        body: JSON.stringify({ ...updatedData, editorName, editorRole }),
       }
     );
 
@@ -515,6 +513,80 @@ export const api = {
 
     const app = clientStorage.getApplication(id);
     if (!app) throw new Error(`Application ${id} not found.`);
+
+    if (updatedData.personalDetails) {
+      app.personalDetails = { ...app.personalDetails, ...updatedData.personalDetails };
+    }
+    if (updatedData.bankDetails) {
+      app.bankDetails = { ...app.bankDetails, ...updatedData.bankDetails };
+    }
+    if (updatedData.teamDetails) {
+      app.teamDetails = {
+        ...app.teamDetails,
+        ...updatedData.teamDetails,
+        leadership: {
+          ...app.teamDetails?.leadership,
+          ...updatedData.teamDetails.leadership,
+        },
+      };
+    }
+    if (updatedData.position) app.position = updatedData.position;
+    if (updatedData.region) app.region = updatedData.region;
+    if (updatedData.idPhotoUrl) app.idPhotoUrl = updatedData.idPhotoUrl;
+    if (updatedData.governmentIdUrl) app.governmentIdUrl = updatedData.governmentIdUrl;
+    if (updatedData.idVerificationStatus) app.idVerificationStatus = updatedData.idVerificationStatus;
+
+    clientStorage.saveApplication(app);
+    return { success: true, application: app };
+  },
+
+  async reviewApplication(
+    id: string,
+    action: 'Approve' | 'Reject' | 'Revision Required',
+    reviewerName: string,
+    reviewerRole: string,
+    notes?: string,
+    updatedTeamDetails?: any,
+    updatedData?: any
+  ): Promise<{ success: boolean; message: string; application: AccreditationApplication }> {
+    const res = await safeFetch<{ success: boolean; message: string; application: AccreditationApplication }>(
+      `${BASE_URL}/applications/${id}/review`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, reviewerName, reviewerRole, notes, updatedTeamDetails, updatedData }),
+      }
+    );
+
+    if (res.ok && res.data) {
+      clientStorage.saveApplication(res.data.application);
+      return res.data;
+    }
+
+    const app = clientStorage.getApplication(id);
+    if (!app) throw new Error(`Application ${id} not found.`);
+
+    if (updatedData) {
+      if (updatedData.personalDetails) {
+        app.personalDetails = { ...app.personalDetails, ...updatedData.personalDetails };
+      }
+      if (updatedData.bankDetails) {
+        app.bankDetails = { ...app.bankDetails, ...updatedData.bankDetails };
+      }
+      if (updatedData.teamDetails) {
+        app.teamDetails = {
+          ...app.teamDetails,
+          ...updatedData.teamDetails,
+          leadership: {
+            ...app.teamDetails?.leadership,
+            ...updatedData.teamDetails.leadership,
+          },
+        };
+      }
+      if (updatedData.idPhotoUrl) app.idPhotoUrl = updatedData.idPhotoUrl;
+      if (updatedData.governmentIdUrl) app.governmentIdUrl = updatedData.governmentIdUrl;
+      if (updatedData.idVerificationStatus) app.idVerificationStatus = updatedData.idVerificationStatus;
+    }
 
     if (updatedTeamDetails) {
       app.teamDetails = {
@@ -896,6 +968,26 @@ export const api = {
     });
 
     return { success: true, template: updated };
+  },
+
+  async generateContract(
+    affiliateCode: string,
+    position?: string
+  ): Promise<{ success: boolean; fileName: string; fileType: string; fileData: string; message: string }> {
+    const res = await safeFetch<{
+      success: boolean;
+      fileName: string;
+      fileType: string;
+      fileData: string;
+      message: string;
+    }>(`${BASE_URL}/contracts/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ affiliateCode, position }),
+    });
+
+    if (res.ok && res.data) return res.data;
+    throw new Error(res.error || 'Failed to generate contract document');
   },
 
   // Staff & Admin Management

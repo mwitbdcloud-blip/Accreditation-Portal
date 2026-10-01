@@ -369,7 +369,8 @@ export default function App() {
     id: string,
     action: 'Approve' | 'Reject' | 'Revision Required',
     notes?: string,
-    updatedTeamDetails?: any
+    updatedTeamDetails?: any,
+    updatedData?: any
   ) => {
     try {
       const res = await api.reviewApplication(
@@ -378,12 +379,32 @@ export default function App() {
         currentUser?.displayName || 'BD Staff',
         currentUser?.role || 'Staff',
         notes,
-        updatedTeamDetails
+        updatedTeamDetails,
+        updatedData
       );
       showToast(`Application ${id} marked as ${action}. 4-month accreditation record & contract updated.`);
       await loadPortalData();
     } catch (err: any) {
       showToast(err.message || 'Review failed');
+    }
+  };
+
+  // Staff and Admin: Update / Correct Application Data
+  const handleUpdateApplicationDetails = async (
+    id: string,
+    updatedData: Partial<AccreditationApplication>
+  ) => {
+    try {
+      await api.updateApplication(
+        id,
+        updatedData,
+        currentUser?.displayName || 'BD Staff',
+        currentUser?.role || 'Staff'
+      );
+      showToast(`Application ${id} details updated and corrected successfully.`);
+      await loadPortalData();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update application');
     }
   };
 
@@ -942,7 +963,21 @@ export default function App() {
             {activeTab === 'accreditation' && activeAgent && (
               <AccreditationForm
                 agent={activeAgent}
-                existingApplication={applications.find((a) => a.affiliateCode === activeAgent.affiliateCode)}
+                existingApplication={(() => {
+                  const agentApps = applications.filter((a) => a.affiliateCode === activeAgent.affiliateCode);
+                  const isEligibleForRenewal =
+                    activeAgent.accreditationStatus === 'Expired' ||
+                    Boolean(activeAgent.renewalEligibility);
+
+                  if (isEligibleForRenewal) {
+                    const renewalApp = agentApps.find((a) => a.applicationType === 'Renewal');
+                    if (renewalApp) return renewalApp;
+                    return agentApps[0];
+                  }
+
+                  const newApp = agentApps.find((a) => a.applicationType === 'New');
+                  return newApp || agentApps[0];
+                })()}
                 onSubmit={handleSubmitAccreditation}
                 onSubmitSuccess={() => {
                   loadPortalData();
@@ -987,6 +1022,7 @@ export default function App() {
                 applications={applications}
                 agents={agents}
                 onReviewApplication={handleReviewApplication}
+                onUpdateApplicationDetails={handleUpdateApplicationDetails}
                 onViewContractForApp={handleOpenContractForApp}
                 onDeleteApplication={handleDeleteApplication}
                 currentUserRole={currentUser.role}

@@ -15,15 +15,32 @@ import {
   FileDown,
   Lock,
   AlertTriangle,
+  RefreshCw,
+  Tag,
+  FileCheck,
+  Info,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Position, POSITIONS, AccreditationApplication, AgentProfile, PositionContractTemplate } from '../types';
 import { extractContractData } from './ContractDocument';
 import { getPagesForPosition } from './contractPages';
+import {
+  generateContractDocx,
+  generateContractPdf,
+  downloadContractBlob,
+  downloadPdfBlob,
+  getDefaultTemplateUrlForPosition,
+  getDefaultTemplateFileName,
+  buildTagDictionary,
+} from '../utils/contractGenerator';
 
 interface ContractModalProps {
   application?: AccreditationApplication | null;
   agent?: AgentProfile | null;
   positionContract?: PositionContractTemplate | null;
+  contractText?: string;
+  isOpen?: boolean;
   initialPosition?: Position;
   currentUserRole?: 'Agent' | 'Staff' | 'Admin';
   onClose: () => void;
@@ -62,9 +79,9 @@ export const ContractModal: React.FC<ContractModalProps> = ({
   ) as Position;
 
   const startingPos: Position = isPositionUnlocked(requestedPos)
-    ? (requestedPos === 'Marketing Manager' || requestedPos === 'Marketing Director'
-        ? requestedPos
-        : 'Marketing Associate')
+    ? requestedPos === 'Marketing Manager' || requestedPos === 'Marketing Director'
+      ? requestedPos
+      : 'Marketing Associate'
     : 'Marketing Associate';
 
   const [activePosition, setActivePosition] = useState<Position>(startingPos);
@@ -72,6 +89,10 @@ export const ContractModal: React.FC<ContractModalProps> = ({
   const [viewMode, setViewMode] = useState<'continuous' | 'paginated'>('continuous');
   const [currentPageIndex, setCurrentPageIndex] = useState<number>(0);
   const [zoomScale, setZoomScale] = useState<number>(1);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
+  const [isGeneratingDocx, setIsGeneratingDocx] = useState<boolean>(false);
+  const [showMappingDrawer, setShowMappingDrawer] = useState<boolean>(false);
+  const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
 
   const isCurrentActiveUnlocked = isPositionUnlocked(activePosition);
 
@@ -80,6 +101,61 @@ export const ContractModal: React.FC<ContractModalProps> = ({
   const pages = getPagesForPosition(activePosition);
   const totalPages = pages.length;
 
+  const { mappingSummary } = buildTagDictionary(contractData, activePosition);
+
+  // Primary Action: Download official SAA Contract in PDF format
+  const handleDownloadPdfContract = async () => {
+    if (!isCurrentActiveUnlocked) return;
+
+    setIsGeneratingPdf(true);
+    setDownloadNotice(null);
+    try {
+      const templateSource =
+        positionContract?.fileData ||
+        positionContract?.templateUrl ||
+        getDefaultTemplateUrlForPosition(activePosition);
+
+      const genResult = await generateContractPdf(templateSource, contractData, activePosition);
+      downloadPdfBlob(genResult.blob, genResult.fileName);
+
+      setDownloadNotice(
+        `Successfully generated "${genResult.fileName}" in official PDF format! All placeholder tags have been mapped to your submitted data.`
+      );
+    } catch (err: any) {
+      console.error('PDF generation error:', err);
+      setDownloadNotice(`Failed to generate PDF contract: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  // Download filled official .docx contract generated from uploaded template
+  const handleDownloadDocxContract = async () => {
+    if (!isCurrentActiveUnlocked) return;
+
+    setIsGeneratingDocx(true);
+    setDownloadNotice(null);
+    try {
+      // Use exact template uploaded by Staff/Admin as source of truth
+      const templateSource =
+        positionContract?.fileData ||
+        positionContract?.templateUrl ||
+        getDefaultTemplateUrlForPosition(activePosition);
+
+      const genResult = await generateContractDocx(templateSource, contractData, activePosition);
+      downloadContractBlob(genResult.blob, genResult.fileName);
+
+      setDownloadNotice(
+        `Successfully generated "${genResult.fileName}" from the official ${activePosition} template! All placeholder tags have been mapped to your submitted data.`
+      );
+    } catch (err: any) {
+      console.error('Docx generation error:', err);
+      setDownloadNotice(`Failed to generate contract: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsGeneratingDocx(false);
+    }
+  };
+
   const handlePrint = () => {
     if (!isCurrentActiveUnlocked) return;
     window.print();
@@ -87,7 +163,6 @@ export const ContractModal: React.FC<ContractModalProps> = ({
 
   const handleDownloadMultiPageHTML = () => {
     if (!isCurrentActiveUnlocked) return;
-    // Generate self-contained printable HTML document
     const title = `Megaworld_International_SAA_${activePosition.replace(/\s+/g, '_')}_${contractData.affiliateCode}`;
     const pageHtmlStrings = pages
       .map((p, idx) => {
@@ -143,9 +218,8 @@ export const ContractModal: React.FC<ContractModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const contractFileName =
-    positionContract?.fileName ||
-    `Megaworld_${activePosition.replace(/\s+/g, '_')}_Official_SAA.pdf`;
+  const activeTemplateFileName =
+    positionContract?.fileName || getDefaultTemplateFileName(activePosition);
 
   return (
     <div id="contract-modal" className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/75 backdrop-blur-xs overflow-y-auto">
@@ -159,20 +233,68 @@ export const ContractModal: React.FC<ContractModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-sm sm:text-base text-white">
-                  Generated Sales Accreditation Contract
+                  Generated Sales Accreditation Contract (SAA)
                 </h3>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  {totalPages} Pages • Signed
+                  {totalPages} Pages • Official Template
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Signatory: <strong className="text-slate-200">{contractData.fullName}</strong> • Affiliate Code: <span className="font-mono text-blue-300">{contractData.affiliateCode}</span>
+                Signatory: <strong className="text-slate-200">{contractData.fullName}</strong> • Affiliate Code:{' '}
+                <span className="font-mono text-blue-300">{contractData.affiliateCode}</span> • Tier:{' '}
+                <span className="text-amber-300 font-semibold">{activePosition}</span>
               </p>
             </div>
           </div>
 
           {/* Quick Actions & Close */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Primary Action: Download Official Contract in PDF format */}
+            <button
+              onClick={handleDownloadPdfContract}
+              disabled={!isCurrentActiveUnlocked || isGeneratingPdf}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition shadow-md ${
+                isCurrentActiveUnlocked
+                  ? 'text-slate-950 bg-amber-400 hover:bg-amber-300'
+                  : 'text-slate-500 bg-slate-800/80 cursor-not-allowed border border-slate-700'
+              }`}
+              title="Download filled official contract document in PDF format (.pdf)"
+            >
+              {isGeneratingPdf ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Generating PDF Contract...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Contract (PDF)</span>
+                  <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-slate-950/20 text-slate-900 ml-0.5">
+                    PDF
+                  </span>
+                </>
+              )}
+            </button>
+
+            {/* Secondary Option: Download Word DOCX */}
+            <button
+              onClick={handleDownloadDocxContract}
+              disabled={!isCurrentActiveUnlocked || isGeneratingDocx}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg transition border ${
+                isCurrentActiveUnlocked
+                  ? 'text-slate-200 bg-slate-800 hover:bg-slate-700 border-slate-700'
+                  : 'text-slate-500 bg-slate-900 border-slate-800 cursor-not-allowed'
+              }`}
+              title="Download Word Document (.docx)"
+            >
+              {isGeneratingDocx ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <FileText className="w-3.5 h-3.5 text-blue-400" />
+              )}
+              <span>Word (.docx)</span>
+            </button>
+
             <button
               onClick={handlePrint}
               disabled={!isCurrentActiveUnlocked}
@@ -181,24 +303,24 @@ export const ContractModal: React.FC<ContractModalProps> = ({
                   ? 'text-white bg-blue-900 hover:bg-blue-800'
                   : 'text-slate-500 bg-slate-800/80 cursor-not-allowed border border-slate-700'
               }`}
-              title={isCurrentActiveUnlocked ? 'Print or Save to PDF' : 'Locked — Requires Marketing Manager/Director Approval'}
+              title={isCurrentActiveUnlocked ? 'Print or Save to PDF' : 'Locked'}
             >
               {isCurrentActiveUnlocked ? <Printer className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5 text-amber-400" />}
-              Print / Save as PDF
+              Print / Save PDF
             </button>
 
             <button
               onClick={handleDownloadMultiPageHTML}
               disabled={!isCurrentActiveUnlocked}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition border ${
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition border ${
                 isCurrentActiveUnlocked
                   ? 'text-slate-200 bg-slate-800 hover:bg-slate-700 border-slate-700'
                   : 'text-slate-500 bg-slate-900 border-slate-800 cursor-not-allowed'
               }`}
-              title={isCurrentActiveUnlocked ? 'Export Standalone Multi-Page Document' : 'Locked — Requires Approval'}
+              title={isCurrentActiveUnlocked ? 'Export Standalone HTML' : 'Locked'}
             >
-              {isCurrentActiveUnlocked ? <FileDown className="w-3.5 h-3.5 text-amber-300" /> : <Lock className="w-3.5 h-3.5 text-slate-500" />}
-              Export File (.html)
+              <FileDown className="w-3.5 h-3.5 text-slate-300" />
+              Export HTML
             </button>
 
             <button
@@ -210,6 +332,63 @@ export const ContractModal: React.FC<ContractModalProps> = ({
           </div>
         </div>
 
+        {/* Source of Truth Info Bar */}
+        <div className="px-5 py-2 bg-slate-950/80 border-b border-slate-800 flex flex-wrap items-center justify-between text-[11px] gap-2 text-slate-400">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>
+              Source of Truth Template: <strong className="text-slate-200">{activeTemplateFileName}</strong> (Uploaded by BD Staff / Admin)
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowMappingDrawer(!showMappingDrawer)}
+            className="text-amber-300 hover:text-amber-200 font-semibold flex items-center gap-1 cursor-pointer"
+          >
+            <Tag className="w-3 h-3" />
+            {showMappingDrawer ? 'Hide Tag Data Transfer Mapping' : 'View Tag Data Transfer Mapping'}
+            {showMappingDrawer ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+        </div>
+
+        {/* Collapsible Tag Data Transfer Mapping Drawer */}
+        {showMappingDrawer && (
+          <div className="px-5 py-3 bg-slate-900 border-b border-slate-800 text-xs animate-in fade-in duration-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-bold text-white flex items-center gap-1.5">
+                <FileCheck className="w-4 h-4 text-emerald-400" />
+                Automatic Data Transfer: Agent Info Mapped to Designated Template Tags
+              </span>
+              <span className="text-[10px] text-slate-400">Original template layout and wording remain unchanged</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
+              {Object.entries(mappingSummary).map(([tag, val]) => (
+                <div key={tag} className="p-2 bg-slate-950/70 border border-slate-800 rounded-lg flex flex-col justify-between">
+                  <span className="font-mono text-[10px] text-amber-300 font-bold">{tag}</span>
+                  <span className="text-slate-200 text-[11px] truncate font-medium" title={val}>
+                    {val || '<empty>'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Download notification banner if available */}
+        {downloadNotice && (
+          <div className="px-5 py-2.5 bg-emerald-950 border-b border-emerald-800 text-emerald-200 text-xs flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{downloadNotice}</span>
+            </div>
+            <button onClick={() => setDownloadNotice(null)} className="text-emerald-400 hover:text-white">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Position Template Selector Tabs & Viewing Controls */}
         <div className="px-5 py-2.5 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
           {/* Position Tabs */}
@@ -218,7 +397,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
             {POSITIONS.map((pos) => {
               const isActive = activePosition === pos;
               const isUnlocked = isPositionUnlocked(pos);
-              const pageCount = (pos === 'Marketing Associate' || pos === 'Senior Marketing Associate') ? 12 : pos === 'Marketing Manager' ? 10 : 13;
+              const pageCount = pos === 'Marketing Associate' || pos === 'Senior Marketing Associate' ? 12 : pos === 'Marketing Manager' ? 10 : 13;
               return (
                 <button
                   key={pos}
@@ -249,9 +428,11 @@ export const ContractModal: React.FC<ContractModalProps> = ({
                       Locked
                     </span>
                   ) : (
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                      isActive ? 'bg-blue-800 text-blue-200' : 'bg-slate-800 text-slate-500'
-                    }`}>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                        isActive ? 'bg-blue-800 text-blue-200' : 'bg-slate-800 text-slate-500'
+                      }`}
+                    >
                       {pageCount}p
                     </span>
                   )}
@@ -268,9 +449,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
                 onClick={() => setViewMode('continuous')}
                 disabled={!isCurrentActiveUnlocked}
                 className={`px-2.5 py-1 rounded text-xs font-medium transition ${
-                  viewMode === 'continuous'
-                    ? 'bg-slate-800 text-white font-semibold'
-                    : 'text-slate-400 hover:text-white'
+                  viewMode === 'continuous' ? 'bg-slate-800 text-white font-semibold' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 All Pages
@@ -279,9 +458,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
                 onClick={() => setViewMode('paginated')}
                 disabled={!isCurrentActiveUnlocked}
                 className={`px-2.5 py-1 rounded text-xs font-medium transition ${
-                  viewMode === 'paginated'
-                    ? 'bg-slate-800 text-white font-semibold'
-                    : 'text-slate-400 hover:text-white'
+                  viewMode === 'paginated' ? 'bg-slate-800 text-white font-semibold' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 Single Page
@@ -428,14 +605,38 @@ export const ContractModal: React.FC<ContractModalProps> = ({
             </span>
             <span className="text-slate-600">•</span>
             <span className="text-slate-300">
-              E-Signature attached to each page
+              Generated from: <span className="font-mono text-amber-300">{activeTemplateFileName}</span>
             </span>
           </div>
 
           <div className="flex items-center gap-2">
             <button
+              onClick={handleDownloadPdfContract}
+              disabled={!isCurrentActiveUnlocked || isGeneratingPdf}
+              className="text-xs font-bold text-slate-900 hover:bg-amber-300 px-3.5 py-1.5 rounded-lg bg-amber-400 transition flex items-center gap-1.5 shadow-sm"
+              title="Download official contract in PDF format"
+            >
+              {isGeneratingPdf ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Generating PDF...
+                </>
+              ) : (
+                <>
+                  <Download className="w-3.5 h-3.5" /> Download Contract (PDF)
+                </>
+              )}
+            </button>
+            <button
+              onClick={handleDownloadDocxContract}
+              disabled={!isCurrentActiveUnlocked || isGeneratingDocx}
+              className="text-xs font-medium text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition flex items-center gap-1.5 border border-slate-700"
+              title="Download Word Document (.docx)"
+            >
+              <FileText className="w-3.5 h-3.5 text-blue-400" /> Word (.docx)
+            </button>
+            <button
               onClick={handlePrint}
-              className="text-xs font-semibold text-blue-300 hover:text-white px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 transition"
+              className="text-xs font-semibold text-blue-300 hover:text-white px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition"
             >
               Print / Save PDF
             </button>

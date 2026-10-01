@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Download,
   Lock,
+  FileCheck,
 } from 'lucide-react';
 import {
   AgentProfile,
@@ -22,6 +23,14 @@ import {
   PositionContractTemplate,
 } from '../types';
 import { formatDate } from '../utils/dateFormatter';
+import {
+  generateContractPdf,
+  downloadPdfBlob,
+  generateContractDocx,
+  downloadContractBlob,
+  getDefaultTemplateUrlForPosition,
+} from '../utils/contractGenerator';
+import { extractContractData } from './ContractDocument';
 
 interface AgentDashboardProps {
   agent: AgentProfile;
@@ -47,12 +56,26 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
   const isUnderReview = agent.accreditationStatus === 'Pending Review' || latestApp?.status === 'Submitted' || latestApp?.status === 'Under Review';
   const isNotStarted = agent.accreditationStatus === 'Not Started' || !latestApp || latestApp?.status === 'Draft' || (agent.accreditationStatus === 'Pending' && latestApp?.status !== 'Submitted' && latestApp?.status !== 'Under Review');
 
-  const contractFileName = positionContract?.fileName || `Megaworld_SAA_${agent.position.replace(/\s+/g, '_')}.pdf`;
-  const fileExt = contractFileName.split('.').pop()?.toUpperCase() || 'PDF';
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
-  const handleDirectContractDownload = () => {
-    // Open the official contract viewer and downloader with full pages and e-signatures
-    onViewContract();
+  const handleDirectContractDownload = async () => {
+    setIsDownloadingPdf(true);
+    try {
+      const contractData = extractContractData(latestApp, agent, (agent.position as any) || 'Marketing Associate');
+      const templateSource =
+        positionContract?.fileData ||
+        positionContract?.templateUrl ||
+        getDefaultTemplateUrlForPosition(agent.position);
+
+      const genResult = await generateContractPdf(templateSource, contractData, agent.position);
+      downloadPdfBlob(genResult.blob, genResult.fileName);
+    } catch (err) {
+      console.error('Error generating contract PDF for agent:', err);
+      // Fallback to opening modal
+      onViewContract();
+    } finally {
+      setIsDownloadingPdf(false);
+    }
   };
 
   // Next action advice logic
@@ -184,14 +207,44 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
               >
                 Proceed to Accreditation <ArrowRight className="w-4 h-4" />
               </button>
-            ) : isActive ? (
+            ) : isUnderReview ? (
               <button
                 type="button"
-                onClick={onViewContract}
-                className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-emerald-950 bg-emerald-200/80 hover:bg-emerald-300 rounded-xl transition"
+                onClick={onNavigateToAccreditation}
+                className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl shadow-xs transition"
               >
-                <FileText className="w-4 h-4" /> View Sales Agreement
+                <Lock className="w-4 h-4 text-slate-500" /> View Submitted Application (Read-Only)
               </button>
+            ) : isActive ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleDirectContractDownload}
+                  disabled={isDownloadingPdf}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-slate-900 bg-amber-400 hover:bg-amber-300 rounded-xl transition shadow-xs disabled:opacity-50"
+                  title="Download filled official Sales Accreditation Contract (PDF)"
+                >
+                  {isDownloadingPdf ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Generating SAA (PDF)...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" /> Download Official SAA Contract (PDF)
+                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-950/20 text-slate-950">
+                        PDF
+                      </span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={onViewContract}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-emerald-950 bg-emerald-200/80 hover:bg-emerald-300 rounded-xl transition"
+                >
+                  <FileText className="w-4 h-4" /> View Sales Agreement
+                </button>
+              </div>
             ) : null}
           </div>
         </div>
