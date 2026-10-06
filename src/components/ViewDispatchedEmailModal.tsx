@@ -110,7 +110,7 @@ export const ViewDispatchedEmailModal: React.FC<ViewDispatchedEmailModalProps> =
               <div className="font-semibold text-slate-800 text-[11px]">Active Permissions Granted:</div>
               <ul className="list-disc pl-4 text-[11px] text-slate-600 space-y-0.5">
                 {invitation.permissions.canReviewApplications && <li>Review & Approve Affiliate Applications</li>}
-                {invitation.permissions.canManageContracts && <li>Contracts & SAA Template Endorsements</li>}
+                {invitation.permissions.canManageContracts && <li>Sales Agency Agreements (SAA) & Template Endorsements</li>}
                 {invitation.permissions.canEditAgents && <li>Access & Update Affiliate Database</li>}
                 {invitation.permissions.canOverrideAccreditation && <li>Manual Accreditation Status Overrides</li>}
                 {invitation.permissions.canViewReports && <li>Access Executive Analytics & Expiry Reports</li>}

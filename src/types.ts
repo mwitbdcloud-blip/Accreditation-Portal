@@ -198,6 +198,10 @@ export interface AgentProfile {
   birthday?: string;
   residentialAddress?: string;
   tin?: string;
+  eSignatureUrl?: string;
+  eSignatureConfirmed?: boolean;
+  governmentIdUrl?: string;
+  idPhotoUrl?: string;
 }
 
 export interface StaffPermissions {

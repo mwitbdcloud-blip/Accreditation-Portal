@@ -456,8 +456,8 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
                     className="mt-0.5 rounded text-blue-900 focus:ring-blue-900"
                   />
                   <div>
-                    <span className="font-semibold text-slate-800 block">Contract & SAA Management</span>
-                    <span className="text-[10px] text-slate-500">Upload contract templates, review signed SAAs.</span>
+                    <span className="font-semibold text-slate-800 block">Sales Agency Agreement (SAA) Management</span>
+                    <span className="text-[10px] text-slate-500">Upload template files, review generated SAAs.</span>
                   </div>
                 </label>
 
@@ -591,7 +591,7 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
                       <div className="font-semibold text-slate-700 text-[11px] mb-1.5">Granted Access Privileges:</div>
                       <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-slate-600">
                         {permissions.canReviewApplications && <li>Review & Screen Affiliate Applications</li>}
-                        {permissions.canManageContracts && <li>Manage Contracts & Official SAA Endorsements</li>}
+                        {permissions.canManageContracts && <li>Manage Sales Agency Agreements (SAA) & Template Endorsements</li>}
                         {permissions.canEditAgents && <li>Access & Update Affiliate Database</li>}
                         {permissions.canOverrideAccreditation && <li>Manual Accreditation Status Overrides</li>}
                         {permissions.canViewReports && <li>Access Executive Analytics & Expiry Reports</li>}

@@ -106,7 +106,7 @@ async function renderDocxFallbackToContainer(
       header.innerHTML = `
         <div>
           <div style="font-size: 16px; font-weight: 800; letter-spacing: 0.05em; color: #1e3a8a;">MEGAWORLD INTERNATIONAL</div>
-          <div style="font-size: 10px; font-weight: 600; color: #64748b; text-transform: uppercase;">Official Special Affiliate Accreditation Contract</div>
+          <div style="font-size: 10px; font-weight: 600; color: #64748b; text-transform: uppercase;">Official Sales Agency Agreement (SAA)</div>
         </div>
         <div style="text-align: right; font-size: 10px; color: #64748b; font-family: ui-monospace, monospace;">
           Page ${idx + 1} of ${totalPages}
@@ -185,6 +185,16 @@ export async function renderDocxToContainer(
     // Query rendered page sections
     const sections = container.querySelectorAll<HTMLElement>('.docx-wrapper > section.docx, section.docx');
     if (sections.length > 0) {
+      // Ensure all rendered drawing textboxes containing filled agent data are styled prominently and visible
+      const drawingBoxes = container.querySelectorAll<HTMLElement>('.docx-wrapper div, section.docx div');
+      drawingBoxes.forEach((box) => {
+        if (box.querySelector('p, span') && (box.style.left || box.style.top)) {
+          box.style.display = 'block';
+          box.style.zIndex = '20';
+          box.style.color = '#1e3a8a';
+          box.style.fontWeight = '600';
+        }
+      });
       return sections.length;
     }
   } catch (renderErr) {

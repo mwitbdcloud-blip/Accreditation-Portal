@@ -1352,7 +1352,7 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                     Official Leadership Hierarchy for {selectedPosition}
                   </h4>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    These leaders will appear directly on your generated accreditation contract and witnessing page.
+                    These leaders will appear directly on your generated Sales Agency Agreement (SAA) and witnessing page.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

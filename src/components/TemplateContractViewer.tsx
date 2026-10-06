@@ -82,7 +82,7 @@ export const TemplateContractViewer: React.FC<TemplateContractViewerProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [templateSource, position, contractData.affiliateCode, contractData.fullName, contractData.startDate]);
+  }, [templateSource, position, JSON.stringify(contractData)]);
 
   // Adjust pagination visibility whenever viewMode or currentPageIndex changes
   useEffect(() => {
@@ -124,7 +124,7 @@ export const TemplateContractViewer: React.FC<TemplateContractViewerProps> = ({
           </div>
           <div>
             <h4 className="font-bold text-sm sm:text-base text-white">
-              Generating Official {position} SAA Contract
+              Generating Official {position} Sales Agency Agreement (SAA)
             </h4>
             <p className="text-xs text-slate-400 mt-1">{loadingStep}</p>
           </div>

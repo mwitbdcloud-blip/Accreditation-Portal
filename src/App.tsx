@@ -345,17 +345,50 @@ export default function App() {
           .join(' ')
           .trim();
 
-      if (legalName) {
-        setCurrentUser((prev) => (prev ? { ...prev, displayName: legalName } : prev));
-        setAgents((prev) =>
-          prev.map((a) =>
+      setCurrentUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              displayName: legalName || prev.displayName,
+              photoUrl: formData.idPhotoUrl || prev.photoUrl,
+            }
+          : prev
+      );
+
+      // Reflect all target fields into the Agent Profile
+      setAgents((prev) =>
+        prev.map((a) => {
+          if (
             (currentUser?.email && a.email?.toLowerCase() === currentUser.email.toLowerCase()) ||
-            (currentUser?.affiliateCode && a.affiliateCode === currentUser.affiliateCode)
-              ? { ...a, fullName: legalName }
-              : a
-          )
-        );
-      }
+            (currentUser?.affiliateCode && a.affiliateCode === currentUser.affiliateCode) ||
+            (formData.affiliateCode && a.affiliateCode === formData.affiliateCode)
+          ) {
+            const updatedAgent: AgentProfile = {
+              ...a,
+              fullName: legalName || a.fullName,
+              email: formData.personalDetails?.emailAddress || a.email,
+              mobileNumber: formData.personalDetails?.mobileNumber || a.mobileNumber,
+              birthday: formData.personalDetails?.dateOfBirth || a.birthday,
+              residentialAddress: formData.personalDetails?.residentialAddress || a.residentialAddress,
+              tin: formData.personalDetails?.tin || a.tin,
+              photoUrl: formData.idPhotoUrl || a.photoUrl,
+              idPhotoUrl: formData.idPhotoUrl || a.idPhotoUrl,
+              personalDetails: { ...(a.personalDetails || {}), ...(formData.personalDetails || {}) },
+              bankDetails: { ...(a.bankDetails || {}), ...(formData.bankDetails || {}) },
+              teamDetails: { ...(a.teamDetails || {}), ...(formData.teamDetails || {}) },
+              eSignatureUrl: formData.eSignatureUrl || a.eSignatureUrl,
+              eSignatureConfirmed: !!formData.eSignatureConfirmed,
+              governmentIdUrl: formData.governmentIdUrl || a.governmentIdUrl,
+              position: formData.position || a.position,
+              profileCompletion: 100,
+              accreditationStatus: formData.applicationType === 'Renewal' ? 'Renewal Pending' : 'Pending Review',
+            };
+            syncAgentToFirestore(updatedAgent).catch(() => {});
+            return updatedAgent;
+          }
+          return a;
+        })
+      );
 
       await loadPortalData();
       setActiveTab('dashboard');
@@ -487,15 +520,19 @@ export default function App() {
   const handleOpenAgentContract = () => {
     const targetAgent = activeAgent || currentAgent;
     if (!targetAgent) return;
-    const latestApproved = applications.find(
-      (a) => a.affiliateCode === targetAgent.affiliateCode && a.status === 'Approved'
-    ) || applications.find((a) => a.affiliateCode === targetAgent.affiliateCode);
+    const agentApps = applications.filter((a) => a.affiliateCode === targetAgent.affiliateCode);
+    const latestApp =
+      agentApps.find((a) => a.status === 'Submitted') ||
+      agentApps.find((a) => a.status === 'Under Review') ||
+      agentApps.find((a) => a.status === 'Approved') ||
+      agentApps[0] ||
+      applications.find((a) => a.affiliateCode === targetAgent.affiliateCode);
 
     setContractModalData({
       isOpen: true,
       agent: targetAgent,
-      application: latestApproved,
-      contractText: latestApproved?.contractUrl,
+      application: latestApp,
+      contractText: latestApp?.contractUrl,
     });
   };
 
@@ -762,6 +799,19 @@ export default function App() {
 
                 <button
                   type="button"
+                  id="nav-agent-id-badge"
+                  onClick={() => setActiveTab('digitalIdBadge')}
+                  className={`px-3.5 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
+                    activeTab === 'digitalIdBadge'
+                      ? 'bg-blue-900 text-white'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  <Award className="w-3.5 h-3.5 text-amber-500" /> Digital ID Badge
+                </button>
+
+                <button
+                  type="button"
                   id="nav-agent-accreditation"
                   onClick={() => setActiveTab('accreditation')}
                   className={`px-3.5 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
@@ -824,7 +874,7 @@ export default function App() {
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <FileText className="w-3.5 h-3.5 text-amber-500" /> Contract & SAA Upload
+                  <FileText className="w-3.5 h-3.5 text-amber-500" /> Sales Agency Agreement (SAA)
                 </button>
 
                 <button
@@ -930,7 +980,7 @@ export default function App() {
         {currentUser.role === 'Agent' ? (
           /* Agent Views */
           <>
-            {(activeTab === 'dashboard' || (!['accreditation', 'resources'].includes(activeTab))) && activeAgent && (
+            {(activeTab === 'dashboard' || activeTab === 'digitalIdBadge' || (!['accreditation', 'resources'].includes(activeTab))) && activeAgent && (
               <AgentDashboard
                 agent={activeAgent}
                 applications={applications.filter((a) => a.affiliateCode === activeAgent.affiliateCode)}
@@ -957,6 +1007,7 @@ export default function App() {
                 positionContract={positionContracts.find((c) => c.position === activeAgent.position)}
                 onNavigateToAccreditation={() => setActiveTab('accreditation')}
                 onViewContract={handleOpenAgentContract}
+                initialSubView={activeTab === 'digitalIdBadge' ? 'badge' : 'overview'}
               />
             )}
 
@@ -1072,6 +1123,7 @@ export default function App() {
               <ContractManagementView
                 positionContracts={positionContracts}
                 agents={agents}
+                applications={applications}
                 currentUser={currentUser}
                 onContractUpdated={handleContractUpdated}
                 showToast={showToast}

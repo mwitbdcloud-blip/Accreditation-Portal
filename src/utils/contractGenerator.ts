@@ -1,12 +1,15 @@
 import JSZip from 'jszip';
-import { ContractData } from '../components/ContractDocument';
-import { Position } from '../types';
+import { ContractData, extractContractData } from '../components/ContractDocument';
+import { Position, AgentProfile, AccreditationApplication } from '../types';
 
 export interface TagMappingEntry {
   tag: string;
   fieldLabel: string;
-  category: 'Personal' | 'Bank' | 'Team & Leadership' | 'Dates' | 'Document & Images' | 'Corporate';
+  category: 'Personal' | 'Bank' | 'Team & Leadership' | 'Dates' | 'Document & Images' | 'Corporate' | 'Custom';
+  agentProfileField: string;
   sampleValue: string;
+  agentValue?: string;
+  isPopulated?: boolean;
 }
 
 export interface GenerationResult {
@@ -158,8 +161,8 @@ export function buildTagDictionary(data: ContractData, position?: Position | str
     { pattern: /\{\{\s*corptelephone\s*\}\}/gi, value: mappingSummary['{{corptelephone}}'], rawTag: '{{corptelephone}}' },
     { pattern: /\{\{\s*corpmobile\s*\}\}/gi, value: mappingSummary['{{corpmobile}}'], rawTag: '{{corpmobile}}' },
     { pattern: /\{\{\s*corpemail\s*\}\}/gi, value: mappingSummary['{{corpemail}}'], rawTag: '{{corpemail}}' },
-    // Date formats (handles quotes variants: straight, curly, smart quotes)
-    { pattern: /\{\{\s*format_date\s+ADate\s+[^}]*?\+4months[^}]*?\}\}/gi, value: expiryDateFormatted, rawTag: '{{format_date ADate “MMMM DD, YYYY” “en” “+4months”}}' },
+    // Date formats (handles quotes variants: straight, curly, smart quotes, spaces)
+    { pattern: /\{\{\s*format_date\s+ADate\s+[^}]*?\+\s*4\s*months[^}]*?\}\}/gi, value: expiryDateFormatted, rawTag: '{{format_date ADate “MMMM DD, YYYY” “en” “+4months”}}' },
     { pattern: /\{\{\s*format_date\s+ADate\s+[^}]*?\}\}/gi, value: startDateFormatted, rawTag: '{{format_date ADate “MMMM DD, YYYY”}}' },
     { pattern: /\{\{\s*format_date\s+_date\s+[^}]*?\}\}/gi, value: todayFormatted, rawTag: '{{format_date _date “MMMM DD, YYYY”}}' },
   ];
@@ -168,50 +171,180 @@ export function buildTagDictionary(data: ContractData, position?: Position | str
 }
 
 /**
- * Returns user-friendly list of known template tags and their mappings
+ * Returns user-friendly list of known template tags and their mappings to Agent Profile target fields
  */
 export function getStandardTemplateTagsSchema(): TagMappingEntry[] {
   return [
-    { tag: '{{firstname}}', fieldLabel: 'First Name', category: 'Personal', sampleValue: 'ELENA PATRICIA' },
-    { tag: '{{middlename}}', fieldLabel: 'Middle Name', category: 'Personal', sampleValue: 'DE GUZMAN' },
-    { tag: '{{surname}}', fieldLabel: 'Last Name / Surname', category: 'Personal', sampleValue: 'REYES' },
-    { tag: '{{birthday}}', fieldLabel: 'Date of Birth', category: 'Personal', sampleValue: 'May 18, 1987' },
-    { tag: '{{age}}', fieldLabel: 'Age', category: 'Personal', sampleValue: '38' },
-    { tag: '{{sex}}', fieldLabel: 'Sex / Gender', category: 'Personal', sampleValue: 'Female' },
-    { tag: '{{civilstatus}}', fieldLabel: 'Civil Status', category: 'Personal', sampleValue: 'Married' },
-    { tag: '{{citizenship}}', fieldLabel: 'Citizenship', category: 'Personal', sampleValue: 'Filipino' },
-    { tag: '{{address}}', fieldLabel: 'Residential Address', category: 'Personal', sampleValue: 'Unit 28B One Eastwood Avenue, Eastwood City, Bagumbayan' },
-    { tag: '{{country}}', fieldLabel: 'Country of Residence', category: 'Personal', sampleValue: 'Philippines' },
-    { tag: '{{state}}', fieldLabel: 'State / Province', category: 'Personal', sampleValue: 'Metro Manila' },
-    { tag: '{{tin}}', fieldLabel: 'Tax Identification Number (TIN)', category: 'Personal', sampleValue: '198-442-780-000' },
-    { tag: '{{email}}', fieldLabel: 'Email Address', category: 'Personal', sampleValue: 'elena.reyes@megaworld-international.com' },
-    { tag: '{{telephone}}', fieldLabel: 'Telephone Number', category: 'Personal', sampleValue: '+63 2 8633 4567' },
-    { tag: '{{mobile}}', fieldLabel: 'Mobile Phone Number', category: 'Personal', sampleValue: '+63 917 888 2345' },
-    { tag: '{{localbank}}', fieldLabel: 'Bank for Commission Disbursements', category: 'Bank', sampleValue: 'BDO Unibank, Inc.' },
-    { tag: '{{bankacctnumber}}', fieldLabel: 'Bank Account Number', category: 'Bank', sampleValue: '004928172645' },
-    { tag: '{{bankacctname}}', fieldLabel: 'Bank Account Holder Name', category: 'Bank', sampleValue: 'Elena Patricia Reyes' },
-    { tag: '{{territory}}', fieldLabel: 'Territory / Broker Group / Hub', category: 'Team & Leadership', sampleValue: 'Asia Pacific 2 Hub' },
-    { tag: '{{marketingmanager}}', fieldLabel: 'Marketing Manager', category: 'Team & Leadership', sampleValue: 'Jonathan Cruz' },
-    { tag: '{{marketingdirector}}', fieldLabel: 'Marketing Director', category: 'Team & Leadership', sampleValue: 'Victoria Del Rosario' },
-    { tag: '{{refname}}', fieldLabel: 'Referrer / Endorser Name', category: 'Team & Leadership', sampleValue: 'Ricardo Gomez' },
-    { tag: '{{refposition}}', fieldLabel: 'Referrer Position', category: 'Team & Leadership', sampleValue: 'Senior Marketing Associate' },
-    { tag: '{{territoryhead}}', fieldLabel: 'Territory Head / Country Manager', category: 'Team & Leadership', sampleValue: 'Eduardo Valenzuela' },
-    { tag: '{{countrymanager}}', fieldLabel: 'Country Manager', category: 'Team & Leadership', sampleValue: 'Eduardo Valenzuela' },
-    { tag: '{{asst.countrymanager}}', fieldLabel: 'Assistant Country Manager', category: 'Team & Leadership', sampleValue: 'Ferdinand Marcos Jr.' },
-    { tag: '{{seniorcountrymanager}}', fieldLabel: 'Senior Country Manager', category: 'Team & Leadership', sampleValue: 'Grace P. Tan' },
-    { tag: '{{vicepresident}}', fieldLabel: 'Vice President', category: 'Team & Leadership', sampleValue: 'Ma. Lourdes Santos' },
-    { tag: '{{format_date _date “MMMM DD, YYYY”}}', fieldLabel: 'Creation / Signing Date', category: 'Dates', sampleValue: 'September 30, 2026' },
-    { tag: '{{format_date ADate “MMMM DD, YYYY”}}', fieldLabel: 'Accreditation Start Date', category: 'Dates', sampleValue: 'June 16, 2026' },
-    { tag: '{{format_date ADate “MMMM DD, YYYY” “en” “+4months”}}', fieldLabel: 'Accreditation Expiry (4-Month Term)', category: 'Dates', sampleValue: 'October 16, 2026' },
-    { tag: '{{contract}}', fieldLabel: 'Contract Header Title', category: 'Dates', sampleValue: 'SPECIAL AFFILIATE AGREEMENT' },
-    { tag: '{{insert_image photo 96 96}}', fieldLabel: '1x1 ID Photo Submission', category: 'Document & Images', sampleValue: 'Embedded 1x1 Photo' },
-    { tag: '{{insert_image signature 200 70}}', fieldLabel: 'Electronic Signature', category: 'Document & Images', sampleValue: 'Embedded E-Signature' },
-    { tag: '{{insert_image ID2 192 288}}', fieldLabel: 'Primary Valid ID Front', category: 'Document & Images', sampleValue: 'Embedded Valid ID' },
-    { tag: '{{insert_image passport 384 768}}', fieldLabel: 'Valid Passport / ID Document', category: 'Document & Images', sampleValue: 'Embedded Passport' },
-    { tag: '{{corpname}}', fieldLabel: 'Corporate Entity Name (MD/MP)', category: 'Corporate', sampleValue: 'Elena Reyes Real Estate LLC' },
-    { tag: '{{corprepresentative}}', fieldLabel: 'Corporate Representative', category: 'Corporate', sampleValue: 'Elena Patricia Reyes' },
-    { tag: '{{corptin}}', fieldLabel: 'Corporate TIN', category: 'Corporate', sampleValue: '198-442-780-000' },
+    { tag: '{{firstname}}', fieldLabel: 'First Name', category: 'Personal', agentProfileField: 'agent.personalDetails.firstName', sampleValue: 'ELENA PATRICIA' },
+    { tag: '{{middlename}}', fieldLabel: 'Middle Name', category: 'Personal', agentProfileField: 'agent.personalDetails.middleName', sampleValue: 'DE GUZMAN' },
+    { tag: '{{surname}}', fieldLabel: 'Last Name / Surname', category: 'Personal', agentProfileField: 'agent.personalDetails.lastName', sampleValue: 'REYES' },
+    { tag: '{{birthday}}', fieldLabel: 'Date of Birth', category: 'Personal', agentProfileField: 'agent.personalDetails.dateOfBirth', sampleValue: 'May 18, 1987' },
+    { tag: '{{age}}', fieldLabel: 'Age', category: 'Personal', agentProfileField: 'agent.personalDetails.age', sampleValue: '38' },
+    { tag: '{{sex}}', fieldLabel: 'Sex / Gender', category: 'Personal', agentProfileField: 'agent.personalDetails.sex', sampleValue: 'Female' },
+    { tag: '{{civilstatus}}', fieldLabel: 'Civil Status', category: 'Personal', agentProfileField: 'agent.personalDetails.civilStatus', sampleValue: 'Married' },
+    { tag: '{{citizenship}}', fieldLabel: 'Citizenship', category: 'Personal', agentProfileField: 'agent.personalDetails.citizenship', sampleValue: 'Filipino' },
+    { tag: '{{address}}', fieldLabel: 'Residential Address', category: 'Personal', agentProfileField: 'agent.personalDetails.residentialAddress', sampleValue: 'Unit 28B One Eastwood Avenue, Eastwood City, Bagumbayan' },
+    { tag: '{{country}}', fieldLabel: 'Country of Residence', category: 'Personal', agentProfileField: 'agent.personalDetails.country', sampleValue: 'Philippines' },
+    { tag: '{{state}}', fieldLabel: 'State / Province', category: 'Personal', agentProfileField: 'agent.personalDetails.state', sampleValue: 'Metro Manila' },
+    { tag: '{{tin}}', fieldLabel: 'Tax Identification Number (TIN)', category: 'Personal', agentProfileField: 'agent.personalDetails.tin', sampleValue: '198-442-780-000' },
+    { tag: '{{email}}', fieldLabel: 'Email Address', category: 'Personal', agentProfileField: 'agent.personalDetails.emailAddress', sampleValue: 'elena.reyes@megaworld-international.com' },
+    { tag: '{{telephone}}', fieldLabel: 'Telephone Number', category: 'Personal', agentProfileField: 'agent.personalDetails.telephoneNumber', sampleValue: '+63 2 8633 4567' },
+    { tag: '{{mobile}}', fieldLabel: 'Mobile Phone Number', category: 'Personal', agentProfileField: 'agent.personalDetails.mobileNumber', sampleValue: '+63 917 888 2345' },
+    { tag: '{{localbank}}', fieldLabel: 'Bank for Commission Disbursements', category: 'Bank', agentProfileField: 'agent.bankDetails.bankName', sampleValue: 'BDO Unibank, Inc.' },
+    { tag: '{{bankacctnumber}}', fieldLabel: 'Bank Account Number', category: 'Bank', agentProfileField: 'agent.bankDetails.accountNumber', sampleValue: '004928172645' },
+    { tag: '{{bankacctname}}', fieldLabel: 'Bank Account Holder Name', category: 'Bank', agentProfileField: 'agent.bankDetails.accountName', sampleValue: 'Elena Patricia Reyes' },
+    { tag: '{{territory}}', fieldLabel: 'Territory / Broker Group / Hub', category: 'Team & Leadership', agentProfileField: 'agent.teamDetails.brokerGroup', sampleValue: 'Asia Pacific 2 Hub' },
+    { tag: '{{marketingmanager}}', fieldLabel: 'Marketing Manager', category: 'Team & Leadership', agentProfileField: 'agent.teamDetails.leadership.marketingManager', sampleValue: 'Jonathan Cruz' },
+    { tag: '{{marketingdirector}}', fieldLabel: 'Marketing Director', category: 'Team & Leadership', agentProfileField: 'agent.teamDetails.leadership.marketingDirector', sampleValue: 'Victoria Del Rosario' },
+    { tag: '{{refname}}', fieldLabel: 'Referrer / Endorser Name', category: 'Team & Leadership', agentProfileField: 'agent.teamDetails.leadership.referrerName', sampleValue: 'Ricardo Gomez' },
+    { tag: '{{refposition}}', fieldLabel: 'Referrer Position', category: 'Team & Leadership', agentProfileField: 'agent.teamDetails.leadership.referrerPosition', sampleValue: 'Senior Marketing Associate' },
+    { tag: '{{territoryhead}}', fieldLabel: 'Territory Head / Country Manager', category: 'Team & Leadership', agentProfileField: 'agent.teamDetails.leadership.countryManager', sampleValue: 'Eduardo Valenzuela' },
+    { tag: '{{countrymanager}}', fieldLabel: 'Country Manager', category: 'Team & Leadership', agentProfileField: 'agent.teamDetails.leadership.countryManager', sampleValue: 'Eduardo Valenzuela' },
+    { tag: '{{asst.countrymanager}}', fieldLabel: 'Assistant Country Manager', category: 'Team & Leadership', agentProfileField: 'agent.teamDetails.leadership.assistanceCountryManager', sampleValue: 'Ferdinand Marcos Jr.' },
+    { tag: '{{seniorcountrymanager}}', fieldLabel: 'Senior Country Manager', category: 'Team & Leadership', agentProfileField: 'agent.teamDetails.leadership.seniorCountryManager', sampleValue: 'Grace P. Tan' },
+    { tag: '{{vicepresident}}', fieldLabel: 'Vice President', category: 'Team & Leadership', agentProfileField: 'agent.teamDetails.leadership.vicePresident', sampleValue: 'Ma. Lourdes Santos' },
+    { tag: '{{format_date _date “MMMM DD, YYYY”}}', fieldLabel: 'Creation / Signing Date', category: 'Dates', agentProfileField: 'Contract Creation Date', sampleValue: 'September 30, 2026' },
+    { tag: '{{format_date ADate “MMMM DD, YYYY”}}', fieldLabel: 'Accreditation Start Date', category: 'Dates', agentProfileField: 'agent.accreditationStartDate', sampleValue: 'June 16, 2026' },
+    { tag: '{{format_date ADate “MMMM DD, YYYY” “en” “+4months”}}', fieldLabel: 'Accreditation Expiry (4-Month Term)', category: 'Dates', agentProfileField: 'agent.accreditationExpiryDate', sampleValue: 'October 16, 2026' },
+    { tag: '{{contract}}', fieldLabel: 'Contract Header Title', category: 'Dates', agentProfileField: 'agent.position', sampleValue: 'SPECIAL AFFILIATE AGREEMENT' },
+    { tag: '{{insert_image photo 96 96}}', fieldLabel: '1x1 ID Photo Submission', category: 'Document & Images', agentProfileField: 'agent.photoUrl / application.idPhotoUrl', sampleValue: 'Embedded 1x1 Photo' },
+    { tag: '{{insert_image signature 200 70}}', fieldLabel: 'Electronic Signature', category: 'Document & Images', agentProfileField: 'agent.eSignatureUrl / application.eSignatureUrl', sampleValue: 'Embedded E-Signature' },
+    { tag: '{{insert_image ID2 192 288}}', fieldLabel: 'Primary Valid ID Front', category: 'Document & Images', agentProfileField: 'agent.governmentIdUrl / application.governmentIdUrl', sampleValue: 'Embedded Valid ID' },
+    { tag: '{{insert_image passport 384 768}}', fieldLabel: 'Valid Passport / ID Document', category: 'Document & Images', agentProfileField: 'agent.governmentIdUrl / application.governmentIdUrl', sampleValue: 'Embedded Passport' },
+    { tag: '{{corpname}}', fieldLabel: 'Corporate Entity Name (MD/MP)', category: 'Corporate', agentProfileField: 'agent.personalDetails.fullName + " Real Estate Services Inc."', sampleValue: 'Elena Reyes Real Estate LLC' },
+    { tag: '{{corprepresentative}}', fieldLabel: 'Corporate Representative', category: 'Corporate', agentProfileField: 'agent.fullName', sampleValue: 'Elena Patricia Reyes' },
+    { tag: '{{corptin}}', fieldLabel: 'Corporate TIN', category: 'Corporate', agentProfileField: 'agent.tin', sampleValue: '198-442-780-000' },
+    { tag: '{{corpaddress}}', fieldLabel: 'Corporate Address', category: 'Corporate', agentProfileField: 'agent.residentialAddress', sampleValue: 'Eastwood City, Quezon City' },
+    { tag: '{{corptelephone}}', fieldLabel: 'Corporate Phone', category: 'Corporate', agentProfileField: 'agent.personalDetails.telephoneNumber', sampleValue: '+63 2 8633 4567' },
+    { tag: '{{corpmobile}}', fieldLabel: 'Corporate Mobile', category: 'Corporate', agentProfileField: 'agent.mobileNumber', sampleValue: '+63 917 888 2345' },
+    { tag: '{{corpemail}}', fieldLabel: 'Corporate Email', category: 'Corporate', agentProfileField: 'agent.email', sampleValue: 'corporate@megaworld-international.com' },
   ];
+}
+
+/**
+ * Dynamically generates the list of Target Fields in Agent Profile based on
+ * the Placeholder / Template Tags indicated on the SAA file uploaded by staff or admin.
+ */
+export function generateTargetFieldsFromTemplateTags(
+  detectedTags: string[],
+  agent?: AgentProfile | null,
+  application?: AccreditationApplication | null
+): TagMappingEntry[] {
+  const standardSchema = getStandardTemplateTagsSchema();
+  const schemaByNormalizedTag = new Map<string, TagMappingEntry>();
+
+  const normalize = (t: string) => t.toLowerCase().replace(/\s+/g, ' ').trim();
+
+  standardSchema.forEach((entry) => {
+    schemaByNormalizedTag.set(normalize(entry.tag), entry);
+  });
+
+  // Contract data for resolving live values from the selected agent
+  const contractData = extractContractData(application, agent, (agent?.position as any) || 'Marketing Associate');
+  const { mappingSummary } = buildTagDictionary(contractData, agent?.position);
+
+  // Helper to resolve live agent value
+  const resolveAgentValue = (tag: string): { val: string; isPopulated: boolean } => {
+    let val = mappingSummary[tag];
+    if (val === undefined) {
+      const matchedKey = Object.keys(mappingSummary).find(
+        (k) => normalize(k) === normalize(tag)
+      );
+      if (matchedKey) val = mappingSummary[matchedKey];
+    }
+
+    if (val && !val.startsWith('{{') && val !== '<empty>') {
+      return { val, isPopulated: true };
+    }
+
+    if (/signature/i.test(tag)) {
+      if (contractData.eSignatureUrl) return { val: '[Verified E-Signature Attached]', isPopulated: true };
+    } else if (/photo/i.test(tag)) {
+      if (contractData.idPhotoUrl) return { val: '[1x1 Photo Attached]', isPopulated: true };
+    } else if (/(ID2|passport)/i.test(tag)) {
+      if (contractData.governmentIdUrl || (agent as any)?.governmentIdUrl) {
+        return { val: '[Valid Government ID Attached]', isPopulated: true };
+      }
+    }
+
+    return { val: val || '', isPopulated: !!val && val.trim().length > 0 };
+  };
+
+  const result: TagMappingEntry[] = [];
+  const processedNormTags = new Set<string>();
+
+  // 1. First, process all tags indicated on the SAA file uploaded by staff/admin
+  if (detectedTags && detectedTags.length > 0) {
+    for (const rawTag of detectedTags) {
+      const cleanTag = rawTag.trim();
+      const norm = normalize(cleanTag);
+      if (processedNormTags.has(norm)) continue;
+      processedNormTags.add(norm);
+
+      let matched = schemaByNormalizedTag.get(norm);
+      if (!matched) {
+        for (const [sNorm, sEntry] of schemaByNormalizedTag.entries()) {
+          const coreTag = sNorm.replace(/[{}]/g, '').trim();
+          const coreRaw = norm.replace(/[{}]/g, '').trim();
+          if (
+            coreTag === coreRaw ||
+            (coreRaw.includes('format_date') &&
+              coreTag.includes('format_date') &&
+              ((coreRaw.includes('+4months') && coreTag.includes('+4months')) ||
+                (!coreRaw.includes('+4months') && !coreTag.includes('+4months'))))
+          ) {
+            matched = sEntry;
+            break;
+          }
+        }
+      }
+
+      if (matched) {
+        const { val, isPopulated } = resolveAgentValue(matched.tag);
+        result.push({
+          ...matched,
+          tag: cleanTag,
+          agentValue: val,
+          isPopulated,
+        });
+      } else {
+        const tagName = cleanTag.replace(/[{}]/g, '').trim();
+        const readableLabel = tagName
+          .split(/[-_ ]+/)
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(' ');
+
+        const fieldPath = `agent.personalDetails.${tagName}`;
+        const { val, isPopulated } = resolveAgentValue(cleanTag);
+
+        result.push({
+          tag: cleanTag,
+          fieldLabel: readableLabel,
+          category: 'Custom',
+          agentProfileField: fieldPath,
+          sampleValue: `[Custom SAA Placeholder: ${tagName}]`,
+          agentValue: val || (agent?.personalDetails as any)?.[tagName] || '',
+          isPopulated: !!(val || (agent?.personalDetails as any)?.[tagName]),
+        });
+      }
+    }
+  }
+
+  // 2. Add remaining standard schema tags to ensure complete reference
+  for (const sEntry of standardSchema) {
+    const norm = normalize(sEntry.tag);
+    if (!processedNormTags.has(norm)) {
+      processedNormTags.add(norm);
+      const { val, isPopulated } = resolveAgentValue(sEntry.tag);
+      result.push({
+        ...sEntry,
+        agentValue: val,
+        isPopulated,
+      });
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -395,12 +528,13 @@ export async function generateContractDocx(
         );
       }
 
-      // Replace all standard text dictionary placeholders
+      // Replace all standard text dictionary placeholders safely without regex lastIndex issues
       for (const item of textDictionary) {
-        if (item.pattern.test(newFullText)) {
+        item.pattern.lastIndex = 0;
+        newFullText = newFullText.replace(item.pattern, () => {
           totalReplaced++;
-          newFullText = newFullText.replace(item.pattern, item.value);
-        }
+          return item.value;
+        });
       }
 
       if (newFullText === fullText) {

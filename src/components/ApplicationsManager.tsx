@@ -541,7 +541,7 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                               type="button"
                               onClick={() => onViewContractForApp(app)}
                               className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg transition"
-                              title="View Generated Contract"
+                              title="View Generated Sales Agency Agreement (SAA)"
                             >
                               <FileText className="w-4 h-4" />
                             </button>
@@ -1602,7 +1602,7 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                   disabled={isProcessing}
                   className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold uppercase tracking-wider text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-sm transition disabled:opacity-50"
                 >
-                  <ShieldCheck className="w-4 h-4" /> Approve & Generate Contract (4 Mo)
+                  <ShieldCheck className="w-4 h-4" /> Approve & Generate SAA Agreement (4 Mo)
                 </button>
               </div>
             </div>

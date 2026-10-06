@@ -22,7 +22,7 @@ import {
   ShieldCheck,
   Play,
 } from 'lucide-react';
-import { Position, POSITIONS, PositionContractTemplate, AgentProfile } from '../types';
+import { Position, POSITIONS, PositionContractTemplate, AgentProfile, AccreditationApplication } from '../types';
 import { api } from '../services/api';
 import { formatDate, formatDateTime } from '../utils/dateFormatter';
 import {
@@ -30,10 +30,9 @@ import {
 } from '../utils/templateDocumentEngine';
 import {
   downloadPdfBlob,
-  generateContractDocx,
-  downloadContractBlob,
   readDocxTemplateTags,
   getStandardTemplateTagsSchema,
+  generateTargetFieldsFromTemplateTags,
   getDefaultTemplateUrlForPosition,
   getDefaultTemplateFileName,
 } from '../utils/contractGenerator';
@@ -42,6 +41,7 @@ import { extractContractData } from './ContractDocument';
 interface ContractManagementViewProps {
   positionContracts: PositionContractTemplate[];
   agents: AgentProfile[];
+  applications?: AccreditationApplication[];
   currentUser: {
     role: 'Staff' | 'Admin' | 'Agent';
     displayName?: string;
@@ -54,6 +54,7 @@ interface ContractManagementViewProps {
 export const ContractManagementView: React.FC<ContractManagementViewProps> = ({
   positionContracts,
   agents,
+  applications,
   currentUser,
   onContractUpdated,
   showToast,
@@ -84,14 +85,14 @@ export const ContractManagementView: React.FC<ContractManagementViewProps> = ({
   const activeContract =
     positionContracts.find((c) => c.position === selectedPosition) || {
       position: selectedPosition,
-      title: `Special Affiliate Agreement (SAA) — ${selectedPosition}`,
+      title: `Sales Agency Agreement (SAA) — ${selectedPosition}`,
       fileName: getDefaultTemplateFileName(selectedPosition),
       fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       fileSize: '2.2 MB',
       templateUrl: getDefaultTemplateUrlForPosition(selectedPosition),
       lastUpdatedBy: `${currentUser.displayName || currentUser.role}`,
       lastUpdatedAt: new Date().toISOString(),
-      notes: `Official uploaded contract for ${selectedPosition}`,
+      notes: `Official uploaded agreement for ${selectedPosition}`,
     };
 
   // Affiliates in this tier
@@ -289,7 +290,9 @@ export const ContractManagementView: React.FC<ContractManagementViewProps> = ({
 
     setIsGeneratingTestDocx(true);
     try {
-      const contractData = extractContractData(null, targetAgent, selectedPosition);
+      // Find latest application for targetAgent to ensure all submitted New / Renewal data transfers completely
+      const targetApp = applications?.find((a) => a.affiliateCode === targetAgent.affiliateCode) || null;
+      const contractData = extractContractData(targetApp, targetAgent, selectedPosition);
       const templateSource =
         activeContract.fileData ||
         activeContract.templateUrl ||
@@ -309,31 +312,18 @@ export const ContractManagementView: React.FC<ContractManagementViewProps> = ({
     }
   };
 
-  // Optional: Generate Word DOCX for raw template editing
-  const handleTestGenerateDocxContract = async () => {
-    const targetAgent = agents.find((a) => a.affiliateCode === selectedTestAgentCode) || agents[0];
-    if (!targetAgent) return;
+  const selectedTestAgent = agents.find((a) => a.affiliateCode === selectedTestAgentCode) || agents[0];
+  const selectedTestApp = applications?.find((a) => a.affiliateCode === selectedTestAgent?.affiliateCode) || null;
 
-    setIsGeneratingTestDocx(true);
-    try {
-      const contractData = extractContractData(null, targetAgent, selectedPosition);
-      const templateSource =
-        activeContract.fileData ||
-        activeContract.templateUrl ||
-        getDefaultTemplateUrlForPosition(selectedPosition);
+  // Compute the tags indicated on the SAA file uploaded by staff or admin (or currently active template)
+  const currentTemplateTags = stagedDetectedTags.length > 0 ? stagedDetectedTags : activeContractDetectedTags;
 
-      const genResult = await generateContractDocx(templateSource, contractData, selectedPosition);
-      downloadContractBlob(genResult.blob, genResult.fileName);
-
-      showToast(`Generated Word document: ${genResult.fileName}`);
-    } catch (err: any) {
-      showToast(err.message || 'Failed to generate Word contract.');
-    } finally {
-      setIsGeneratingTestDocx(false);
-    }
-  };
-
-  const allSchemaTags = getStandardTemplateTagsSchema();
+  // Generate and reflect Target Fields in Agent Profile dynamically based on the Placeholder / Template Tags indicated on the SAA file
+  const allSchemaTags = generateTargetFieldsFromTemplateTags(
+    currentTemplateTags,
+    selectedTestAgent,
+    selectedTestApp
+  );
 
   const filteredSchemaTags = allSchemaTags.filter((t) => {
     if (activeTagFilter === 'All') return true;
@@ -357,10 +347,10 @@ export const ContractManagementView: React.FC<ContractManagementViewProps> = ({
         <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-amber-400/20 text-amber-300 border border-amber-400/30">
-              <Sparkles className="w-3.5 h-3.5" /> BD Operations • Automated Contract & SAA Template Engine
+              <Sparkles className="w-3.5 h-3.5" /> BD Operations • Automated Sales Agency Agreement (SAA) Engine
             </div>
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
-              Contract & SAA Management per Position
+              Sales Agency Agreement (SAA) Management per Position
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-3xl leading-relaxed">
               The official document template uploaded here for each position is the <strong>source of truth</strong>.
@@ -389,7 +379,7 @@ export const ContractManagementView: React.FC<ContractManagementViewProps> = ({
               onClick={handleTestGenerateContract}
               disabled={isGeneratingTestDocx}
               className="px-4 py-2.5 rounded-xl text-xs font-bold bg-amber-400 hover:bg-amber-300 text-slate-950 transition flex items-center gap-2 shadow-md disabled:opacity-50"
-              title="Generate a filled SAA Contract in PDF format using current template and sample agent data"
+              title="Generate a filled Sales Agency Agreement (SAA) in PDF format using current template and agent data"
             >
               <FileCheck className="w-4 h-4 text-slate-950" />
               Generate Sample SAA (PDF)
@@ -511,7 +501,7 @@ export const ContractManagementView: React.FC<ContractManagementViewProps> = ({
                   disabled={isGeneratingTestDocx}
                   onClick={handleTestGenerateContract}
                   className="w-full py-2.5 px-3 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
-                  title="Test generating filled Sales Accreditation Contract in PDF format"
+                  title="Test generating filled Sales Agency Agreement (SAA) in PDF format"
                 >
                   {isGeneratingTestDocx ? (
                     <>
@@ -558,13 +548,13 @@ export const ContractManagementView: React.FC<ContractManagementViewProps> = ({
                 ))}
               </select>
 
-              <div className="flex flex-col sm:flex-row gap-2">
+              <div>
                 <button
                   type="button"
                   onClick={handleTestGenerateContract}
                   disabled={isGeneratingTestDocx}
-                  className="flex-1 py-2.5 px-3 text-xs font-bold text-slate-900 bg-amber-400 hover:bg-amber-300 rounded-xl transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
-                  title="Generate and download filled contract in PDF format"
+                  className="w-full py-2.5 px-3 text-xs font-bold text-slate-900 bg-amber-400 hover:bg-amber-300 rounded-xl transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+                  title="Generate and download filled Sales Agency Agreement (SAA) in PDF format"
                 >
                   {isGeneratingTestDocx ? (
                     <>
@@ -572,22 +562,12 @@ export const ContractManagementView: React.FC<ContractManagementViewProps> = ({
                     </>
                   ) : (
                     <>
-                      <FileCheck className="w-4 h-4 text-slate-900" /> Generate SAA Contract (PDF)
+                      <FileCheck className="w-4 h-4 text-slate-900" /> Generate Sales Agency Agreement (SAA)
                       <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-950/20 text-slate-950">
                         PDF
                       </span>
                     </>
                   )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleTestGenerateDocxContract}
-                  disabled={isGeneratingTestDocx}
-                  className="py-2.5 px-3 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl transition flex items-center justify-center gap-1.5"
-                  title="Generate as Word Docx (.docx)"
-                >
-                  <FileText className="w-3.5 h-3.5 text-blue-900" /> Word (.docx)
                 </button>
               </div>
             </div>
@@ -718,7 +698,7 @@ export const ContractManagementView: React.FC<ContractManagementViewProps> = ({
                   type="text"
                   value={customTitle}
                   onChange={(e) => setCustomTitle(e.target.value)}
-                  placeholder={`e.g. Special Affiliate Agreement (SAA) — ${selectedPosition}`}
+                  placeholder={`e.g. Sales Agency Agreement (SAA) — ${selectedPosition}`}
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
                 />
               </div>
@@ -771,15 +751,15 @@ export const ContractManagementView: React.FC<ContractManagementViewProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <Tag className="w-4 h-4 text-blue-900" /> Designated Template Tags & Data Transfer Schema
+                  <Tag className="w-4 h-4 text-blue-900" /> Target Fields in Agent Profile (Generated from SAA Placeholders)
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Tags recognized in the template to automatically insert the Agent’s information into the designated fields.
+                  Target Fields in Agent Profile generated and reflected based on the Placeholder / Template Tags indicated on the SAA file uploaded by staff or admin.
                 </p>
               </div>
 
               <div className="flex items-center gap-1.5 overflow-x-auto">
-                {['All', 'Personal', 'Bank', 'Team & Leadership', 'Dates', 'Document & Images'].map((cat) => (
+                {['All', 'Personal', 'Bank', 'Team & Leadership', 'Dates', 'Document & Images', 'Corporate', 'Custom'].map((cat) => (
                   <button
                     key={cat}
                     onClick={() => setActiveTagFilter(cat)}
@@ -795,20 +775,25 @@ export const ContractManagementView: React.FC<ContractManagementViewProps> = ({
               </div>
             </div>
 
-            {/* Detected Tags Pills in the Active Template */}
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-              <div className="flex items-center justify-between text-xs">
+            {/* Detected Tags Pills in the Active Template & Live Agent Preview */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-2">
                 <span className="font-semibold text-slate-700 flex items-center gap-1.5">
                   <Database className="w-3.5 h-3.5 text-blue-900" />
-                  Detected Placeholders in {activeContract.fileName}
+                  Detected Placeholders in {stagedFile ? stagedFile.name : activeContract.fileName}
                 </span>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-blue-100 text-blue-900 rounded-full">
-                  {activeContractDetectedTags.length} Tags Identified
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-blue-100 text-blue-900 rounded-full">
+                    {currentTemplateTags.length} Tags in Uploaded SAA File
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-900 rounded-full">
+                    Reflecting: {selectedTestAgent?.fullName || 'Agent'}
+                  </span>
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pt-1">
-                {activeContractDetectedTags.map((tag, idx) => (
+                {currentTemplateTags.map((tag, idx) => (
                   <span
                     key={idx}
                     className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold bg-white border border-slate-200 text-blue-950 shadow-2xs"
@@ -824,27 +809,71 @@ export const ContractManagementView: React.FC<ContractManagementViewProps> = ({
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
                   <tr>
-                    <th className="py-2.5 px-3">Placeholder / Template Tag</th>
+                    <th className="py-2.5 px-3">Placeholder / Template Tag in SAA</th>
                     <th className="py-2.5 px-3">Target Field in Agent Profile</th>
                     <th className="py-2.5 px-3">Category</th>
+                    <th className="py-2.5 px-3">Reflected Value in Agent Profile</th>
+                    <th className="py-2.5 px-3">Status</th>
                     <th className="py-2.5 px-3">Sample Value</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredSchemaTags.map((entry, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/70 transition">
-                      <td className="py-2.5 px-3 font-mono font-bold text-blue-900">{entry.tag}</td>
-                      <td className="py-2.5 px-3 font-semibold text-slate-800">{entry.fieldLabel}</td>
-                      <td className="py-2.5 px-3">
-                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">
-                          {entry.category}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px] truncate max-w-[200px]" title={entry.sampleValue}>
-                        {entry.sampleValue}
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredSchemaTags.map((entry, idx) => {
+                    const isInCurrentFile = currentTemplateTags.some(
+                      (t) => t.toLowerCase().trim() === entry.tag.toLowerCase().trim()
+                    );
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/70 transition">
+                        <td className="py-2.5 px-3">
+                          <span className="font-mono font-bold text-blue-900 block">{entry.tag}</span>
+                          {isInCurrentFile && (
+                            <span className="inline-block mt-0.5 text-[9px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
+                              in uploaded SAA file
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className="font-semibold text-slate-800 block">{entry.fieldLabel}</span>
+                          <span className="font-mono text-[10px] text-slate-500">{entry.agentProfileField}</span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">
+                            {entry.category}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 max-w-[220px]">
+                          {entry.agentValue ? (
+                            <span
+                              className="font-medium text-slate-900 truncate block text-[11px]"
+                              title={entry.agentValue}
+                            >
+                              {entry.agentValue}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 italic text-[11px]">Awaiting agent submission</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          {entry.isPopulated ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Populated
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800">
+                              <AlertCircle className="w-3 h-3 text-amber-600" /> Pending Input
+                            </span>
+                          )}
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-slate-500 font-mono text-[11px] truncate max-w-[160px]"
+                          title={entry.sampleValue}
+                        >
+                          {entry.sampleValue}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

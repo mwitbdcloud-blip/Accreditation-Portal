@@ -451,6 +451,27 @@ export const api = {
 
     if (res.ok && res.data) {
       clientStorage.saveApplication(res.data.application);
+      if (data.affiliateCode) {
+        clientStorage.updateAgent(data.affiliateCode, {
+          personalDetails: data.personalDetails,
+          bankDetails: data.bankDetails,
+          teamDetails: data.teamDetails,
+          photoUrl: data.idPhotoUrl,
+          eSignatureUrl: data.eSignatureUrl,
+          eSignatureConfirmed: !!data.eSignatureConfirmed,
+          governmentIdUrl: data.governmentIdUrl,
+          idPhotoUrl: data.idPhotoUrl,
+          fullName: data.personalDetails?.fullName,
+          email: data.personalDetails?.emailAddress,
+          mobileNumber: data.personalDetails?.mobileNumber,
+          birthday: data.personalDetails?.dateOfBirth,
+          residentialAddress: data.personalDetails?.residentialAddress,
+          tin: data.personalDetails?.tin,
+          position: data.position,
+          accreditationStatus: data.applicationType === 'Renewal' ? 'Renewal Pending' : 'Pending Review',
+          profileCompletion: 100,
+        });
+      }
       return res.data;
     }
 
@@ -475,6 +496,27 @@ export const api = {
     };
 
     clientStorage.saveApplication(newApp);
+    if (newApp.affiliateCode) {
+      clientStorage.updateAgent(newApp.affiliateCode, {
+        personalDetails: newApp.personalDetails,
+        bankDetails: newApp.bankDetails,
+        teamDetails: newApp.teamDetails,
+        photoUrl: newApp.idPhotoUrl,
+        eSignatureUrl: newApp.eSignatureUrl,
+        eSignatureConfirmed: true,
+        governmentIdUrl: newApp.governmentIdUrl,
+        idPhotoUrl: newApp.idPhotoUrl,
+        fullName: newApp.personalDetails?.fullName,
+        email: newApp.personalDetails?.emailAddress,
+        mobileNumber: newApp.personalDetails?.mobileNumber,
+        birthday: newApp.personalDetails?.dateOfBirth,
+        residentialAddress: newApp.personalDetails?.residentialAddress,
+        tin: newApp.personalDetails?.tin,
+        position: newApp.position,
+        accreditationStatus: newApp.applicationType === 'Renewal' ? 'Renewal Pending' : 'Pending Review',
+        profileCompletion: 100,
+      });
+    }
 
     clientStorage.addNotification({
       targetRole: 'staff',

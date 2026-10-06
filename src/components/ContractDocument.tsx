@@ -36,6 +36,7 @@ export interface ContractData {
   region: string;
   idPhotoUrl: string;
   eSignatureUrl: string;
+  governmentIdUrl?: string;
   leadership: TeamLeadershipDetails;
 }
 
@@ -44,14 +45,16 @@ export function extractContractData(
   agent?: AgentProfile | null,
   targetPosition?: Position
 ): ContractData {
-  const p = application?.personalDetails;
-  const b = application?.bankDetails;
-  const t = application?.teamDetails;
+  // Deeply merge all details so any field submitted in application or saved on agent profile is recognized
+  const p = { ...(agent?.personalDetails || {}), ...(application?.personalDetails || {}) };
+  const b = { ...(agent?.bankDetails || {}), ...(application?.bankDetails || {}) };
+  const t = { ...(agent?.teamDetails || {}), ...(application?.teamDetails || {}) };
 
   const fullName = p?.fullName || agent?.fullName || 'Elena Patricia Reyes';
-  const firstName = p?.firstName || fullName.split(' ')[0] || 'Elena';
-  const middleName = p?.middleName || 'Patricia';
-  const lastName = p?.lastName || fullName.split(' ').slice(1).join(' ') || 'Reyes';
+  const nameParts = fullName.trim().split(/\s+/);
+  const firstName = p?.firstName || (nameParts.length > 0 ? nameParts[0] : 'Elena');
+  const middleName = p?.middleName || (nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '');
+  const lastName = p?.lastName || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : (nameParts[0] || ''));
   const suffix = p?.suffix || '';
 
   const defaultLeadership: TeamLeadershipDetails = {
@@ -64,9 +67,35 @@ export function extractContractData(
     assistanceVicePresident: t?.leadership?.assistanceVicePresident || 'Roberto De Leon',
     vicePresident: t?.leadership?.vicePresident || 'Ma. Lourdes Santos',
     seniorVicePresident: t?.leadership?.seniorVicePresident || 'Antonio Morales',
-    referrerName: t?.leadership?.referrerName || 'Ricardo Gomez',
+    referrerName: t?.leadership?.referrerName || t?.upline || 'Ricardo Gomez',
     referrerPosition: t?.leadership?.referrerPosition || 'Senior Marketing Associate',
   };
+
+  const dob = p?.dateOfBirth || agent?.birthday || '1987-05-18';
+  const ageVal = p?.age || (dob ? calculateAgeFromDob(dob) : 38);
+  const resAddress = p?.residentialAddress || agent?.residentialAddress || 'Eastwood City, Bagumbayan, Quezon City';
+  const mobile = p?.mobileNumber || agent?.mobileNumber || '+63 917 888 2345';
+  const email = p?.emailAddress || agent?.email || 'elena.reyes@megaworld-international.com';
+  const tinVal = p?.tin || agent?.tin || '198-442-780-000';
+
+  // Compute 4-month term dates based on submission or agent accreditation
+  const startRaw = agent?.accreditationStartDate || application?.dateSubmitted || new Date().toISOString().split('T')[0];
+  const startDate = formatDate(startRaw);
+
+  let expiryDate = agent?.accreditationExpiryDate ? formatDate(agent.accreditationExpiryDate) : '';
+  if (!expiryDate || expiryDate === '-') {
+    const sDate = new Date(startRaw);
+    if (!isNaN(sDate.getTime())) {
+      sDate.setMonth(sDate.getMonth() + 4);
+      expiryDate = formatDate(sDate.toISOString().split('T')[0]);
+    } else {
+      expiryDate = formatDate('2026-10-16');
+    }
+  }
+
+  const sigUrl = application?.eSignatureUrl || (agent as any)?.eSignatureUrl || '';
+  const photoUrl = application?.idPhotoUrl || agent?.photoUrl || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&auto=format&fit=crop&q=80';
+  const govIdUrl = application?.governmentIdUrl || (agent as any)?.governmentIdUrl || '';
 
   return {
     affiliateCode: application?.affiliateCode || agent?.affiliateCode || 'IPA-AP2-000003',
@@ -75,19 +104,19 @@ export function extractContractData(
     middleName,
     lastName,
     suffix,
-    dateOfBirth: formatDate(p?.dateOfBirth || '1987-05-18'),
-    age: p?.age || (p?.dateOfBirth ? calculateAgeFromDob(p.dateOfBirth) : 38),
-    sex: p?.sex || 'Female',
+    dateOfBirth: formatDate(dob),
+    age: ageVal,
+    sex: (p?.sex as any) || 'Female',
     civilStatus: p?.civilStatus || 'Married',
-    citizenship: p?.citizenship || 'Filipino',
-    nationality: p?.nationality || 'Filipino',
-    residentialAddress: p?.residentialAddress || 'Unit 28B One Eastwood Avenue, Eastwood City, Bagumbayan, Quezon City',
+    citizenship: p?.citizenship || p?.nationality || 'Filipino',
+    nationality: p?.nationality || p?.citizenship || 'Filipino',
+    residentialAddress: resAddress,
     country: p?.country || 'Philippines',
     state: p?.state || 'Metro Manila',
     telephoneNumber: p?.telephoneNumber || '+63 2 8633 4567',
-    mobileNumber: p?.mobileNumber || agent?.email ? '+63 917 888 2345' : '+63 917 555 1234',
-    emailAddress: p?.emailAddress || agent?.email || 'elena.reyes@megaworld-international.com',
-    tin: p?.tin || '198-442-780-000',
+    mobileNumber: mobile,
+    emailAddress: email,
+    tin: tinVal,
     lastContractPeriod: p?.lastContractPeriod || 'February 15, 2026 to June 15, 2026',
     bankName: b?.bankName || 'BDO Unibank',
     accountName: b?.accountName || fullName,
@@ -96,11 +125,12 @@ export function extractContractData(
     swiftCode: b?.swiftCode || 'BNORPHMM',
     teamName: t?.teamName || 'Team Apex Horizon',
     brokerGroup: t?.brokerGroup || `Megaworld International ${agent?.region || 'Asia Pacific 2'} Hub`,
-    startDate: formatDate(agent?.accreditationStartDate || '2026-06-16'),
-    expiryDate: formatDate(agent?.accreditationExpiryDate || '2026-10-16'),
+    startDate,
+    expiryDate,
     region: application?.region || agent?.region || 'Asia Pacific 2',
-    idPhotoUrl: application?.idPhotoUrl || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&auto=format&fit=crop&q=80',
-    eSignatureUrl: application?.eSignatureUrl || '',
+    idPhotoUrl: photoUrl,
+    eSignatureUrl: sigUrl,
+    governmentIdUrl: govIdUrl,
     leadership: t?.leadership || defaultLeadership,
   };
 }
@@ -121,7 +151,7 @@ export const VerifiedSignatureFooter: React.FC<{
   <div className="mt-auto pt-4 border-t border-slate-300 flex items-center justify-between text-[10px] text-slate-500 font-sans select-none">
     <div className="flex items-center gap-2">
       <ShieldCheck className="w-3.5 h-3.5 text-blue-900" />
-      <span>Megaworld International • Official Accreditation Contract Series of 2026</span>
+      <span>Megaworld International • Official Sales Agency Agreement (SAA) Series of 2026</span>
     </div>
 
     {/* Verified E-Signature Stamp on EVERY page */}

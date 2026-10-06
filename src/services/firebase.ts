@@ -196,6 +196,26 @@ export async function fetchAgentFromFirestore(affiliateCode: string): Promise<Ag
 }
 
 // Application sync helpers
+export async function saveAgentToFirestore(agent: AgentProfile): Promise<void> {
+  const docPath = `agents/${agent.affiliateCode}`;
+  try {
+    const payload = cleanPayload({
+      ...agent,
+      syncedAt: Timestamp.now(),
+    });
+    await setDoc(doc(db, 'agents', agent.affiliateCode), payload, { merge: true });
+  } catch (err: any) {
+    if (
+      err?.code === 'unavailable' ||
+      (err instanceof Error && (err.message.includes('unavailable') || err.message.includes('Could not reach')))
+    ) {
+      console.warn(`Firestore sync queued offline for ${docPath}`);
+      return;
+    }
+    handleFirestoreError(err, OperationType.WRITE, docPath);
+  }
+}
+
 export async function saveApplicationToFirestore(application: AccreditationApplication): Promise<void> {
   const docPath = `applications/${application.id}`;
   try {

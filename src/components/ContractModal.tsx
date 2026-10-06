@@ -12,7 +12,6 @@ import {
   FileText,
   ShieldCheck,
   CheckCircle,
-  FileDown,
   Lock,
   AlertTriangle,
   RefreshCw,
@@ -33,8 +32,6 @@ import {
 import {
   generateContractPdf,
   downloadPdfBlob,
-  generateContractDocx,
-  downloadContractBlob,
   getDefaultTemplateUrlForPosition,
   getDefaultTemplateFileName,
   buildTagDictionary,
@@ -99,7 +96,6 @@ export const ContractModal: React.FC<ContractModalProps> = ({
   const [renderedTotalPages, setRenderedTotalPages] = useState<number>(11);
   const renderedContainerRef = useRef<HTMLElement | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
-  const [isGeneratingDocx, setIsGeneratingDocx] = useState<boolean>(false);
   const [showMappingDrawer, setShowMappingDrawer] = useState<boolean>(false);
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
 
@@ -144,88 +140,9 @@ export const ContractModal: React.FC<ContractModalProps> = ({
     }
   };
 
-  // Download filled official .docx contract generated from uploaded template
-  const handleDownloadDocxContract = async () => {
-    if (!isCurrentActiveUnlocked) return;
-
-    setIsGeneratingDocx(true);
-    setDownloadNotice(null);
-    try {
-      // Use exact template uploaded by Staff/Admin as source of truth
-      const templateSource = activeTemplateSource;
-
-      const genResult = await generateContractDocx(templateSource, contractData, activePosition);
-      downloadContractBlob(genResult.blob, genResult.fileName);
-
-      setDownloadNotice(
-        `Successfully generated "${genResult.fileName}" from the official ${activePosition} template! All placeholder tags have been mapped to your submitted data.`
-      );
-    } catch (err: any) {
-      console.error('Docx generation error:', err);
-      setDownloadNotice(`Failed to generate contract: ${err.message || 'Unknown error'}`);
-    } finally {
-      setIsGeneratingDocx(false);
-    }
-  };
-
   const handlePrint = () => {
     if (!isCurrentActiveUnlocked) return;
     window.print();
-  };
-
-  const handleDownloadMultiPageHTML = () => {
-    if (!isCurrentActiveUnlocked) return;
-    const title = `Megaworld_International_SAA_${activePosition.replace(/\s+/g, '_')}_${contractData.affiliateCode}`;
-    const pageHtmlStrings = Array.from({ length: renderedTotalPages }, (_, idx) => {
-      return `<div class="contract-print-page" style="page-break-after: always; padding: 40px; margin-bottom: 24px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px;">
-        <div style="font-family: Arial, sans-serif; font-size: 10px; color: #64748b; margin-bottom: 8px; display: flex; justify-content: space-between;">
-          <span>MEGAWORLD INTERNATIONAL • ${activePosition.toUpperCase()}</span>
-          <span>Page ${idx + 1} of ${renderedTotalPages}</span>
-        </div>
-        <h2 style="font-size: 16px; font-weight: bold; color: #1e3a8a; text-transform: uppercase; margin-bottom: 16px; text-align: center;">
-          ${activePosition} Sales Accreditation Agreement (SAA)
-        </h2>
-        <div style="font-family: Georgia, serif; font-size: 12px; line-height: 1.6; color: #1e293b;">
-          Affiliate: <strong>${contractData.fullName}</strong> (${contractData.affiliateCode})<br/>
-          Valid Period: ${contractData.startDate} to ${contractData.expiryDate}<br/>
-          Bank: ${contractData.bankName} - ${contractData.accountNumber}<br/>
-          Leadership: ${contractData.teamName} • Hub: ${contractData.brokerGroup}
-        </div>
-        <div style="margin-top: 40px; padding-top: 12px; border-top: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #475569;">
-          <span>E-Signature Authenticated • Signatory: ${contractData.fullName}</span>
-          ${contractData.eSignatureUrl ? `<img src="${contractData.eSignatureUrl}" style="height: 24px; max-width: 90px; object-fit: contain;" />` : `<span style="font-style: italic; font-weight: bold;">${contractData.fullName}</span>`}
-          <span>Page ${idx + 1} of ${renderedTotalPages}</span>
-        </div>
-      </div>`;
-    }).join('\n');
-
-    const fullHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>${title}</title>
-  <style>
-    @media print {
-      body { margin: 0; background: #fff; }
-      .contract-print-page { page-break-after: always; border: none !important; margin: 0 !important; box-shadow: none !important; }
-    }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f1f5f9; padding: 20px; }
-  </style>
-</head>
-<body>
-  ${pageHtmlStrings}
-</body>
-</html>`;
-
-    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${title}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   const activeTemplateFileName =
@@ -243,7 +160,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-sm sm:text-base text-white">
-                  Generated Sales Accreditation Contract (SAA)
+                  Sales Agency Agreement (SAA)
                 </h3>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                   {renderedTotalPages} Pages • Official {activePosition} Template
@@ -543,7 +460,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
                   ? 'text-slate-900 bg-amber-400 hover:bg-amber-300'
                   : 'text-slate-500 bg-slate-800 cursor-not-allowed border border-slate-700'
               }`}
-              title="Download official contract in PDF format"
+              title="Download official agreement in PDF format"
             >
               {isGeneratingPdf ? (
                 <>
@@ -551,21 +468,9 @@ export const ContractModal: React.FC<ContractModalProps> = ({
                 </>
               ) : (
                 <>
-                  <Download className="w-3.5 h-3.5" /> Download Contract (PDF)
+                  <Download className="w-3.5 h-3.5" /> Download Agreement (PDF)
                 </>
               )}
-            </button>
-            <button
-              onClick={handleDownloadDocxContract}
-              disabled={!isCurrentActiveUnlocked || isGeneratingDocx}
-              className={`text-xs font-medium px-2.5 py-1.5 rounded-lg transition flex items-center gap-1.5 border ${
-                isCurrentActiveUnlocked
-                  ? 'text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border-slate-700'
-                  : 'text-slate-500 bg-slate-900 border-slate-800 cursor-not-allowed'
-              }`}
-              title="Download Word Document (.docx)"
-            >
-              <FileText className="w-3.5 h-3.5 text-blue-400" /> Word (.docx)
             </button>
             <button
               onClick={handlePrint}
@@ -578,18 +483,6 @@ export const ContractModal: React.FC<ContractModalProps> = ({
               title="Print or Save PDF"
             >
               <Printer className="w-3.5 h-3.5" /> Print / Save PDF
-            </button>
-            <button
-              onClick={handleDownloadMultiPageHTML}
-              disabled={!isCurrentActiveUnlocked}
-              className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg transition flex items-center gap-1.5 border ${
-                isCurrentActiveUnlocked
-                  ? 'text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border-slate-700'
-                  : 'text-slate-500 bg-slate-900 border-slate-800 cursor-not-allowed'
-              }`}
-              title={isCurrentActiveUnlocked ? 'Export Standalone HTML' : 'Locked'}
-            >
-              <FileDown className="w-3.5 h-3.5 text-slate-300" /> Export HTML
             </button>
             <button
               onClick={onClose}

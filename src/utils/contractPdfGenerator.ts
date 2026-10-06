@@ -1337,7 +1337,7 @@ async function renderCustomDocxBuffer(
 
   pages.forEach((lines, idx) => {
     if (idx > 0) doc.addPage();
-    renderHeader(doc, `Sales Accreditation Contract — ${positionName}`, `Page ${idx + 1} of ${totalPages}`, contractData.affiliateCode, positionName);
+    renderHeader(doc, `Sales Agency Agreement (SAA) — ${positionName}`, `Page ${idx + 1} of ${totalPages}`, contractData.affiliateCode, positionName);
 
     let curY = 32;
     doc.setFont('helvetica', 'normal');
@@ -1373,7 +1373,7 @@ async function renderCustomDocxBuffer(
 
 /**
  * Main PDF Contract Generator:
- * Generates an official, standard, high-resolution PDF Sales Accreditation Contract (SAA)
+ * Generates an official, standard, high-resolution PDF Sales Agency Agreement (SAA)
  * matching the exact uploaded template requirements per position.
  *
  * 1. Checks if custom uploaded template fileData exists
