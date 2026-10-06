@@ -927,6 +927,7 @@ export const api = {
       fileName: data.fileName,
       fileType: data.fileType,
       fileSize: data.fileSize,
+      fileData: data.fileData,
       rawText: data.rawText,
       lastUpdatedBy: data.uploadedBy,
       notes: data.notes,

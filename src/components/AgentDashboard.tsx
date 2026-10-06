@@ -24,7 +24,9 @@ import {
 } from '../types';
 import { formatDate } from '../utils/dateFormatter';
 import {
-  generateContractPdf,
+  generateContractPdfFromTemplate,
+} from '../utils/templateDocumentEngine';
+import {
   downloadPdfBlob,
   generateContractDocx,
   downloadContractBlob,
@@ -67,7 +69,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
         positionContract?.templateUrl ||
         getDefaultTemplateUrlForPosition(agent.position);
 
-      const genResult = await generateContractPdf(templateSource, contractData, agent.position);
+      const genResult = await generateContractPdfFromTemplate(templateSource, contractData, agent.position);
       downloadPdfBlob(genResult.blob, genResult.fileName);
     } catch (err) {
       console.error('Error generating contract PDF for agent:', err);

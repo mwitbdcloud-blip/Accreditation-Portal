@@ -237,9 +237,9 @@ export async function readDocxTemplateTags(templateInput: ArrayBuffer | Uint8Arr
     const detected = new Set<string>();
 
     const checkXml = (xmlStr: string) => {
-      const pMatches = xmlStr.match(/<w:p[\s>].*?<\/w:p>/gs) || [];
+      const pMatches = xmlStr.match(/<w:p\b[^>]*>(?:(?!<w:p\b)[\s\S])*?<\/w:p>/g) || [];
       for (const p of pMatches) {
-        const tMatches = p.match(/<w:t[^>]*>(.*?)<\/w:t>/g) || [];
+        const tMatches = p.match(/<w:t\b[^>]*>(.*?)<\/w:t>/g) || [];
         const cleanP = tMatches.map((t) => t.replace(/<[^>]+>/g, '')).join('');
         const curlies = cleanP.match(/\{\{([^{}]+)\}\}/g) || [];
         curlies.forEach((c) => detected.add(c.trim()));
@@ -338,8 +338,18 @@ export async function generateContractDocx(
 
   // XML replacement engine that preserves all run properties and paragraph layout
   const processXmlContent = (xmlContent: string): string => {
-    return xmlContent.replace(/<w:p[\s>].*?<\/w:p>/gs, (paragraphXml) => {
-      const tRegex = /<w:t([^>]*)>(.*?)<\/w:t>/gs;
+    // 1. Resolve AlternateContent to choice to prevent duplicate VML textboxes / XML tag mismatches
+    const cleanXml = xmlContent.replace(
+      /<mc:AlternateContent>[\s\S]*?<mc:Choice[^>]*>([\s\S]*?)<\/mc:Choice>[\s\S]*?<\/mc:AlternateContent>/g,
+      '$1'
+    );
+
+    // Match only innermost <w:p> elements so nested textboxes are never broken
+    const innermostPRegex = /<w:p\b[^>]*>(?:(?!<w:p\b)[\s\S])*?<\/w:p>/g;
+
+    return cleanXml.replace(innermostPRegex, (paragraphXml) => {
+      // Match only <w:t> tags with word boundary \b so <w:txbxContent> is never touched!
+      const tRegex = /<w:t\b([^>]*)>(.*?)<\/w:t>/g;
       let fullText = '';
       let hasT = false;
       paragraphXml.replace(tRegex, (_match, _attrs, content) => {
@@ -359,36 +369,30 @@ export async function generateContractDocx(
       let newFullText = fullText;
 
       // Handle image tags
-      // Signature tag: {{insert_image signature 200 70}}
       if (/\{\{\s*insert_image\s+signature\s*[^}]*\}\}/i.test(newFullText)) {
         totalReplaced++;
-        if (sigRId) {
-          const cx = 200 * 9525;
-          const cy = 70 * 9525;
-          const drawingXml = `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${nextRIdNum++}" name="AgentSignature"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${nextRIdNum++}" name="AgentSignature"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${sigRId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
-          return `<w:p><w:pPr><w:jc w:val="center"/></w:pPr>${drawingXml}</w:p>`;
-        } else {
-          newFullText = newFullText.replace(/\{\{\s*insert_image\s+signature\s*[^}]*\}\}/gi, `[ ELECTRONIC SIGNATURE: ${contractData.fullName.toUpperCase()} ]`);
-        }
+        newFullText = newFullText.replace(
+          /\{\{\s*insert_image\s+signature\s*[^}]*\}\}/gi,
+          `[ ELECTRONIC SIGNATURE: ${contractData.fullName.toUpperCase()} ]`
+        );
       }
 
       // Photo tag: {{insert_image photo 96 96}}
       if (/\{\{\s*insert_image\s+photo\s*[^}]*\}\}/i.test(newFullText)) {
         totalReplaced++;
-        if (photoRId) {
-          const cx = 96 * 9525;
-          const cy = 96 * 9525;
-          const drawingXml = `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${nextRIdNum++}" name="AgentPhoto"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${nextRIdNum++}" name="AgentPhoto"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${photoRId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
-          return `<w:p><w:pPr><w:jc w:val="center"/></w:pPr>${drawingXml}</w:p>`;
-        } else {
-          newFullText = newFullText.replace(/\{\{\s*insert_image\s+photo\s*[^}]*\}\}/gi, `[ 1X1 ID PHOTO ATTACHED: ${contractData.fullName.toUpperCase()} ]`);
-        }
+        newFullText = newFullText.replace(
+          /\{\{\s*insert_image\s+photo\s*[^}]*\}\}/gi,
+          `[ 1X1 ID PHOTO ATTACHED: ${contractData.fullName.toUpperCase()} ]`
+        );
       }
 
       // ID tags: {{insert_image ID2 192 288}} and {{insert_image passport 384 768}}
       if (/\{\{\s*insert_image\s+(ID2|passport)\s*[^}]*\}\}/i.test(newFullText)) {
         totalReplaced++;
-        newFullText = newFullText.replace(/\{\{\s*insert_image\s+(ID2|passport)\s*[^}]*\}\}/gi, `[ OFFICIAL VALID GOVERNMENT IDENTIFICATION / PASSPORT ATTACHED ]`);
+        newFullText = newFullText.replace(
+          /\{\{\s*insert_image\s+(ID2|passport)\s*[^}]*\}\}/gi,
+          `[ OFFICIAL VALID GOVERNMENT IDENTIFICATION / PASSPORT ATTACHED ]`
+        );
       }
 
       // Replace all standard text dictionary placeholders

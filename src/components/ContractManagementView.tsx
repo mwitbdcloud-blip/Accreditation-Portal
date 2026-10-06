@@ -26,7 +26,9 @@ import { Position, POSITIONS, PositionContractTemplate, AgentProfile } from '../
 import { api } from '../services/api';
 import { formatDate, formatDateTime } from '../utils/dateFormatter';
 import {
-  generateContractPdf,
+  generateContractPdfFromTemplate,
+} from '../utils/templateDocumentEngine';
+import {
   downloadPdfBlob,
   generateContractDocx,
   downloadContractBlob,
@@ -293,11 +295,11 @@ export const ContractManagementView: React.FC<ContractManagementViewProps> = ({
         activeContract.templateUrl ||
         getDefaultTemplateUrlForPosition(selectedPosition);
 
-      const genResult = await generateContractPdf(templateSource, contractData, selectedPosition);
+      const genResult = await generateContractPdfFromTemplate(templateSource, contractData, selectedPosition);
       downloadPdfBlob(genResult.blob, genResult.fileName);
 
       showToast(
-        `Generated ${genResult.fileName} (PDF): Successfully mapped ${genResult.replacedCount} placeholder tags with ${targetAgent.fullName}'s data!`
+        `Generated ${genResult.fileName} (PDF - ${genResult.totalPages} pages): Successfully mapped tags from ${activeContract.fileName} with ${targetAgent.fullName}'s data!`
       );
     } catch (err: any) {
       console.error('Test contract PDF generation error:', err);

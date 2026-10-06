@@ -1108,6 +1108,7 @@ export default function App() {
                 contractModalData.agent?.position ||
                 'Marketing Associate')
           )}
+          positionContracts={positionContracts}
           currentUserRole={currentUser.role}
         />
       )}

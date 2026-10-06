@@ -38,6 +38,8 @@ import {
   generate34ColumnCsv,
   REGIONAL_TERRITORY_HEADS,
 } from './src/utils/agentDatasetExport';
+import { generateContractPdf } from './src/utils/contractPdfGenerator';
+import { extractContractData } from './src/components/ContractDocument';
 
 // In-Memory Database Store with initial seed data
 class DatabaseStore {
@@ -2644,8 +2646,13 @@ async function startServer() {
     ];
 
     const processXml = (xmlText: string) => {
-      return xmlText.replace(/<w:p[\s>].*?<\/w:p>/gs, (paragraphXml) => {
-        const tRegex = /<w:t([^>]*)>(.*?)<\/w:t>/gs;
+      const cleanXml = xmlText.replace(
+        /<mc:AlternateContent>[\s\S]*?<mc:Choice[^>]*>([\s\S]*?)<\/mc:Choice>[\s\S]*?<\/mc:AlternateContent>/g,
+        '$1'
+      );
+      const innermostPRegex = /<w:p\b[^>]*>(?:(?!<w:p\b)[\s\S])*?<\/w:p>/g;
+      return cleanXml.replace(innermostPRegex, (paragraphXml) => {
+        const tRegex = /<w:t\b([^>]*)>(.*?)<\/w:t>/g;
         let fullText = '';
         let hasT = false;
         paragraphXml.replace(tRegex, (_m, _attrs, content) => {
@@ -2719,10 +2726,10 @@ async function startServer() {
     return { buffer: outBuffer, fileName };
   };
 
-  // 11. Generate Contract Docx with Agent Data mapped to Template Tags
+  // 11. Generate Contract (PDF & Docx) with Agent Data mapped to Template Tags
   app.post('/api/contracts/generate', async (req, res) => {
     try {
-      const { affiliateCode, position } = req.body;
+      const { affiliateCode, position, format } = req.body;
       if (!affiliateCode) {
         return res.status(400).json({ error: 'affiliateCode is required' });
       }
@@ -2735,25 +2742,45 @@ async function startServer() {
       const application = db.applications.find((a) => a.affiliateCode === affiliateCode);
       const targetPos = position || application?.position || agent.position || 'Marketing Associate';
 
-      const { buffer, fileName } = await generateServerDocx(targetPos, agent, application);
+      if (format === 'docx') {
+        const { buffer, fileName } = await generateServerDocx(targetPos, agent, application);
+        return res.json({
+          success: true,
+          fileName,
+          fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          fileData: `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${buffer.toString('base64')}`,
+          message: `Contract generated in Word format from official ${targetPos} template.`,
+        });
+      }
+
+      // Default: Return official PDF format
+      const contractData = extractContractData(application, agent, targetPos as any);
+      const positionContract = db.positionContracts.find(
+        (c) => c.position.toLowerCase() === targetPos.toLowerCase()
+      );
+      const templateSource = positionContract?.fileData || positionContract?.templateUrl;
+      const pdfResult = await generateContractPdf(templateSource, contractData, targetPos);
+      const arrayBuffer = await pdfResult.blob.arrayBuffer();
+      const nodeBuf = Buffer.from(arrayBuffer);
 
       res.json({
         success: true,
-        fileName,
-        fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        fileData: `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${buffer.toString('base64')}`,
-        message: `Contract generated from official ${targetPos} template with all placeholder tags mapped.`,
+        fileName: pdfResult.fileName,
+        fileType: 'application/pdf',
+        fileData: `data:application/pdf;base64,${nodeBuf.toString('base64')}`,
+        message: `Contract generated in official PDF format (${pdfResult.totalPages} pages) from official ${targetPos} template with all placeholder tags mapped.`,
       });
     } catch (err: any) {
-      console.error('Error generating contract docx:', err);
+      console.error('Error generating contract:', err);
       res.status(500).json({ error: err.message || 'Failed to generate contract' });
     }
   });
 
-  // Direct binary download endpoint for generated contract
+  // Direct binary download endpoint for generated contract (Default: PDF, or ?format=docx)
   app.get('/api/contracts/download/:position/:affiliateCode', async (req, res) => {
     try {
       const { position, affiliateCode } = req.params;
+      const format = req.query.format as string;
       const agent = db.agents.find((a) => a.affiliateCode === affiliateCode);
       if (!agent) {
         return res.status(404).send('Agent not found');
@@ -2762,11 +2789,26 @@ async function startServer() {
       const application = db.applications.find((a) => a.affiliateCode === affiliateCode);
       const targetPos = decodeURIComponent(position) || application?.position || agent.position || 'Marketing Associate';
 
-      const { buffer, fileName } = await generateServerDocx(targetPos, agent, application);
+      if (format === 'docx') {
+        const { buffer, fileName } = await generateServerDocx(targetPos, agent, application);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        return res.send(buffer);
+      }
 
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-      res.send(buffer);
+      // Official PDF format
+      const contractData = extractContractData(application, agent, targetPos as any);
+      const positionContract = db.positionContracts.find(
+        (c) => c.position.toLowerCase() === targetPos.toLowerCase()
+      );
+      const templateSource = positionContract?.fileData || positionContract?.templateUrl;
+      const pdfResult = await generateContractPdf(templateSource, contractData, targetPos);
+      const arrayBuffer = await pdfResult.blob.arrayBuffer();
+      const nodeBuf = Buffer.from(arrayBuffer);
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${pdfResult.fileName}"`);
+      res.send(nodeBuf);
     } catch (err: any) {
       console.error('Download contract error:', err);
       res.status(500).send(err.message || 'Failed to download contract');

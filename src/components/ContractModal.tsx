@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   X,
   Download,
@@ -24,12 +24,17 @@ import {
 } from 'lucide-react';
 import { Position, POSITIONS, AccreditationApplication, AgentProfile, PositionContractTemplate } from '../types';
 import { extractContractData } from './ContractDocument';
-import { getPagesForPosition } from './contractPages';
+import { TemplateContractViewer } from './TemplateContractViewer';
 import {
-  generateContractDocx,
+  exportDocxContainerToPdf,
+  generateContractPdfFromTemplate,
+  GeneratedPdfResult,
+} from '../utils/templateDocumentEngine';
+import {
   generateContractPdf,
-  downloadContractBlob,
   downloadPdfBlob,
+  generateContractDocx,
+  downloadContractBlob,
   getDefaultTemplateUrlForPosition,
   getDefaultTemplateFileName,
   buildTagDictionary,
@@ -39,6 +44,7 @@ interface ContractModalProps {
   application?: AccreditationApplication | null;
   agent?: AgentProfile | null;
   positionContract?: PositionContractTemplate | null;
+  positionContracts?: PositionContractTemplate[];
   contractText?: string;
   isOpen?: boolean;
   initialPosition?: Position;
@@ -50,6 +56,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
   application,
   agent,
   positionContract,
+  positionContracts,
   initialPosition,
   currentUserRole,
   onClose,
@@ -89,6 +96,8 @@ export const ContractModal: React.FC<ContractModalProps> = ({
   const [viewMode, setViewMode] = useState<'continuous' | 'paginated'>('continuous');
   const [currentPageIndex, setCurrentPageIndex] = useState<number>(0);
   const [zoomScale, setZoomScale] = useState<number>(1);
+  const [renderedTotalPages, setRenderedTotalPages] = useState<number>(11);
+  const renderedContainerRef = useRef<HTMLElement | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
   const [isGeneratingDocx, setIsGeneratingDocx] = useState<boolean>(false);
   const [showMappingDrawer, setShowMappingDrawer] = useState<boolean>(false);
@@ -98,28 +107,34 @@ export const ContractModal: React.FC<ContractModalProps> = ({
 
   // Extract all details provided by agent
   const contractData = extractContractData(application, agent, activePosition);
-  const pages = getPagesForPosition(activePosition);
-  const totalPages = pages.length;
-
   const { mappingSummary } = buildTagDictionary(contractData, activePosition);
 
-  // Primary Action: Download official SAA Contract in PDF format
+  // Match the template corresponding to current active position tab
+  const activePositionContract =
+    positionContracts?.find((c) => c.position === activePosition) ||
+    (positionContract?.position === activePosition ? positionContract : null) ||
+    positionContract;
+
+  const activeTemplateSource =
+    activePositionContract?.fileData ||
+    activePositionContract?.templateUrl ||
+    getDefaultTemplateUrlForPosition(activePosition);
+
+  // Primary Action: Download official SAA Contract in PDF format using exact uploaded template
   const handleDownloadPdfContract = async () => {
     if (!isCurrentActiveUnlocked) return;
 
     setIsGeneratingPdf(true);
     setDownloadNotice(null);
     try {
-      const templateSource =
-        positionContract?.fileData ||
-        positionContract?.templateUrl ||
-        getDefaultTemplateUrlForPosition(activePosition);
+      const templateSource = activeTemplateSource;
 
+      // Always generate non-blank, high-resolution vector PDF reflecting uploaded template
       const genResult = await generateContractPdf(templateSource, contractData, activePosition);
       downloadPdfBlob(genResult.blob, genResult.fileName);
 
       setDownloadNotice(
-        `Successfully generated "${genResult.fileName}" in official PDF format! All placeholder tags have been mapped to your submitted data.`
+        `Successfully generated "${genResult.fileName}" in official PDF format (${genResult.totalPages} pages)! Exactly reflects the uploaded ${activePosition} template with all placeholder tags filled.`
       );
     } catch (err: any) {
       console.error('PDF generation error:', err);
@@ -137,10 +152,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
     setDownloadNotice(null);
     try {
       // Use exact template uploaded by Staff/Admin as source of truth
-      const templateSource =
-        positionContract?.fileData ||
-        positionContract?.templateUrl ||
-        getDefaultTemplateUrlForPosition(activePosition);
+      const templateSource = activeTemplateSource;
 
       const genResult = await generateContractDocx(templateSource, contractData, activePosition);
       downloadContractBlob(genResult.blob, genResult.fileName);
@@ -164,30 +176,28 @@ export const ContractModal: React.FC<ContractModalProps> = ({
   const handleDownloadMultiPageHTML = () => {
     if (!isCurrentActiveUnlocked) return;
     const title = `Megaworld_International_SAA_${activePosition.replace(/\s+/g, '_')}_${contractData.affiliateCode}`;
-    const pageHtmlStrings = pages
-      .map((p, idx) => {
-        return `<div class="contract-print-page" style="page-break-after: always; padding: 40px; margin-bottom: 24px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px;">
-          <div style="font-family: Arial, sans-serif; font-size: 10px; color: #64748b; margin-bottom: 8px; display: flex; justify-content: space-between;">
-            <span>MEGAWORLD INTERNATIONAL • ${activePosition.toUpperCase()}</span>
-            <span>Page ${idx + 1} of ${totalPages}</span>
-          </div>
-          <h2 style="font-size: 16px; font-weight: bold; color: #1e3a8a; text-transform: uppercase; margin-bottom: 16px; text-align: center;">
-            ${p.title}
-          </h2>
-          <div style="font-family: Georgia, serif; font-size: 12px; line-height: 1.6; color: #1e293b;">
-            Affiliate: <strong>${contractData.fullName}</strong> (${contractData.affiliateCode})<br/>
-            Valid Period: ${contractData.startDate} to ${contractData.expiryDate}<br/>
-            Bank: ${contractData.bankName} - ${contractData.accountNumber}<br/>
-            Leadership: ${contractData.teamName} • Hub: ${contractData.brokerGroup}
-          </div>
-          <div style="margin-top: 40px; padding-top: 12px; border-top: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #475569;">
-            <span>E-Signature Authenticated • Signatory: ${contractData.fullName}</span>
-            ${contractData.eSignatureUrl ? `<img src="${contractData.eSignatureUrl}" style="height: 24px; max-width: 90px; object-fit: contain;" />` : `<span style="font-style: italic; font-weight: bold;">${contractData.fullName}</span>`}
-            <span>Page ${idx + 1} of ${totalPages}</span>
-          </div>
-        </div>`;
-      })
-      .join('\n');
+    const pageHtmlStrings = Array.from({ length: renderedTotalPages }, (_, idx) => {
+      return `<div class="contract-print-page" style="page-break-after: always; padding: 40px; margin-bottom: 24px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px;">
+        <div style="font-family: Arial, sans-serif; font-size: 10px; color: #64748b; margin-bottom: 8px; display: flex; justify-content: space-between;">
+          <span>MEGAWORLD INTERNATIONAL • ${activePosition.toUpperCase()}</span>
+          <span>Page ${idx + 1} of ${renderedTotalPages}</span>
+        </div>
+        <h2 style="font-size: 16px; font-weight: bold; color: #1e3a8a; text-transform: uppercase; margin-bottom: 16px; text-align: center;">
+          ${activePosition} Sales Accreditation Agreement (SAA)
+        </h2>
+        <div style="font-family: Georgia, serif; font-size: 12px; line-height: 1.6; color: #1e293b;">
+          Affiliate: <strong>${contractData.fullName}</strong> (${contractData.affiliateCode})<br/>
+          Valid Period: ${contractData.startDate} to ${contractData.expiryDate}<br/>
+          Bank: ${contractData.bankName} - ${contractData.accountNumber}<br/>
+          Leadership: ${contractData.teamName} • Hub: ${contractData.brokerGroup}
+        </div>
+        <div style="margin-top: 40px; padding-top: 12px; border-top: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #475569;">
+          <span>E-Signature Authenticated • Signatory: ${contractData.fullName}</span>
+          ${contractData.eSignatureUrl ? `<img src="${contractData.eSignatureUrl}" style="height: 24px; max-width: 90px; object-fit: contain;" />` : `<span style="font-style: italic; font-weight: bold;">${contractData.fullName}</span>`}
+          <span>Page ${idx + 1} of ${renderedTotalPages}</span>
+        </div>
+      </div>`;
+    }).join('\n');
 
     const fullHtml = `<!DOCTYPE html>
 <html>
@@ -219,7 +229,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
   };
 
   const activeTemplateFileName =
-    positionContract?.fileName || getDefaultTemplateFileName(activePosition);
+    activePositionContract?.fileName || getDefaultTemplateFileName(activePosition);
 
   return (
     <div id="contract-modal" className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/75 backdrop-blur-xs overflow-y-auto">
@@ -236,7 +246,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
                   Generated Sales Accreditation Contract (SAA)
                 </h3>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  {totalPages} Pages • Official Template
+                  {renderedTotalPages} Pages • Official {activePosition} Template
                 </span>
               </div>
               <p className="text-xs text-slate-400">
@@ -247,134 +257,17 @@ export const ContractModal: React.FC<ContractModalProps> = ({
             </div>
           </div>
 
-          {/* Quick Actions & Close */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Primary Action: Download Official Contract in PDF format */}
-            <button
-              onClick={handleDownloadPdfContract}
-              disabled={!isCurrentActiveUnlocked || isGeneratingPdf}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition shadow-md ${
-                isCurrentActiveUnlocked
-                  ? 'text-slate-950 bg-amber-400 hover:bg-amber-300'
-                  : 'text-slate-500 bg-slate-800/80 cursor-not-allowed border border-slate-700'
-              }`}
-              title="Download filled official contract document in PDF format (.pdf)"
-            >
-              {isGeneratingPdf ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Generating PDF Contract...</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download Contract (PDF)</span>
-                  <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-slate-950/20 text-slate-900 ml-0.5">
-                    PDF
-                  </span>
-                </>
-              )}
-            </button>
-
-            {/* Secondary Option: Download Word DOCX */}
-            <button
-              onClick={handleDownloadDocxContract}
-              disabled={!isCurrentActiveUnlocked || isGeneratingDocx}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg transition border ${
-                isCurrentActiveUnlocked
-                  ? 'text-slate-200 bg-slate-800 hover:bg-slate-700 border-slate-700'
-                  : 'text-slate-500 bg-slate-900 border-slate-800 cursor-not-allowed'
-              }`}
-              title="Download Word Document (.docx)"
-            >
-              {isGeneratingDocx ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <FileText className="w-3.5 h-3.5 text-blue-400" />
-              )}
-              <span>Word (.docx)</span>
-            </button>
-
-            <button
-              onClick={handlePrint}
-              disabled={!isCurrentActiveUnlocked}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition shadow-xs ${
-                isCurrentActiveUnlocked
-                  ? 'text-white bg-blue-900 hover:bg-blue-800'
-                  : 'text-slate-500 bg-slate-800/80 cursor-not-allowed border border-slate-700'
-              }`}
-              title={isCurrentActiveUnlocked ? 'Print or Save to PDF' : 'Locked'}
-            >
-              {isCurrentActiveUnlocked ? <Printer className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5 text-amber-400" />}
-              Print / Save PDF
-            </button>
-
-            <button
-              onClick={handleDownloadMultiPageHTML}
-              disabled={!isCurrentActiveUnlocked}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition border ${
-                isCurrentActiveUnlocked
-                  ? 'text-slate-200 bg-slate-800 hover:bg-slate-700 border-slate-700'
-                  : 'text-slate-500 bg-slate-900 border-slate-800 cursor-not-allowed'
-              }`}
-              title={isCurrentActiveUnlocked ? 'Export Standalone HTML' : 'Locked'}
-            >
-              <FileDown className="w-3.5 h-3.5 text-slate-300" />
-              Export HTML
-            </button>
-
+          {/* Close Action */}
+          <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition ml-1"
+              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+              title="Close Viewer"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
-
-        {/* Source of Truth Info Bar */}
-        <div className="px-5 py-2 bg-slate-950/80 border-b border-slate-800 flex flex-wrap items-center justify-between text-[11px] gap-2 text-slate-400">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span>
-              Source of Truth Template: <strong className="text-slate-200">{activeTemplateFileName}</strong> (Uploaded by BD Staff / Admin)
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowMappingDrawer(!showMappingDrawer)}
-            className="text-amber-300 hover:text-amber-200 font-semibold flex items-center gap-1 cursor-pointer"
-          >
-            <Tag className="w-3 h-3" />
-            {showMappingDrawer ? 'Hide Tag Data Transfer Mapping' : 'View Tag Data Transfer Mapping'}
-            {showMappingDrawer ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-          </button>
-        </div>
-
-        {/* Collapsible Tag Data Transfer Mapping Drawer */}
-        {showMappingDrawer && (
-          <div className="px-5 py-3 bg-slate-900 border-b border-slate-800 text-xs animate-in fade-in duration-200">
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-bold text-white flex items-center gap-1.5">
-                <FileCheck className="w-4 h-4 text-emerald-400" />
-                Automatic Data Transfer: Agent Info Mapped to Designated Template Tags
-              </span>
-              <span className="text-[10px] text-slate-400">Original template layout and wording remain unchanged</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
-              {Object.entries(mappingSummary).map(([tag, val]) => (
-                <div key={tag} className="p-2 bg-slate-950/70 border border-slate-800 rounded-lg flex flex-col justify-between">
-                  <span className="font-mono text-[10px] text-amber-300 font-bold">{tag}</span>
-                  <span className="text-slate-200 text-[11px] truncate font-medium" title={val}>
-                    {val || '<empty>'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Download notification banner if available */}
         {downloadNotice && (
@@ -480,15 +373,15 @@ export const ContractModal: React.FC<ContractModalProps> = ({
                   onChange={(e) => setCurrentPageIndex(Number(e.target.value))}
                   className="bg-slate-900 border border-slate-700 text-white text-xs rounded px-2 py-1 focus:outline-none"
                 >
-                  {pages.map((p, idx) => (
+                  {Array.from({ length: renderedTotalPages }, (_, idx) => (
                     <option key={idx} value={idx}>
-                      Page {idx + 1} of {totalPages} — {p.title}
+                      Page {idx + 1} of {renderedTotalPages}
                     </option>
                   ))}
                 </select>
                 <button
-                  onClick={() => setCurrentPageIndex((prev) => Math.min(totalPages - 1, prev + 1))}
-                  disabled={currentPageIndex === totalPages - 1}
+                  onClick={() => setCurrentPageIndex((prev) => Math.min(renderedTotalPages - 1, prev + 1))}
+                  disabled={currentPageIndex >= renderedTotalPages - 1}
                   className="p-1 text-slate-300 hover:text-white disabled:opacity-40 rounded hover:bg-slate-800"
                 >
                   <ChevronRight className="w-4 h-4" />
@@ -571,49 +464,85 @@ export const ContractModal: React.FC<ContractModalProps> = ({
               </button>
             </div>
           ) : (
-            <div
-              style={{ transform: `scale(${zoomScale})`, transformOrigin: 'top center' }}
-              className="w-full max-w-3xl space-y-6 transition-transform duration-150"
-            >
-              {viewMode === 'continuous' ? (
-                pages.map((p, idx) => (
-                  <div key={idx} className="relative group">
-                    <div className="absolute -left-12 top-4 hidden md:block text-[11px] font-mono font-bold text-slate-400 select-none">
-                      #{idx + 1}
-                    </div>
-                    {p.render(contractData, activePosition, totalPages)}
-                  </div>
-                ))
-              ) : (
-                <div>
-                  <div className="text-center text-xs font-medium text-slate-300 mb-2">
-                    Displaying Page {currentPageIndex + 1} of {totalPages}: <strong>{pages[currentPageIndex]?.title}</strong>
-                  </div>
-                  {pages[currentPageIndex]?.render(contractData, activePosition, totalPages)}
-                </div>
-              )}
+            <div className="w-full flex justify-center">
+              <TemplateContractViewer
+                templateSource={activeTemplateSource}
+                contractData={contractData}
+                position={activePosition}
+                viewMode={viewMode}
+                currentPageIndex={currentPageIndex}
+                zoomScale={zoomScale}
+                onLoaded={(total, container) => {
+                  setRenderedTotalPages(total);
+                  renderedContainerRef.current = container;
+                }}
+              />
             </div>
           )}
         </div>
 
+        {/* Collapsible Tag Data Transfer Mapping Drawer at lower section */}
+        {showMappingDrawer && (
+          <div className="px-5 py-3 bg-slate-900 border-t border-slate-800 text-xs animate-in fade-in duration-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-bold text-white flex items-center gap-1.5">
+                <FileCheck className="w-4 h-4 text-emerald-400" />
+                Automatic Data Transfer: Agent Info Mapped to Designated Template Tags
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowMappingDrawer(false)}
+                className="text-slate-400 hover:text-white p-1 rounded"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
+              {Object.entries(mappingSummary).map(([tag, val]) => (
+                <div key={tag} className="p-2 bg-slate-950/70 border border-slate-800 rounded-lg flex flex-col justify-between">
+                  <span className="font-mono text-[10px] text-amber-300 font-bold">{tag}</span>
+                  <span className="text-slate-200 text-[11px] truncate font-medium" title={val}>
+                    {val || '<empty>'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Bottom Status Bar */}
         <div className="px-5 py-3 bg-slate-900 border-t border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-400 gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             <span>
               Accreditation Term: <strong className="text-slate-200">{contractData.startDate}</strong> to <strong className="text-slate-200">{contractData.expiryDate}</strong>
             </span>
             <span className="text-slate-600">•</span>
             <span className="text-slate-300">
-              Generated from: <span className="font-mono text-amber-300">{activeTemplateFileName}</span>
+              Source Template: <span className="font-mono text-amber-300">{activeTemplateFileName}</span> ({renderedTotalPages} Pages)
             </span>
+            <button
+              type="button"
+              onClick={() => setShowMappingDrawer(!showMappingDrawer)}
+              className="text-amber-300 hover:text-amber-200 font-semibold flex items-center gap-1 cursor-pointer ml-2 text-xs"
+              title="Toggle Tag Data Transfer Mapping"
+            >
+              <Tag className="w-3.5 h-3.5" />
+              {showMappingDrawer ? 'Hide Tag Data Transfer Mapping' : 'View Tag Data Transfer Mapping'}
+              {showMappingDrawer ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+            </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={handleDownloadPdfContract}
               disabled={!isCurrentActiveUnlocked || isGeneratingPdf}
-              className="text-xs font-bold text-slate-900 hover:bg-amber-300 px-3.5 py-1.5 rounded-lg bg-amber-400 transition flex items-center gap-1.5 shadow-sm"
+              className={`text-xs font-bold px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 shadow-sm ${
+                isCurrentActiveUnlocked
+                  ? 'text-slate-900 bg-amber-400 hover:bg-amber-300'
+                  : 'text-slate-500 bg-slate-800 cursor-not-allowed border border-slate-700'
+              }`}
               title="Download official contract in PDF format"
             >
               {isGeneratingPdf ? (
@@ -629,20 +558,42 @@ export const ContractModal: React.FC<ContractModalProps> = ({
             <button
               onClick={handleDownloadDocxContract}
               disabled={!isCurrentActiveUnlocked || isGeneratingDocx}
-              className="text-xs font-medium text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition flex items-center gap-1.5 border border-slate-700"
+              className={`text-xs font-medium px-2.5 py-1.5 rounded-lg transition flex items-center gap-1.5 border ${
+                isCurrentActiveUnlocked
+                  ? 'text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border-slate-700'
+                  : 'text-slate-500 bg-slate-900 border-slate-800 cursor-not-allowed'
+              }`}
               title="Download Word Document (.docx)"
             >
               <FileText className="w-3.5 h-3.5 text-blue-400" /> Word (.docx)
             </button>
             <button
               onClick={handlePrint}
-              className="text-xs font-semibold text-blue-300 hover:text-white px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition"
+              disabled={!isCurrentActiveUnlocked}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+                isCurrentActiveUnlocked
+                  ? 'text-blue-300 hover:text-white bg-slate-800 hover:bg-slate-700'
+                  : 'text-slate-500 bg-slate-900 cursor-not-allowed border border-slate-800'
+              }`}
+              title="Print or Save PDF"
             >
-              Print / Save PDF
+              <Printer className="w-3.5 h-3.5" /> Print / Save PDF
+            </button>
+            <button
+              onClick={handleDownloadMultiPageHTML}
+              disabled={!isCurrentActiveUnlocked}
+              className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg transition flex items-center gap-1.5 border ${
+                isCurrentActiveUnlocked
+                  ? 'text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border-slate-700'
+                  : 'text-slate-500 bg-slate-900 border-slate-800 cursor-not-allowed'
+              }`}
+              title={isCurrentActiveUnlocked ? 'Export Standalone HTML' : 'Locked'}
+            >
+              <FileDown className="w-3.5 h-3.5 text-slate-300" /> Export HTML
             </button>
             <button
               onClick={onClose}
-              className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 transition"
+              className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 transition"
             >
               Close Viewer
             </button>

@@ -139,14 +139,30 @@ export function subscribeToAuth(callback: (user: FirebaseUser | null) => void) {
   return onAuthStateChanged(auth, callback);
 }
 
+// Sanitize payload to remove any undefined fields before Firestore operations
+function cleanPayload<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      if (value !== null && typeof value === 'object' && !(value instanceof Timestamp) && !(value instanceof Date)) {
+        result[key] = Array.isArray(value) ? value : cleanPayload(value);
+      } else {
+        result[key] = value;
+      }
+    }
+  }
+  return result;
+}
+
 // Agent sync helpers
 export async function syncAgentToFirestore(agent: AgentProfile): Promise<void> {
   const docPath = `agents/${agent.affiliateCode}`;
   try {
-    await setDoc(doc(db, 'agents', agent.affiliateCode), {
+    const payload = cleanPayload({
       ...agent,
       updatedAt: Timestamp.now(),
-    }, { merge: true });
+    });
+    await setDoc(doc(db, 'agents', agent.affiliateCode), payload, { merge: true });
   } catch (err: any) {
     if (
       err?.code === 'unavailable' ||
@@ -183,10 +199,11 @@ export async function fetchAgentFromFirestore(affiliateCode: string): Promise<Ag
 export async function saveApplicationToFirestore(application: AccreditationApplication): Promise<void> {
   const docPath = `applications/${application.id}`;
   try {
-    await setDoc(doc(db, 'applications', application.id), {
+    const payload = cleanPayload({
       ...application,
       syncedAt: Timestamp.now(),
-    }, { merge: true });
+    });
+    await setDoc(doc(db, 'applications', application.id), payload, { merge: true });
   } catch (err: any) {
     if (
       err?.code === 'unavailable' ||
@@ -218,11 +235,12 @@ export async function fetchApplicationsFromFirestore(): Promise<AccreditationApp
 export async function addNotificationToFirestore(notif: NotificationItem): Promise<void> {
   const docPath = `notifications/${notif.id}`;
   try {
-    await setDoc(doc(db, 'notifications', notif.id), {
+    const payload = cleanPayload({
       ...notif,
       createdAtIso: notif.timestamp || new Date().toISOString(),
       timestamp: Timestamp.now(),
-    }, { merge: true });
+    });
+    await setDoc(doc(db, 'notifications', notif.id), payload, { merge: true });
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, docPath);
   }
@@ -232,10 +250,11 @@ export async function addNotificationToFirestore(notif: NotificationItem): Promi
 export async function addAuditLogToFirestore(log: AuditLog): Promise<void> {
   const docPath = `auditLogs/${log.id}`;
   try {
-    await setDoc(doc(db, 'auditLogs', log.id), {
+    const payload = cleanPayload({
       ...log,
       timestamp: Timestamp.now(),
     });
+    await setDoc(doc(db, 'auditLogs', log.id), payload);
   } catch (err) {
     handleFirestoreError(err, OperationType.CREATE, docPath);
   }
