@@ -273,11 +273,14 @@ export interface PositionAccessRequest {
 export interface AuditLog {
   id: string;
   timestamp: string;
-  user: string;
-  role: UserRole;
+  user?: string;
+  performedBy?: string;
+  role: UserRole | string;
   action: string;
-  recordAffected: string;
+  recordAffected?: string;
+  affiliateCode?: string;
   details: string;
+  ipAddress?: string;
   previousValue?: string;
   newValue?: string;
 }
