@@ -4,6 +4,7 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  SECRETS_SCAN_OMIT_PATHS = "firebase-applet-config.json,dist/assets/firebase-public-config-*.js,dist/assets/firebase-public-config-*.js.map"
 
 # Redirect API calls to the live Cloud backend proxy
 [[redirects]]
