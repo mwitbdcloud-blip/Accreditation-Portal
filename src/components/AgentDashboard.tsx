@@ -16,8 +16,6 @@ import {
   Lock,
   FileCheck,
   CreditCard,
-  QrCode,
-  Maximize2,
   User,
 } from 'lucide-react';
 import {
@@ -44,6 +42,7 @@ interface AgentDashboardProps {
   positionContract?: PositionContractTemplate | null;
   onNavigateToAccreditation: () => void;
   onViewContract: () => void;
+  onNavigateToDigitalIdBadge?: () => void;
   initialSubView?: 'overview' | 'badge';
 }
 
@@ -54,6 +53,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
   positionContract,
   onNavigateToAccreditation,
   onViewContract,
+  onNavigateToDigitalIdBadge,
   initialSubView = 'overview',
 }) => {
   const latestApp = applications[0];
@@ -197,7 +197,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
             <button
               type="button"
               id="btn-hero-digital-badge"
-              onClick={() => setActiveSubView('badge')}
+              onClick={() => (onNavigateToDigitalIdBadge ? onNavigateToDigitalIdBadge() : setActiveSubView('badge'))}
               className="px-4 py-3 rounded-xl text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 shadow-md transition flex items-center gap-2 cursor-pointer shrink-0"
               title="Show Client Digital ID Badge"
             >
@@ -206,40 +206,6 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
             </button>
           </div>
         </div>
-      </div>
-
-      {/* Sub-view Navigation Tabs: Overview vs. Digital ID Badge */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-        <button
-          type="button"
-          id="tab-subview-overview"
-          onClick={() => setActiveSubView('overview')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition flex items-center gap-2 cursor-pointer ${
-            activeSubView === 'overview'
-              ? 'bg-blue-900 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          Dashboard Overview
-        </button>
-
-        <button
-          type="button"
-          id="tab-subview-badge"
-          onClick={() => setActiveSubView('badge')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition flex items-center gap-2 cursor-pointer ${
-            activeSubView === 'badge'
-              ? 'bg-blue-900 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
-          }`}
-        >
-          <Award className="w-4 h-4 text-amber-500" />
-          Digital ID Badge
-          <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-400 text-slate-950">
-            Client View
-          </span>
-        </button>
       </div>
 
       {/* Main Content Area: Render Digital ID Badge view OR Standard Dashboard Overview */}
@@ -421,53 +387,6 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
               <span className="text-[11px] font-medium leading-tight">{step.label}</span>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* Digital ID Badge Client Presentation Highlight Card in Overview */}
-      <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white p-6 rounded-2xl border border-slate-800 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-5">
-        <div className="flex items-center gap-4">
-          <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden bg-slate-800 border-2 border-amber-400/60 shadow-lg shrink-0">
-            {photoUrl ? (
-              <img src={photoUrl} alt={agent.fullName} className="w-full h-full object-cover object-top" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center font-serif text-xl font-bold text-amber-300">
-                {agent.fullName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
-              </div>
-            )}
-          </div>
-          <div className="space-y-1">
-            <span className="text-[10px] font-bold text-amber-300 uppercase tracking-widest flex items-center gap-1.5">
-              <Award className="w-3.5 h-3.5" /> Official Digital ID Badge for Clients
-            </span>
-            <h4 className="text-base sm:text-lg font-bold text-white font-serif">{agent.fullName}</h4>
-            <p className="text-xs text-slate-300">
-              <span className="font-mono text-amber-300 font-bold">{agent.affiliateCode}</span> •{' '}
-              {agent.position && agent.position !== 'Pending Accreditation' ? agent.position : 'Accredited Affiliate'} •{' '}
-              <span className={isActive ? 'text-emerald-400 font-semibold' : 'text-amber-400 font-semibold'}>
-                {agent.accreditationStatus}
-              </span>
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2.5 flex-wrap shrink-0">
-          <button
-            type="button"
-            id="btn-preview-present-badge"
-            onClick={() => setActiveSubView('badge')}
-            className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 transition flex items-center gap-2 shadow-sm cursor-pointer"
-          >
-            <Maximize2 className="w-4 h-4 text-slate-950" /> Present ID to Client
-          </button>
-          <button
-            type="button"
-            id="btn-preview-view-badge"
-            onClick={() => setActiveSubView('badge')}
-            className="px-4 py-2.5 rounded-xl text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition flex items-center gap-2 cursor-pointer"
-          >
-            <QrCode className="w-4 h-4 text-blue-300" /> View QR & 2-Sided Badge
-          </button>
         </div>
       </div>
 

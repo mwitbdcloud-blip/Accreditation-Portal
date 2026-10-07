@@ -57,6 +57,7 @@ import { ContractModal } from './components/ContractModal';
 import { NotificationsModal } from './components/NotificationsModal';
 import { MegaworldLogo } from './components/MegaworldLogo';
 import { ProfileEditorModal, ProfileData } from './components/ProfileEditorModal';
+import { DigitalIdBadge } from './components/DigitalIdBadge';
 
 export default function App() {
   // Authentication session state
@@ -291,8 +292,13 @@ export default function App() {
     setIsLoadingAuth(true);
     try {
       const fbUser = await signInWithGoogle();
-      if (!fbUser || !fbUser.email) {
-        throw new Error('Google sign-in did not provide an email address.');
+      if (!fbUser) {
+        // User closed or cancelled the Google sign-in popup
+        return;
+      }
+      if (!fbUser.email) {
+        showToast('Google sign-in did not provide an email address.');
+        return;
       }
       try {
         await handleLogin(fbUser.email);
@@ -310,8 +316,13 @@ export default function App() {
         await handleLogin(regRes.affiliateCode);
       }
     } catch (err: any) {
-      showToast(err?.message || 'Google sign-in failed');
-      throw err;
+      if (
+        err?.code !== 'auth/popup-closed-by-user' &&
+        err?.code !== 'auth/cancelled-popup-request' &&
+        !err?.message?.includes('popup-closed-by-user')
+      ) {
+        showToast(err?.message || 'Google sign-in failed');
+      }
     } finally {
       setIsLoadingAuth(false);
     }
@@ -980,7 +991,15 @@ export default function App() {
         {currentUser.role === 'Agent' ? (
           /* Agent Views */
           <>
-            {(activeTab === 'dashboard' || activeTab === 'digitalIdBadge' || (!['accreditation', 'resources'].includes(activeTab))) && activeAgent && (
+            {activeTab === 'digitalIdBadge' && activeAgent && (
+              <DigitalIdBadge
+                agent={activeAgent}
+                latestApplication={applications.find((a) => a.affiliateCode === activeAgent.affiliateCode) || null}
+                onNavigateToAccreditation={() => setActiveTab('accreditation')}
+              />
+            )}
+
+            {(activeTab === 'dashboard' || (!['digitalIdBadge', 'accreditation', 'resources'].includes(activeTab))) && activeAgent && (
               <AgentDashboard
                 agent={activeAgent}
                 applications={applications.filter((a) => a.affiliateCode === activeAgent.affiliateCode)}
@@ -1007,7 +1026,8 @@ export default function App() {
                 positionContract={positionContracts.find((c) => c.position === activeAgent.position)}
                 onNavigateToAccreditation={() => setActiveTab('accreditation')}
                 onViewContract={handleOpenAgentContract}
-                initialSubView={activeTab === 'digitalIdBadge' ? 'badge' : 'overview'}
+                onNavigateToDigitalIdBadge={() => setActiveTab('digitalIdBadge')}
+                initialSubView="overview"
               />
             )}
 

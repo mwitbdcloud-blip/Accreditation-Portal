@@ -207,7 +207,13 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onGoogleLogin, onRe
                       try {
                         await onGoogleLogin();
                       } catch (err: any) {
-                        setErrorMessage(err.message || 'Google sign-in failed.');
+                        if (
+                          err?.code !== 'auth/popup-closed-by-user' &&
+                          err?.code !== 'auth/cancelled-popup-request' &&
+                          !err?.message?.includes('popup-closed-by-user')
+                        ) {
+                          setErrorMessage(err?.message || 'Google sign-in failed.');
+                        }
                       }
                     }}
                     className="w-full py-2 px-4 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl shadow-xs transition flex items-center justify-center gap-2.5 disabled:opacity-50"
