@@ -58,6 +58,7 @@ import { NotificationsModal } from './components/NotificationsModal';
 import { MegaworldLogo } from './components/MegaworldLogo';
 import { ProfileEditorModal, ProfileData } from './components/ProfileEditorModal';
 import { DigitalIdBadge } from './components/DigitalIdBadge';
+import { PublicVerificationView } from './components/PublicVerificationView';
 
 export default function App() {
   // Authentication session state
@@ -72,6 +73,39 @@ export default function App() {
   const [isLoadingAuth, setIsLoadingAuth] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+
+  // Client QR code verification state from URL params
+  const [publicVerifyCode, setPublicVerifyCode] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const verifyParam = searchParams.get('verify');
+      if (verifyParam) return verifyParam;
+
+      if (window.location.hash.startsWith('#verify/')) {
+        return window.location.hash.replace('#verify/', '');
+      }
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const searchParams = new URLSearchParams(window.location.search);
+      const verifyParam = searchParams.get('verify');
+      if (verifyParam) {
+        setPublicVerifyCode(verifyParam);
+      } else if (window.location.hash.startsWith('#verify/')) {
+        setPublicVerifyCode(window.location.hash.replace('#verify/', ''));
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('hashchange', handlePopState);
+    };
+  }, []);
 
   // Application Data States
   const [agents, setAgents] = useState<AgentProfile[]>([]);
@@ -659,6 +693,24 @@ export default function App() {
       contractText: app.contractUrl,
     });
   };
+
+  // If client opened via QR code verification scan, render Public Verification Portal
+  if (publicVerifyCode) {
+    return (
+      <PublicVerificationView
+        initialCode={publicVerifyCode}
+        agents={agents}
+        applications={applications}
+        onBackToPortal={() => {
+          setPublicVerifyCode(null);
+          if (typeof window !== 'undefined') {
+            const cleanUrl = window.location.pathname;
+            window.history.replaceState({}, '', cleanUrl);
+          }
+        }}
+      />
+    );
+  }
 
   // If not logged in, render the Auth View
   if (!currentUser) {

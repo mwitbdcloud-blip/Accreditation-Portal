@@ -618,5 +618,6 @@ export function downloadContractBlob(blob: Blob, fileName: string): void {
 }
 
 // Re-export PDF contract generation functions
-export { generateContractPdf, downloadPdfBlob } from './contractPdfGenerator';
+export { generateContractPdfFromTemplate as generateContractPdf } from './templateDocumentEngine';
+export { downloadPdfBlob } from './contractPdfGenerator';
 export type { GenerationResultPdf } from './contractPdfGenerator';

@@ -125,12 +125,17 @@ export const ContractModal: React.FC<ContractModalProps> = ({
     try {
       const templateSource = activeTemplateSource;
 
-      // Always generate non-blank, high-resolution vector PDF reflecting uploaded template
-      const genResult = await generateContractPdf(templateSource, contractData, activePosition);
+      // Generate official PDF exactly matching the viewed template and content
+      const genResult = await generateContractPdfFromTemplate(
+        templateSource,
+        contractData,
+        activePosition,
+        renderedContainerRef.current
+      );
       downloadPdfBlob(genResult.blob, genResult.fileName);
 
       setDownloadNotice(
-        `Successfully generated "${genResult.fileName}" in official PDF format (${genResult.totalPages} pages)! Exactly reflects the uploaded ${activePosition} template with all placeholder tags filled.`
+        `Successfully generated "${genResult.fileName}" in official PDF format (${genResult.totalPages} pages)! Exactly reflects the viewed ${activePosition} template with all placeholder tags filled.`
       );
     } catch (err: any) {
       console.error('PDF generation error:', err);

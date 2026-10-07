@@ -1,7 +1,7 @@
 import { renderAsync } from 'docx-preview';
 import { jsPDF } from 'jspdf';
 import JSZip from 'jszip';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
 import { ContractData } from '../components/ContractDocument';
 import { Position } from '../types';
 import {
@@ -232,16 +232,24 @@ export async function exportDocxContainerToPdf(
     const section = sections[i];
     if (onProgress) onProgress(i + 1, totalPages);
 
-    // Save current display state if paginated
+    // Save current display & styling state
     const prevDisplay = section.style.display;
     const prevVisibility = section.style.visibility;
+    const prevBoxShadow = section.style.boxShadow;
+
     section.style.display = 'block';
     section.style.visibility = 'visible';
+    section.style.boxShadow = 'none';
+
+    // Temporarily hide viewer-only badges
+    const badges = Array.from(section.querySelectorAll<HTMLElement>('.template-page-badge'));
+    badges.forEach((b) => (b.style.display = 'none'));
 
     // High quality canvas capture
     const canvas = await html2canvas(section, {
       scale: 2,
       useCORS: true,
+      allowTaint: true,
       logging: false,
       backgroundColor: '#ffffff',
       windowWidth: 1000,
@@ -250,12 +258,15 @@ export async function exportDocxContainerToPdf(
     // Restore previous display state
     section.style.display = prevDisplay;
     section.style.visibility = prevVisibility;
+    section.style.boxShadow = prevBoxShadow;
+    badges.forEach((b) => (b.style.display = ''));
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const imgData = canvas.toDataURL('image/jpeg', 0.98);
     const calculatedHeight = (canvas.height * pdfWidth) / canvas.width;
+    const pageTargetHeight = calculatedHeight > 50 ? calculatedHeight : pdfHeight;
 
     if (i > 0) {
-      pdf.addPage([pdfWidth, calculatedHeight > pdfHeight ? calculatedHeight : pdfHeight], 'portrait');
+      pdf.addPage([pdfWidth, pageTargetHeight], 'portrait');
     }
 
     pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, calculatedHeight);
@@ -269,22 +280,65 @@ export async function exportDocxContainerToPdf(
   };
 }
 
-import { generateContractPdf } from './contractPdfGenerator';
+import { generateContractPdf as generateContractPdfFallback } from './contractPdfGenerator';
 
 /**
- * Direct high-resolution, instant vector PDF generation from template source.
- * Produces crisp, non-blank PDF matching the exact uploaded template per position.
+ * Generates an official Sales Agency Agreement (SAA) PDF matching the EXACT template
+ * and content that is viewed in "View Sales Agency Agreement".
+ *
+ * If an existing rendered container is provided (e.g. from ContractModal where the template
+ * is already displayed on screen), it directly captures those exact rendered pages.
+ *
+ * If no container is provided (e.g. from direct download on AgentDashboard), it dynamically
+ * populates the exact Word DOCX template with the agent's data via generateContractDocx,
+ * renders all pages using renderDocxToContainer in an off-screen DOM host, and converts
+ * each page into the official PDF document.
  */
 export async function generateContractPdfFromTemplate(
   templateSource: ArrayBuffer | Uint8Array | string | undefined,
   contractData: ContractData,
-  position: Position | string
+  position: Position | string,
+  existingContainer?: HTMLElement | null,
+  onProgress?: (current: number, total: number) => void
 ): Promise<GeneratedPdfResult> {
   const p = position || 'Marketing Associate';
-  const genResult = await generateContractPdf(templateSource, contractData, p);
-  return {
-    blob: genResult.blob,
-    fileName: genResult.fileName,
-    totalPages: genResult.totalPages,
-  };
+  const outFileName = `Megaworld_${p.replace(/\s+/g, '_')}_Official_SAA_${contractData.affiliateCode || 'Agreement'}.pdf`;
+
+  // 1. If an existing rendered container is provided and already has rendered docx sections, export directly!
+  if (existingContainer) {
+    const sections = existingContainer.querySelectorAll<HTMLElement>('.docx-wrapper > section.docx, section.docx');
+    if (sections.length > 0) {
+      return await exportDocxContainerToPdf(existingContainer, outFileName, onProgress);
+    }
+  }
+
+  // 2. Otherwise, load and render the exact template off-screen
+  try {
+    const source = templateSource || getDefaultTemplateUrlForPosition(p);
+    const filledDocx = await generateContractDocx(source, contractData, p);
+
+    const tempHost = document.createElement('div');
+    tempHost.id = `docx-export-temp-${Date.now()}`;
+    tempHost.style.cssText =
+      'position: fixed; left: -9999px; top: 0; width: 900px; opacity: 0; pointer-events: none; z-index: -99999; background: #ffffff;';
+    document.body.appendChild(tempHost);
+
+    try {
+      await renderDocxToContainer(filledDocx.blob, tempHost);
+      const result = await exportDocxContainerToPdf(tempHost, outFileName, onProgress);
+      return result;
+    } finally {
+      if (document.body.contains(tempHost)) {
+        document.body.removeChild(tempHost);
+      }
+    }
+  } catch (err) {
+    console.warn('Docx to PDF template export encountered an issue; falling back gracefully:', err);
+    const fallbackResult = await generateContractPdfFallback(templateSource, contractData, p);
+    return {
+      blob: fallbackResult.blob,
+      fileName: fallbackResult.fileName,
+      totalPages: fallbackResult.totalPages,
+    };
+  }
 }

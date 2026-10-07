@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -24,7 +24,8 @@ import {
 import { AgentProfile, AccreditationApplication } from '../types';
 import { formatDate } from '../utils/dateFormatter';
 import { MegaworldLogo } from './MegaworldLogo';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
+import QRCode from 'qrcode';
 
 interface DigitalIdBadgeProps {
   agent: AgentProfile;
@@ -44,9 +45,29 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
 
   const cardRef = useRef<HTMLDivElement>(null);
   const fullscreenCardRef = useRef<HTMLDivElement>(null);
+
+  const verificationUrl = `${typeof window !== 'undefined' ? window.location.origin : 'https://mwiaccreditationportal.netlify.app'}/?verify=${encodeURIComponent(agent.affiliateCode)}`;
+
+  useEffect(() => {
+    QRCode.toDataURL(verificationUrl, {
+      width: 320,
+      margin: 2,
+      errorCorrectionLevel: 'M',
+      color: {
+        dark: '#000000',
+        light: '#ffffff',
+      },
+    })
+      .then((url) => setQrCodeDataUrl(url))
+      .catch((err) => {
+        console.error('Failed to generate verification QR code:', err);
+      });
+  }, [verificationUrl]);
 
   // Determine active photo: agent.photoUrl, agent.idPhotoUrl, or latestApplication.idPhotoUrl
   const photoUrl =
@@ -133,7 +154,6 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
   const statusInfo = getStatusDisplay();
 
   const handleCopyVerification = () => {
-    const verificationUrl = `${window.location.origin}/#verify/${agent.affiliateCode}`;
     navigator.clipboard.writeText(
       `Megaworld International Official Affiliate Verification:\nAgent: ${agent.fullName}\nIPA Code: ${agent.affiliateCode}\nPosition: ${positionTitle}\nStatus: ${statusInfo.label}\nPortal Link: ${verificationUrl}`
     );
@@ -237,56 +257,43 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
               <p className="text-[10px] text-slate-300">
                 Scan QR with smartphone camera to confirm live accreditation standing:
               </p>
-              <p className="font-mono text-[10px] text-amber-300 font-bold">
-                ID: {agent.affiliateCode}
-              </p>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-[10px] text-amber-300 font-bold">
+                  ID: {agent.affiliateCode}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowQrModal(true);
+                  }}
+                  className="text-[9px] text-blue-300 hover:text-white underline font-semibold cursor-pointer"
+                >
+                  Enlarge QR
+                </button>
+              </div>
             </div>
 
-            {/* Scannable SVG QR Code Simulation */}
-            <div className="shrink-0 p-1.5 bg-white rounded-lg shadow-inner">
-              <svg
-                width="64"
-                height="64"
-                viewBox="0 0 100 100"
-                className="w-16 h-16"
-                aria-label="Agent Verification QR Code"
-              >
-                {/* Simulated authentic high-density QR pattern */}
-                <rect width="100" height="100" fill="#ffffff" />
-                {/* Corner Finder 1 */}
-                <rect x="6" y="6" width="28" height="28" fill="#0f172a" />
-                <rect x="10" y="10" width="20" height="20" fill="#ffffff" />
-                <rect x="14" y="14" width="12" height="12" fill="#0f172a" />
-                {/* Corner Finder 2 */}
-                <rect x="66" y="6" width="28" height="28" fill="#0f172a" />
-                <rect x="70" y="10" width="20" height="20" fill="#ffffff" />
-                <rect x="74" y="14" width="12" height="12" fill="#0f172a" />
-                {/* Corner Finder 3 */}
-                <rect x="6" y="66" width="28" height="28" fill="#0f172a" />
-                <rect x="10" y="70" width="20" height="20" fill="#ffffff" />
-                <rect x="14" y="74" width="12" height="12" fill="#0f172a" />
-                {/* Alignment Patterns & Data Grid */}
-                <rect x="40" y="8" width="6" height="6" fill="#0f172a" />
-                <rect x="52" y="8" width="6" height="6" fill="#0f172a" />
-                <rect x="40" y="20" width="6" height="6" fill="#0f172a" />
-                <rect x="48" y="24" width="8" height="6" fill="#0f172a" />
-                <rect x="8" y="44" width="6" height="6" fill="#0f172a" />
-                <rect x="20" y="44" width="6" height="6" fill="#0f172a" />
-                <rect x="14" y="52" width="6" height="6" fill="#0f172a" />
-                <rect x="42" y="42" width="16" height="16" fill="#1e3a8a" />
-                <rect x="46" y="46" width="8" height="8" fill="#f59e0b" />
-                <rect x="66" y="44" width="8" height="6" fill="#0f172a" />
-                <rect x="80" y="42" width="6" height="6" fill="#0f172a" />
-                <rect x="74" y="52" width="8" height="6" fill="#0f172a" />
-                <rect x="86" y="54" width="8" height="6" fill="#0f172a" />
-                <rect x="42" y="66" width="6" height="6" fill="#0f172a" />
-                <rect x="54" y="68" width="6" height="6" fill="#0f172a" />
-                <rect x="46" y="78" width="6" height="8" fill="#0f172a" />
-                <rect x="66" y="68" width="8" height="8" fill="#0f172a" />
-                <rect x="78" y="72" width="6" height="6" fill="#0f172a" />
-                <rect x="70" y="82" width="8" height="6" fill="#0f172a" />
-                <rect x="84" y="82" width="8" height="8" fill="#0f172a" />
-              </svg>
+            {/* Authentic Scannable QR Code */}
+            <div
+              className="shrink-0 p-1.5 bg-white rounded-xl shadow-md cursor-pointer hover:ring-2 hover:ring-amber-400 transition"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowQrModal(true);
+              }}
+              title="Click to enlarge QR code for client scanning"
+            >
+              {qrCodeDataUrl ? (
+                <img
+                  src={qrCodeDataUrl}
+                  alt={`Scannable Verification QR Code for ${agent.affiliateCode}`}
+                  className="w-16 h-16 sm:w-18 sm:h-18 block object-contain rounded-xs"
+                />
+              ) : (
+                <div className="w-16 h-16 sm:w-18 sm:h-18 bg-white flex items-center justify-center">
+                  <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
             </div>
           </div>
 
@@ -423,19 +430,27 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
 
         {/* Bottom Bar: QR Verification & Hologram Bar */}
         <div className="border-t border-slate-800 pt-3 flex items-center justify-between text-xs text-slate-400">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-white/10 rounded-lg border border-white/10 text-amber-300">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowQrModal(true);
+            }}
+            className="flex items-center gap-2 text-left p-1 rounded-lg hover:bg-slate-800/60 transition cursor-pointer group"
+            title="Click to display client verification QR code"
+          >
+            <div className="p-1.5 bg-white/10 group-hover:bg-amber-400/20 rounded-lg border border-white/10 text-amber-300">
               <QrCode className="w-4 h-4" />
             </div>
-            <div className="text-left">
-              <span className="text-[9px] font-bold text-slate-300 uppercase tracking-wider block">
-                Security Verified
+            <div>
+              <span className="text-[9px] font-bold text-slate-300 group-hover:text-amber-300 uppercase tracking-wider block">
+                Scan QR Code
               </span>
               <span className="text-[9px] font-mono text-slate-400">
-                Official Megaworld Portal
+                Live Verification
               </span>
             </div>
-          </div>
+          </button>
 
           <button
             type="button"
@@ -481,6 +496,17 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
           >
             <Maximize2 className="w-4 h-4 text-slate-950" />
             Present to Client
+          </button>
+
+          <button
+            type="button"
+            id="btn-enlarge-qr"
+            onClick={() => setShowQrModal(true)}
+            className="px-4 py-2.5 text-xs font-semibold text-white bg-blue-950 hover:bg-blue-900 border border-blue-700/60 rounded-xl transition flex items-center gap-2 cursor-pointer shadow-sm"
+            title="Display large QR code for client phone scanner"
+          >
+            <QrCode className="w-4 h-4 text-amber-400" />
+            Scan QR Code
           </button>
 
           <button
@@ -750,11 +776,20 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
             </div>
 
             {/* Bottom Modal Actions */}
-            <div className="mt-4 flex items-center gap-3">
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowQrModal(true)}
+                className="py-2 px-3.5 rounded-xl text-xs font-semibold text-white bg-blue-900 hover:bg-blue-800 border border-blue-700 shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <QrCode className="w-3.5 h-3.5 text-amber-400" />
+                Enlarge QR Code
+              </button>
+
               <button
                 type="button"
                 onClick={() => handleDownloadBadge(fullscreenCardRef)}
-                className="py-2 px-4 rounded-xl text-xs font-bold text-slate-900 bg-amber-400 hover:bg-amber-300 shadow-md transition flex items-center gap-1.5"
+                className="py-2 px-3.5 rounded-xl text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 shadow-md transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 Save Image (PNG)
@@ -763,7 +798,7 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
               <button
                 type="button"
                 onClick={handleCopyVerification}
-                className="py-2 px-4 rounded-xl text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 shadow-sm transition flex items-center gap-1.5"
+                className="py-2 px-3.5 rounded-xl text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 shadow-sm transition flex items-center gap-1.5 cursor-pointer"
               >
                 {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                 {copiedLink ? 'Copied!' : 'Copy Summary'}
@@ -772,10 +807,111 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
               <button
                 type="button"
                 onClick={() => setIsFullscreen(false)}
-                className="py-2 px-4 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 border border-slate-800 transition"
+                className="py-2 px-4 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 border border-slate-800 transition cursor-pointer"
               >
                 Exit
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ENLARGED QR CODE MODAL FOR CLIENT SMARTPHONE SCANNING */}
+      {showQrModal && (
+        <div
+          id="enlarged-qr-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setShowQrModal(false)}
+        >
+          <div
+            className="relative flex flex-col items-center max-w-sm w-full bg-slate-900 rounded-3xl border-2 border-amber-400/50 p-6 sm:p-7 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="w-full flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <MegaworldLogo size="sm" theme="dark" variant="emblem-only" />
+                <span className="font-bold text-xs uppercase text-white font-sans">
+                  Official Verification QR
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Agent Info */}
+            <div className="text-center space-y-1">
+              <h4 className="text-base font-bold text-white font-serif">
+                {agent.fullName}
+              </h4>
+              <p className="text-xs text-amber-300 font-mono font-bold">
+                {agent.affiliateCode}
+              </p>
+              <p className="text-[11px] text-slate-400">
+                {positionTitle} • {agent.region || 'Asia Pacific 2'}
+              </p>
+            </div>
+
+            {/* Crisp High-Res QR Code */}
+            <div className="p-3 bg-white rounded-2xl shadow-xl border-4 border-amber-400/40">
+              {qrCodeDataUrl ? (
+                <img
+                  src={qrCodeDataUrl}
+                  alt={`Verification QR Code for ${agent.affiliateCode}`}
+                  className="w-52 h-52 sm:w-56 sm:h-56 block object-contain"
+                />
+              ) : (
+                <div className="w-52 h-52 sm:w-56 sm:h-56 bg-white flex items-center justify-center">
+                  <div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+            </div>
+
+            {/* Instruction Callout */}
+            <div className="text-center space-y-1 px-2">
+              <p className="text-xs font-semibold text-slate-200">
+                Point any smartphone camera to scan
+              </p>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Automatically opens the official Megaworld International live accreditation certificate verifying active standing and authorized representation.
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="w-full pt-2 flex flex-col gap-2">
+              <a
+                href={verificationUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-2.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs text-center transition flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Open Live Verification Record
+              </a>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyVerification}
+                  className="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-blue-300" />}
+                  {copiedLink ? 'Copied Details!' : 'Copy Link'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowQrModal(false)}
+                  className="py-2 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-xs transition cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
