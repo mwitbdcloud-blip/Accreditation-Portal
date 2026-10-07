@@ -4,6 +4,8 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  BUN_VERSION = "1.3.12"
+  BUN_FLAGS = "--frozen-lockfile"
 
 # Redirect API calls to the live Cloud backend proxy
 [[redirects]]
