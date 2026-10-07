@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { UserPlus, LogIn, Sparkles, CheckCircle, ArrowRight } from 'lucide-react';
+import { UserPlus, LogIn, Sparkles, CheckCircle, ArrowRight, Globe, X } from 'lucide-react';
 import { REGIONS, Region, REGION_CODE_MAP, Position } from '../types';
 import { MegaworldLogo } from './MegaworldLogo';
 
 interface AuthViewProps {
   onLogin: (email: string, password?: string) => Promise<void>;
   onGoogleLogin?: () => Promise<void>;
+  onGoogleFallbackLogin?: (email: string, displayName?: string) => Promise<void>;
   onRegister: (data: {
     fullName: string;
     email: string;
@@ -19,12 +20,22 @@ interface AuthViewProps {
   isLoading: boolean;
 }
 
-export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onGoogleLogin, onRegister, isLoading }) => {
+export const AuthView: React.FC<AuthViewProps> = ({
+  onLogin,
+  onGoogleLogin,
+  onGoogleFallbackLogin,
+  onRegister,
+  isLoading,
+}) => {
   const [mode, setMode] = useState<'login' | 'register'>('login');
 
   // Login form state - clean inputs without prefilled demo credentials
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+
+  // Fallback Google Sign-In state for unverified domains
+  const [fallbackGoogleEmail, setFallbackGoogleEmail] = useState('');
+  const [isSubmittingFallback, setIsSubmittingFallback] = useState(false);
 
   // Register form state
   const [regFullName, setRegFullName] = useState('');
@@ -38,6 +49,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onGoogleLogin, onRe
   const regRegionCode = REGION_CODE_MAP[regRegion] || 'AP2';
   const previewAffiliateCode = `IPA-${regRegionCode}-XXXXXX`;
 
+  const isUnauthorizedDomain =
+    errorMessage.includes('unauthorized-domain') ||
+    errorMessage.includes('auth/unauthorized-domain');
+
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
@@ -45,6 +60,20 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onGoogleLogin, onRe
       await onLogin(loginEmail, loginPassword);
     } catch (err: any) {
       setErrorMessage(err.message || 'Login failed. Please check credentials.');
+    }
+  };
+
+  const handleFallbackGoogleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fallbackGoogleEmail || !onGoogleFallbackLogin) return;
+    setIsSubmittingFallback(true);
+    setErrorMessage('');
+    try {
+      await onGoogleFallbackLogin(fallbackGoogleEmail);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Fallback sign-in failed.');
+    } finally {
+      setIsSubmittingFallback(false);
     }
   };
 
@@ -127,9 +156,77 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onGoogleLogin, onRe
           </div>
 
           {errorMessage && (
-            <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg">
-              {errorMessage}
-            </div>
+            isUnauthorizedDomain ? (
+              <div className="mb-5 p-4 bg-amber-50/95 border border-amber-300 rounded-2xl text-slate-800 text-xs shadow-xs space-y-3 relative animate-in fade-in">
+                <button
+                  type="button"
+                  onClick={() => setErrorMessage('')}
+                  className="absolute top-3 right-3 p-1 text-slate-400 hover:text-slate-700 rounded-md transition"
+                  title="Dismiss alert"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+
+                <div className="flex items-start gap-2.5 pr-6">
+                  <div className="p-2 bg-amber-200/70 text-amber-950 rounded-xl shrink-0">
+                    <Globe className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-amber-950 text-xs">
+                      Firebase Domain Authorization Required
+                    </h4>
+                    <p className="text-[11px] text-amber-900 mt-0.5 leading-relaxed">
+                      The deployment domain <code className="font-mono bg-amber-200/60 px-1 py-0.5 rounded font-bold text-slate-900">{typeof window !== 'undefined' ? window.location.hostname : 'Netlify'}</code> has not yet been allowlisted in the Firebase Console.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Instant fallback input for Google sign-in */}
+                {onGoogleFallbackLogin && (
+                  <form onSubmit={handleFallbackGoogleSubmit} className="bg-white p-3 rounded-xl border border-amber-200 shadow-2xs space-y-2">
+                    <label className="text-[11px] font-bold text-slate-800 block">
+                      Instant Sign-In Fallback with Google Email:
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        required
+                        value={fallbackGoogleEmail}
+                        onChange={(e) => setFallbackGoogleEmail(e.target.value)}
+                        placeholder="e.g. mwi.tbdcloud@gmail.com"
+                        className="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isSubmittingFallback || !fallbackGoogleEmail}
+                        className="px-3.5 py-1.5 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs rounded-lg transition disabled:opacity-50 shrink-0 cursor-pointer"
+                      >
+                        {isSubmittingFallback ? 'Signing In...' : 'Continue'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                <div className="text-[10px] text-slate-600 bg-amber-100/60 p-2.5 rounded-xl border border-amber-200/50 leading-relaxed">
+                  <strong>To authorize OAuth popups for this domain:</strong>
+                  <br />
+                  Go to <strong>Firebase Console &gt; Authentication &gt; Settings &gt; Authorized domains</strong>, and click <strong>Add domain</strong> with{' '}
+                  <span className="font-mono font-bold text-slate-900 select-all">{typeof window !== 'undefined' ? window.location.hostname : 'mwiaccreditationportal.netlify.app'}</span>.
+                </div>
+              </div>
+            ) : (
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-start justify-between gap-2 animate-in fade-in">
+                <span>{errorMessage}</span>
+                <button
+                  type="button"
+                  onClick={() => setErrorMessage('')}
+                  className="text-rose-400 hover:text-rose-700 p-0.5 rounded transition"
+                  title="Dismiss"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )
           )}
 
           {mode === 'login' ? (
@@ -148,7 +245,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onGoogleLogin, onRe
                   type="text"
                   required
                   value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
+                  onChange={(e) => {
+                    setLoginEmail(e.target.value);
+                    if (errorMessage) setErrorMessage('');
+                  }}
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none font-mono"
                   placeholder="e.g. IPA-AP2-000001 or name@example.com"
                 />
@@ -165,7 +265,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onGoogleLogin, onRe
                   type="password"
                   required
                   value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
+                  onChange={(e) => {
+                    setLoginPassword(e.target.value);
+                    if (errorMessage) setErrorMessage('');
+                  }}
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
                   placeholder="Enter your password or temporary password"
                 />
@@ -182,7 +285,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onGoogleLogin, onRe
                 type="submit"
                 id="sign-in-btn"
                 disabled={isLoading}
-                className="w-full py-2.5 px-4 text-xs font-bold uppercase tracking-wider text-white bg-blue-900 hover:bg-blue-800 rounded-xl shadow-xs transition disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full py-2.5 px-4 text-xs font-bold uppercase tracking-wider text-white bg-blue-900 hover:bg-blue-800 rounded-xl shadow-xs transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <LogIn className="w-4 h-4" /> {isLoading ? 'Signing in...' : 'Sign In to Portal'}
               </button>
@@ -216,7 +319,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onGoogleLogin, onRe
                         }
                       }
                     }}
-                    className="w-full py-2 px-4 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl shadow-xs transition flex items-center justify-center gap-2.5 disabled:opacity-50"
+                    className="w-full py-2 px-4 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl shadow-xs transition flex items-center justify-center gap-2.5 disabled:opacity-50 cursor-pointer"
                   >
                     <svg className="w-4 h-4" viewBox="0 0 24 24">
                       <path

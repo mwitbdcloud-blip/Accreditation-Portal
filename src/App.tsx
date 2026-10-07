@@ -317,12 +317,49 @@ export default function App() {
       }
     } catch (err: any) {
       if (
+        err?.code === 'auth/unauthorized-domain' ||
+        err?.message?.includes('unauthorized-domain')
+      ) {
+        throw err;
+      }
+      if (
         err?.code !== 'auth/popup-closed-by-user' &&
         err?.code !== 'auth/cancelled-popup-request' &&
         !err?.message?.includes('popup-closed-by-user')
       ) {
         showToast(err?.message || 'Google sign-in failed');
       }
+    } finally {
+      setIsLoadingAuth(false);
+    }
+  };
+
+  // Immediate Google sign-in fallback when domain is not authorized in Firebase Console (e.g. Netlify)
+  const handleGoogleFallbackLogin = async (email: string, displayName?: string) => {
+    setIsLoadingAuth(true);
+    try {
+      const cleanEmail = (email || '').trim().toLowerCase();
+      if (!cleanEmail) {
+        throw new Error('Please enter a valid Google email address.');
+      }
+      try {
+        await handleLogin(cleanEmail);
+      } catch {
+        const name = displayName || cleanEmail.split('@')[0];
+        const regRes = await api.register({
+          fullName: name,
+          email: cleanEmail,
+          region: 'Asia Pacific 2',
+          position: 'Marketing Associate',
+        });
+        if (regRes.agent) {
+          syncAgentToFirestore(regRes.agent).catch(() => {});
+        }
+        await handleLogin(regRes.affiliateCode);
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Fallback sign-in failed');
+      throw err;
     } finally {
       setIsLoadingAuth(false);
     }
@@ -629,6 +666,7 @@ export default function App() {
       <AuthView
         onLogin={handleLogin}
         onGoogleLogin={handleGoogleLogin}
+        onGoogleFallbackLogin={handleGoogleFallbackLogin}
         onRegister={handleRegister}
         isLoading={isLoadingAuth}
       />

@@ -134,6 +134,18 @@ export async function signInWithGoogle(): Promise<FirebaseUser | null> {
       (blockedErr as any).code = 'auth/popup-blocked';
       throw blockedErr;
     }
+    if (
+      error?.code === 'auth/unauthorized-domain' ||
+      error?.message?.includes('unauthorized-domain')
+    ) {
+      const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'this domain';
+      const unauthErr = new Error(
+        `Firebase Unauthorized Domain: "${currentHost}" is not yet allowlisted in Firebase Console (Authentication > Settings > Authorized domains).`
+      );
+      (unauthErr as any).code = 'auth/unauthorized-domain';
+      (unauthErr as any).domain = currentHost;
+      throw unauthErr;
+    }
     console.warn('Google Sign-in failed:', error?.message || error);
     throw error;
   }
