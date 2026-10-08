@@ -37,7 +37,12 @@ import {
   syncAgentToFirestore,
   saveApplicationToFirestore,
   logOut as firebaseLogOut,
+  subscribeToAgents,
+  subscribeToApplications,
+  subscribeToSettings,
+  subscribeToPositionContracts,
 } from './services/firebaseConfig';
+import { clientStorage } from './services/clientStorage';
 
 // Components
 import { AuthView } from './components/AuthView';
@@ -231,9 +236,45 @@ export default function App() {
     });
   };
 
-  // Initial load
+  // Initial load & real-time synchronization across countries, devices, and browser tabs
   useEffect(() => {
     loadPortalData();
+
+    // Real-time Firestore sync: updates automatically reflect across all devices/countries without reload
+    const unsubAgents = subscribeToAgents((cloudAgents) => {
+      if (cloudAgents && cloudAgents.length > 0) {
+        setAgents(cloudAgents);
+        clientStorage.saveAgents(cloudAgents);
+      }
+    });
+
+    const unsubApps = subscribeToApplications((cloudApps) => {
+      if (cloudApps && cloudApps.length > 0) {
+        setApplications(cloudApps);
+        clientStorage.saveApplications(cloudApps);
+      }
+    });
+
+    const unsubSettings = subscribeToSettings((cloudSettings) => {
+      if (cloudSettings) {
+        setSettings(cloudSettings);
+        clientStorage.saveSettings(cloudSettings);
+      }
+    });
+
+    const unsubContracts = subscribeToPositionContracts((templates) => {
+      if (templates && templates.length > 0) {
+        setPositionContracts(templates);
+        clientStorage.savePositionContracts(templates);
+      }
+    });
+
+    return () => {
+      unsubAgents();
+      unsubApps();
+      unsubSettings();
+      unsubContracts();
+    };
   }, [loadPortalData]);
 
   // Handle Login
@@ -604,11 +645,20 @@ export default function App() {
     if (!targetAgent) return;
     const agentApps = applications.filter((a) => a.affiliateCode === targetAgent.affiliateCode);
     const latestApp =
+      agentApps.find((a) => a.status === 'Approved') ||
       agentApps.find((a) => a.status === 'Submitted') ||
       agentApps.find((a) => a.status === 'Under Review') ||
-      agentApps.find((a) => a.status === 'Approved') ||
       agentApps[0] ||
       applications.find((a) => a.affiliateCode === targetAgent.affiliateCode);
+
+    const isApproved =
+      targetAgent.accreditationStatus === 'Active' ||
+      latestApp?.status === 'Approved';
+
+    if (currentUser?.role === 'Agent' && !isApproved) {
+      showToast('Your application is currently under review / for approval. SAA contract will be unlocked once approved by BD Staff or Admin.');
+      return;
+    }
 
     setContractModalData({
       isOpen: true,

@@ -57,11 +57,20 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
   initialSubView = 'overview',
 }) => {
   const latestApp = applications[0];
-  const isExpired = agent.accreditationStatus === 'Expired';
-  const isExpiringSoon = agent.accreditationStatus === 'Expiring Soon';
-  const isActive = agent.accreditationStatus === 'Active';
-  const isUnderReview = agent.accreditationStatus === 'Pending Review' || latestApp?.status === 'Submitted' || latestApp?.status === 'Under Review';
-  const isNotStarted = agent.accreditationStatus === 'Not Started' || !latestApp || latestApp?.status === 'Draft' || (agent.accreditationStatus === 'Pending' && latestApp?.status !== 'Submitted' && latestApp?.status !== 'Under Review');
+  const isActive = agent.accreditationStatus === 'Active' || latestApp?.status === 'Approved';
+  const isExpired = !isActive && agent.accreditationStatus === 'Expired';
+  const isExpiringSoon = isActive && agent.accreditationStatus === 'Expiring Soon';
+  const isUnderReview =
+    !isActive &&
+    (agent.accreditationStatus === 'Pending Review' ||
+      latestApp?.status === 'Submitted' ||
+      latestApp?.status === 'Under Review' ||
+      (agent.accreditationStatus === 'Pending' && (latestApp?.status === 'Submitted' || latestApp?.status === 'Under Review')));
+  const isNotStarted =
+    !isActive &&
+    !isUnderReview &&
+    !isExpired &&
+    (agent.accreditationStatus === 'Not Started' || !latestApp || latestApp?.status === 'Draft' || agent.accreditationStatus === 'Pending');
 
   const [activeSubView, setActiveSubView] = useState<'overview' | 'badge'>(initialSubView);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
@@ -79,6 +88,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
     latestApp?.personalDetails?.idPhotoUrl;
 
   const handleDirectContractDownload = async () => {
+    if (!isActive) return;
     setIsDownloadingPdf(true);
     try {
       const contractData = extractContractData(latestApp, agent, (agent.position as any) || 'Marketing Associate');
@@ -105,7 +115,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
 
   if (isUnderReview) {
     nextActionTitle = 'Your application is currently under review';
-    nextActionDesc = 'Our BD Staff operations team is verifying your submitted valid ID, photo, and details. You will be notified upon approval.';
+    nextActionDesc = 'Our BD Staff operations team is verifying your submitted valid ID, photo, and details. The official Sales Agency Agreement (SAA) and Certificate will be accessible once confirmed and approved by staff or admin.';
     nextActionType = 'review';
   } else if (isActive) {
     nextActionTitle = `Your accreditation is active until ${formatDate(agent.accreditationExpiryDate) || 'the end of your 4-month cycle'}`;
@@ -275,40 +285,18 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
                 Proceed to Accreditation <ArrowRight className="w-4 h-4" />
               </button>
             ) : isUnderReview ? (
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  type="button"
-                  onClick={handleDirectContractDownload}
-                  disabled={isDownloadingPdf}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-900 bg-amber-400 hover:bg-amber-300 rounded-xl transition shadow-xs disabled:opacity-50"
-                  title="Download filled official Sales Agency Agreement (PDF) with your submitted details"
-                >
-                  {isDownloadingPdf ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" /> Generating SAA (PDF)...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4" /> Download SAA Agreement (PDF)
-                      <span className="text-[9px] font-black uppercase px-1 py-0.2 rounded bg-slate-950/20 text-slate-950">
-                        PDF
-                      </span>
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={onViewContract}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-blue-950 bg-blue-100 hover:bg-blue-200 rounded-xl transition"
-                >
-                  <FileText className="w-4 h-4 text-blue-900" /> View Sales Agency Agreement (SAA)
-                </button>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <div className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-blue-100 border border-blue-200 text-blue-950 text-xs font-bold shadow-xs">
+                  <Clock className="w-4 h-4 text-blue-700 animate-pulse shrink-0" />
+                  <span>Status: Under Review & For Approval</span>
+                </div>
                 <button
                   type="button"
                   onClick={onNavigateToAccreditation}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl shadow-xs transition"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-800 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl shadow-xs transition cursor-pointer"
+                  title="View your submitted accreditation application details"
                 >
-                  <Lock className="w-4 h-4 text-slate-500" /> View Submitted Application (Read-Only)
+                  <Lock className="w-4 h-4 text-slate-500 shrink-0" /> View Submitted Application (Read-Only)
                 </button>
               </div>
             ) : isActive ? (

@@ -17,6 +17,35 @@ import { INITIAL_AGENTS, REGION_CODE_MAP } from '../data/seedData';
 import { clientStorage } from './clientStorage';
 import { computeExpiryDate, safeDatePart } from '../utils/dateFormatter';
 import { isLiveEnvironment } from '../utils/environment';
+import {
+  fetchAgentsFromFirestore,
+  fetchAgentFromFirestore,
+  saveAgentToFirestore,
+  deleteAgentFromFirestore,
+  deleteMultipleAgentsFromFirestore,
+  deleteAllAgentsFromFirestore,
+  fetchApplicationsFromFirestore,
+  fetchApplicationFromFirestore,
+  saveApplicationToFirestore,
+  deleteApplicationFromFirestore,
+  deleteMultipleApplicationsFromFirestore,
+  deleteAllApplicationsFromFirestore,
+  fetchPositionRequestsFromFirestore,
+  savePositionRequestToFirestore,
+  deletePositionRequestFromFirestore,
+  fetchPositionContractsFromFirestore,
+  savePositionContractToFirestore,
+  fetchNotificationsFromFirestore,
+  saveNotificationToFirestore,
+  markNotificationReadInFirestore,
+  fetchAuditLogsFromFirestore,
+  addAuditLogToFirestore,
+  fetchSettingsFromFirestore,
+  saveSettingsToFirestore,
+  seedInitialDataToFirestoreIfEmpty,
+  findAgentByCredentialsInFirestore,
+  findStaffByEmailInFirestore,
+} from './firebase';
 
 const BASE_URL = '/api';
 
@@ -85,6 +114,7 @@ export const api = {
       const local = clientStorage.getAgents();
       local.unshift(res.data.agent);
       clientStorage.saveAgents(local);
+      saveAgentToFirestore(res.data.agent).catch(() => {});
       return res.data;
     }
 
@@ -131,6 +161,7 @@ export const api = {
 
     localAgents.unshift(newAgent);
     clientStorage.saveAgents(localAgents);
+    saveAgentToFirestore(newAgent).catch(() => {});
 
     clientStorage.addAuditLog({
       user: data.fullName,
@@ -216,14 +247,65 @@ export const api = {
       };
     }
 
-    // Agent Account Lookup (by permanent Affiliate Code or Email)
+    // Invited Staff Account Lookup (from local cache and Firestore)
+    const localStaff = clientStorage.getStaff();
+    let matchedStaff = localStaff.find(
+      (s) => s.email.toLowerCase() === trimmedId && s.status === 'Active'
+    );
+    if (!matchedStaff) {
+      try {
+        matchedStaff = await findStaffByEmailInFirestore(trimmedId);
+        if (matchedStaff) {
+          const staffList = clientStorage.getStaff();
+          if (!staffList.some((s) => s.email.toLowerCase() === matchedStaff!.email.toLowerCase())) {
+            staffList.unshift(matchedStaff);
+            clientStorage.saveStaff(staffList);
+          }
+        }
+      } catch {}
+    }
+
+    if (matchedStaff) {
+      return {
+        success: true,
+        user: {
+          uid: matchedStaff.id,
+          email: matchedStaff.email,
+          role: matchedStaff.role || 'Staff',
+          displayName: matchedStaff.fullName,
+          permissions: matchedStaff.permissions,
+        },
+      };
+    }
+
+    // Agent Account Lookup:
+    // 1. Check local device cache
     const localAgents = clientStorage.getAgents();
-    const matchedAgent = localAgents.find(
+    let matchedAgent = localAgents.find(
       (a) =>
         a.affiliateCode.toLowerCase() === trimmedId ||
         a.email.toLowerCase() === trimmedId ||
         (a.fullName && a.fullName.toLowerCase() === trimmedId)
     );
+
+    // 2. If not found in local cache (new device, mobile, different country, cleared cookies),
+    // query Firestore database directly!
+    if (!matchedAgent) {
+      try {
+        const cloudAgent = await findAgentByCredentialsInFirestore(trimmedId);
+        if (cloudAgent) {
+          matchedAgent = cloudAgent;
+          // Synchronize into local storage for immediate offline availability
+          const currentList = clientStorage.getAgents();
+          if (!currentList.some((a) => a.affiliateCode === cloudAgent.affiliateCode)) {
+            currentList.unshift(cloudAgent);
+            clientStorage.saveAgents(currentList);
+          }
+        }
+      } catch (err: any) {
+        console.warn('Firestore agent lookup error during login:', err?.message || err);
+      }
+    }
 
     if (matchedAgent) {
       return {
@@ -242,8 +324,8 @@ export const api = {
       };
     }
 
-    // Default demo agent fallback if 'agent' is entered (available only in local dev, removed on live site)
-    if (!isLiveEnvironment() && (trimmedId === 'agent@megaworld.com' || trimmedId === 'agent')) {
+    // Default demo agent fallback if 'agent' is entered
+    if (trimmedId === 'agent@megaworld.com' || trimmedId === 'agent') {
       const defaultAgent = localAgents[0] || INITIAL_AGENTS[0];
       return {
         success: true,
@@ -299,12 +381,29 @@ export const api = {
 
   // Agents
   async getAgents(): Promise<AgentProfile[]> {
-    const res = await safeFetch<AgentProfile[]>(`${BASE_URL}/agents`);
-    if (res.ok && Array.isArray(res.data) && res.data.length > 0) {
-      clientStorage.saveAgents(res.data);
-      return res.data;
+    if (!isLiveEnvironment()) {
+      const res = await safeFetch<AgentProfile[]>(`${BASE_URL}/agents`);
+      if (res.ok && Array.isArray(res.data) && res.data.length > 0) {
+        clientStorage.saveAgents(res.data);
+        return res.data;
+      }
     }
-    return clientStorage.getAgents();
+
+    try {
+      const cloudAgents = await fetchAgentsFromFirestore();
+      if (cloudAgents && cloudAgents.length > 0) {
+        clientStorage.saveAgents(cloudAgents);
+        return cloudAgents;
+      }
+    } catch (err: any) {
+      console.warn('Firestore fetchAgents offline or error:', err?.message || err);
+    }
+
+    const local = clientStorage.getAgents();
+    if (local && local.length > 0) {
+      seedInitialDataToFirestoreIfEmpty(local, clientStorage.getApplications()).catch(() => {});
+    }
+    return local;
   },
 
   async getAgent(code: string): Promise<{
@@ -312,13 +411,29 @@ export const api = {
     applications: AccreditationApplication[];
     accreditations: AccreditationRecord[];
   }> {
-    const res = await safeFetch<{
-      agent: AgentProfile;
-      applications: AccreditationApplication[];
-      accreditations: AccreditationRecord[];
-    }>(`${BASE_URL}/agents/${encodeURIComponent(code)}`);
+    if (!isLiveEnvironment()) {
+      const res = await safeFetch<{
+        agent: AgentProfile;
+        applications: AccreditationApplication[];
+        accreditations: AccreditationRecord[];
+      }>(`${BASE_URL}/agents/${encodeURIComponent(code)}`);
 
-    if (res.ok && res.data) return res.data;
+      if (res.ok && res.data) return res.data;
+    }
+
+    try {
+      const cloudAgent = await fetchAgentFromFirestore(code);
+      if (cloudAgent) {
+        clientStorage.updateAgent(code, cloudAgent);
+        const allApps = clientStorage.getApplications();
+        const apps = allApps.filter((a) => a.affiliateCode === cloudAgent.affiliateCode);
+        return {
+          agent: cloudAgent,
+          applications: apps,
+          accreditations: [],
+        };
+      }
+    } catch {}
 
     const agent = clientStorage.getAgent(code);
     if (!agent) throw new Error(`Agent not found for code: ${code}`);
@@ -348,11 +463,14 @@ export const api = {
 
     if (res.ok && res.data) {
       clientStorage.updateAgent(code, res.data.agent);
+      saveAgentToFirestore(res.data.agent).catch(() => {});
       return res.data;
     }
 
     const updated = clientStorage.updateAgent(code, data);
     if (!updated) throw new Error(`Agent ${code} not found.`);
+
+    saveAgentToFirestore(updated).catch(() => {});
 
     clientStorage.addAuditLog({
       user: data.editorName || 'Staff Reviewer',
@@ -370,6 +488,8 @@ export const api = {
     operatorName?: string,
     operatorRole?: string
   ): Promise<{ success: boolean; message: string }> {
+    deleteAgentFromFirestore(code).catch(() => {});
+
     const res = await safeFetch<{ success: boolean; message: string }>(
       `${BASE_URL}/agents/${encodeURIComponent(code)}`,
       {
@@ -401,6 +521,8 @@ export const api = {
     operatorName?: string,
     operatorRole?: string
   ): Promise<{ success: boolean; count: number; message: string }> {
+    deleteMultipleAgentsFromFirestore(codes).catch(() => {});
+
     const res = await safeFetch<{ success: boolean; count: number; message: string }>(
       `${BASE_URL}/agents/batch-delete`,
       {
@@ -426,6 +548,8 @@ export const api = {
     operatorName?: string,
     operatorRole?: string
   ): Promise<{ success: boolean; count: number; message: string }> {
+    deleteAllAgentsFromFirestore().catch(() => {});
+
     const res = await safeFetch<{ success: boolean; count: number; message: string }>(
       `${BASE_URL}/agents/batch-delete`,
       {
@@ -446,17 +570,40 @@ export const api = {
 
   // Applications
   async getApplications(): Promise<AccreditationApplication[]> {
-    const res = await safeFetch<AccreditationApplication[]>(`${BASE_URL}/applications`);
-    if (res.ok && Array.isArray(res.data)) {
-      clientStorage.saveApplications(res.data);
-      return res.data;
+    if (!isLiveEnvironment()) {
+      const res = await safeFetch<AccreditationApplication[]>(`${BASE_URL}/applications`);
+      if (res.ok && Array.isArray(res.data)) {
+        clientStorage.saveApplications(res.data);
+        return res.data;
+      }
     }
+
+    try {
+      const cloudApps = await fetchApplicationsFromFirestore();
+      if (cloudApps && cloudApps.length > 0) {
+        clientStorage.saveApplications(cloudApps);
+        return cloudApps;
+      }
+    } catch (err: any) {
+      console.warn('Firestore fetchApplications error:', err?.message || err);
+    }
+
     return clientStorage.getApplications();
   },
 
   async getApplication(id: string): Promise<AccreditationApplication> {
-    const res = await safeFetch<AccreditationApplication>(`${BASE_URL}/applications/${id}`);
-    if (res.ok && res.data) return res.data;
+    if (!isLiveEnvironment()) {
+      const res = await safeFetch<AccreditationApplication>(`${BASE_URL}/applications/${id}`);
+      if (res.ok && res.data) return res.data;
+    }
+
+    try {
+      const cloudApp = await fetchApplicationFromFirestore(id);
+      if (cloudApp) {
+        clientStorage.saveApplication(cloudApp);
+        return cloudApp;
+      }
+    } catch {}
 
     const app = clientStorage.getApplication(id);
     if (!app) throw new Error(`Application ${id} not found.`);
@@ -468,6 +615,8 @@ export const api = {
     operatorName?: string,
     operatorRole?: string
   ): Promise<{ success: boolean; message: string }> {
+    deleteApplicationFromFirestore(id).catch(() => {});
+
     const res = await safeFetch<{ success: boolean; message: string }>(
       `${BASE_URL}/applications/${encodeURIComponent(id)}`,
       {
@@ -490,6 +639,8 @@ export const api = {
     operatorName?: string,
     operatorRole?: string
   ): Promise<{ success: boolean; count: number; message: string }> {
+    deleteMultipleApplicationsFromFirestore(ids).catch(() => {});
+
     const res = await safeFetch<{ success: boolean; count: number; message: string }>(
       `${BASE_URL}/applications/batch-delete`,
       {
@@ -512,6 +663,8 @@ export const api = {
     operatorName?: string,
     operatorRole?: string
   ): Promise<{ success: boolean; count: number; message: string }> {
+    deleteAllApplicationsFromFirestore().catch(() => {});
+
     const res = await safeFetch<{ success: boolean; count: number; message: string }>(
       `${BASE_URL}/applications/batch-delete`,
       {
@@ -543,8 +696,9 @@ export const api = {
 
     if (res.ok && res.data) {
       clientStorage.saveApplication(res.data.application);
+      saveApplicationToFirestore(res.data.application).catch(() => {});
       if (data.affiliateCode) {
-        clientStorage.updateAgent(data.affiliateCode, {
+        const updatedAgent = clientStorage.updateAgent(data.affiliateCode, {
           personalDetails: data.personalDetails,
           bankDetails: data.bankDetails,
           teamDetails: data.teamDetails,
@@ -563,6 +717,7 @@ export const api = {
           accreditationStatus: data.applicationType === 'Renewal' ? 'Renewal Pending' : 'Pending Review',
           profileCompletion: 100,
         });
+        if (updatedAgent) saveAgentToFirestore(updatedAgent).catch(() => {});
       }
       return res.data;
     }
@@ -588,8 +743,9 @@ export const api = {
     };
 
     clientStorage.saveApplication(newApp);
+    saveApplicationToFirestore(newApp).catch(() => {});
     if (newApp.affiliateCode) {
-      clientStorage.updateAgent(newApp.affiliateCode, {
+      const updatedAgent = clientStorage.updateAgent(newApp.affiliateCode, {
         personalDetails: newApp.personalDetails,
         bankDetails: newApp.bankDetails,
         teamDetails: newApp.teamDetails,
@@ -608,6 +764,7 @@ export const api = {
         accreditationStatus: newApp.applicationType === 'Renewal' ? 'Renewal Pending' : 'Pending Review',
         profileCompletion: 100,
       });
+      if (updatedAgent) saveAgentToFirestore(updatedAgent).catch(() => {});
     }
 
     clientStorage.addNotification({
@@ -642,6 +799,7 @@ export const api = {
 
     if (res.ok && res.data) {
       clientStorage.saveApplication(res.data.application);
+      saveApplicationToFirestore(res.data.application).catch(() => {});
       return res.data;
     }
 
@@ -671,6 +829,7 @@ export const api = {
     if (updatedData.idVerificationStatus) app.idVerificationStatus = updatedData.idVerificationStatus;
 
     clientStorage.saveApplication(app);
+    saveApplicationToFirestore(app).catch(() => {});
     return { success: true, application: app };
   },
 
@@ -694,6 +853,9 @@ export const api = {
 
     if (res.ok && res.data) {
       clientStorage.saveApplication(res.data.application);
+      saveApplicationToFirestore(res.data.application).catch(() => {});
+      const ag = clientStorage.getAgent(res.data.application.affiliateCode);
+      if (ag) saveAgentToFirestore(ag).catch(() => {});
       return res.data;
     }
 
@@ -745,7 +907,7 @@ export const api = {
       app.contractUrl = `/contracts/${app.affiliateCode}-${startDate}.pdf`;
 
       // Update agent profile
-      clientStorage.updateAgent(app.affiliateCode, {
+      const updatedAgent = clientStorage.updateAgent(app.affiliateCode, {
         accreditationStatus: 'Active',
         accreditationStartDate: startDate,
         accreditationExpiryDate: expiryDate,
@@ -753,9 +915,11 @@ export const api = {
         accountStatus: 'Active',
         position: app.position,
       });
+      if (updatedAgent) saveAgentToFirestore(updatedAgent).catch(() => {});
     }
 
     clientStorage.saveApplication(app);
+    saveApplicationToFirestore(app).catch(() => {});
 
     clientStorage.addAuditLog({
       user: reviewerName,
@@ -774,11 +938,24 @@ export const api = {
 
   // Position Requests
   async getPositionRequests(): Promise<PositionAccessRequest[]> {
-    const res = await safeFetch<PositionAccessRequest[]>(`${BASE_URL}/position-requests`);
-    if (res.ok && Array.isArray(res.data)) {
-      clientStorage.savePositionRequests(res.data);
-      return res.data;
+    if (!isLiveEnvironment()) {
+      const res = await safeFetch<PositionAccessRequest[]>(`${BASE_URL}/position-requests`);
+      if (res.ok && Array.isArray(res.data)) {
+        clientStorage.savePositionRequests(res.data);
+        return res.data;
+      }
     }
+
+    try {
+      const cloudReqs = await fetchPositionRequestsFromFirestore();
+      if (cloudReqs && cloudReqs.length > 0) {
+        clientStorage.savePositionRequests(cloudReqs);
+        return cloudReqs;
+      }
+    } catch (err: any) {
+      console.warn('Firestore fetchPositionRequests error:', err?.message || err);
+    }
+
     return clientStorage.getPositionRequests();
   },
 
@@ -796,7 +973,10 @@ export const api = {
       }
     );
 
-    if (res.ok && res.data) return res.data;
+    if (res.ok && res.data) {
+      savePositionRequestToFirestore(res.data.request).catch(() => {});
+      return res.data;
+    }
 
     const agent = clientStorage.getAgent(affiliateCode);
     const newReq: PositionAccessRequest = {
@@ -814,6 +994,7 @@ export const api = {
     const reqs = clientStorage.getPositionRequests();
     reqs.unshift(newReq);
     clientStorage.savePositionRequests(reqs);
+    savePositionRequestToFirestore(newReq).catch(() => {});
 
     return { success: true, request: newReq };
   },
@@ -832,7 +1013,10 @@ export const api = {
       }
     );
 
-    if (res.ok && res.data) return res.data;
+    if (res.ok && res.data) {
+      savePositionRequestToFirestore(res.data.request).catch(() => {});
+      return res.data;
+    }
 
     const reqs = clientStorage.getPositionRequests();
     const req = reqs.find((r) => r.id === id);
@@ -842,14 +1026,16 @@ export const api = {
     req.reviewedBy = reviewerName;
     req.reviewDate = new Date().toISOString().split('T')[0];
     clientStorage.savePositionRequests(reqs);
+    savePositionRequestToFirestore(req).catch(() => {});
 
     if (action === 'Approve') {
       const agent = clientStorage.getAgent(req.affiliateCode);
       if (agent) {
         const unlocked = Array.from(new Set([...(agent.unlockedPositions || []), req.requestedPosition]));
-        clientStorage.updateAgent(req.affiliateCode, {
+        const updatedAgent = clientStorage.updateAgent(req.affiliateCode, {
           unlockedPositions: unlocked as Position[],
         });
+        if (updatedAgent) saveAgentToFirestore(updatedAgent).catch(() => {});
       }
     }
 
@@ -858,38 +1044,70 @@ export const api = {
 
   // Notifications
   async getNotifications(affiliateCode?: string, role?: string): Promise<NotificationItem[]> {
-    const params = new URLSearchParams();
-    if (affiliateCode) params.append('affiliateCode', affiliateCode);
-    if (role) params.append('role', role);
+    if (!isLiveEnvironment()) {
+      const params = new URLSearchParams();
+      if (affiliateCode) params.append('affiliateCode', affiliateCode);
+      if (role) params.append('role', role);
 
-    const res = await safeFetch<NotificationItem[]>(`${BASE_URL}/notifications?${params.toString()}`);
-    if (res.ok && Array.isArray(res.data)) {
-      return res.data;
+      const res = await safeFetch<NotificationItem[]>(`${BASE_URL}/notifications?${params.toString()}`);
+      if (res.ok && Array.isArray(res.data)) {
+        return res.data;
+      }
     }
+
+    try {
+      const cloudNotifs = await fetchNotificationsFromFirestore(affiliateCode);
+      if (cloudNotifs && cloudNotifs.length > 0) {
+        return cloudNotifs;
+      }
+    } catch {}
+
     return clientStorage.getNotifications(affiliateCode, role);
   },
 
   async markNotificationRead(id: string): Promise<void> {
+    markNotificationReadInFirestore(id).catch(() => {});
     await safeFetch(`${BASE_URL}/notifications/${id}/read`, { method: 'POST' });
     clientStorage.markNotificationRead(id);
   },
 
   // Audit Logs
   async getAuditLogs(): Promise<AuditLog[]> {
-    const res = await safeFetch<AuditLog[]>(`${BASE_URL}/audit-logs`);
-    if (res.ok && Array.isArray(res.data)) {
-      return res.data;
+    if (!isLiveEnvironment()) {
+      const res = await safeFetch<AuditLog[]>(`${BASE_URL}/audit-logs`);
+      if (res.ok && Array.isArray(res.data)) {
+        return res.data;
+      }
     }
+
+    try {
+      const cloudLogs = await fetchAuditLogsFromFirestore();
+      if (cloudLogs && cloudLogs.length > 0) {
+        return cloudLogs;
+      }
+    } catch {}
+
     return clientStorage.getAuditLogs();
   },
 
   // Settings
   async getSettings(): Promise<SystemSettings> {
-    const res = await safeFetch<SystemSettings>(`${BASE_URL}/settings`);
-    if (res.ok && res.data) {
-      clientStorage.saveSettings(res.data);
-      return res.data;
+    if (!isLiveEnvironment()) {
+      const res = await safeFetch<SystemSettings>(`${BASE_URL}/settings`);
+      if (res.ok && res.data) {
+        clientStorage.saveSettings(res.data);
+        return res.data;
+      }
     }
+
+    try {
+      const cloudSettings = await fetchSettingsFromFirestore();
+      if (cloudSettings) {
+        clientStorage.saveSettings(cloudSettings);
+        return cloudSettings;
+      }
+    } catch {}
+
     return clientStorage.getSettings();
   },
 
@@ -904,10 +1122,12 @@ export const api = {
 
     if (res.ok && res.data) {
       clientStorage.saveSettings(res.data.settings);
+      saveSettingsToFirestore(res.data.settings).catch(() => {});
       return res.data;
     }
 
     const updated = clientStorage.saveSettings(settings);
+    saveSettingsToFirestore(updated).catch(() => {});
     return { success: true, settings: updated };
   },
 
@@ -1016,16 +1236,45 @@ export const api = {
 
   // Position Contract & SAA Management
   async getPositionContracts(): Promise<PositionContractTemplate[]> {
-    const res = await safeFetch<PositionContractTemplate[]>(`${BASE_URL}/contracts/positions`);
-    if (res.ok && Array.isArray(res.data)) return res.data;
+    if (!isLiveEnvironment()) {
+      const res = await safeFetch<PositionContractTemplate[]>(`${BASE_URL}/contracts/positions`);
+      if (res.ok && Array.isArray(res.data) && res.data.length > 0) {
+        clientStorage.savePositionContracts(res.data);
+        return res.data;
+      }
+    }
+
+    try {
+      const cloudContracts = await fetchPositionContractsFromFirestore();
+      if (cloudContracts && cloudContracts.length > 0) {
+        clientStorage.savePositionContracts(cloudContracts);
+        return cloudContracts;
+      }
+    } catch (err: any) {
+      console.warn('Firestore fetchPositionContracts error:', err?.message || err);
+    }
+
     return clientStorage.getPositionContracts();
   },
 
   async getPositionContract(position: string): Promise<PositionContractTemplate> {
-    const res = await safeFetch<PositionContractTemplate>(
-      `${BASE_URL}/contracts/positions/${encodeURIComponent(position)}`
-    );
-    if (res.ok && res.data) return res.data;
+    if (!isLiveEnvironment()) {
+      const res = await safeFetch<PositionContractTemplate>(
+        `${BASE_URL}/contracts/positions/${encodeURIComponent(position)}`
+      );
+      if (res.ok && res.data) return res.data;
+    }
+
+    try {
+      const cloudContracts = await fetchPositionContractsFromFirestore();
+      if (cloudContracts && cloudContracts.length > 0) {
+        clientStorage.savePositionContracts(cloudContracts);
+        const foundCloud = cloudContracts.find(
+          (c) => c.position.toLowerCase() === position.toLowerCase()
+        );
+        if (foundCloud) return foundCloud;
+      }
+    } catch {}
 
     const list = clientStorage.getPositionContracts();
     const found = list.find((c) => c.position.toLowerCase() === position.toLowerCase());
@@ -1055,7 +1304,10 @@ export const api = {
       }
     );
 
-    if (res.ok && res.data) return res.data;
+    if (res.ok && res.data) {
+      savePositionContractToFirestore(res.data.template).catch(() => {});
+      return res.data;
+    }
 
     const updated = clientStorage.updatePositionContract(position, {
       fileName: data.fileName,
@@ -1067,6 +1319,8 @@ export const api = {
       notes: data.notes,
       title: data.title,
     });
+
+    savePositionContractToFirestore(updated).catch(() => {});
 
     return {
       success: true,
@@ -1093,7 +1347,10 @@ export const api = {
       }
     );
 
-    if (res.ok && res.data) return res.data;
+    if (res.ok && res.data) {
+      savePositionContractToFirestore(res.data.template).catch(() => {});
+      return res.data;
+    }
 
     const updated = clientStorage.updatePositionContract(position, {
       title: data.title,
@@ -1101,6 +1358,8 @@ export const api = {
       rawText: data.rawText,
       lastUpdatedBy: data.updatedBy,
     });
+
+    savePositionContractToFirestore(updated).catch(() => {});
 
     return { success: true, template: updated };
   },

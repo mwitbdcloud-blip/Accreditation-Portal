@@ -89,21 +89,8 @@ export const clientStorage = {
   getAgents(): AgentProfile[] {
     const list = readStorage<AgentProfile[]>(STORAGE_KEYS.AGENTS, []);
     if (!Array.isArray(list) || list.length === 0) {
-      // In live environment, do not seed mock demo accounts
-      if (isLiveEnvironment()) {
-        writeStorage(STORAGE_KEYS.AGENTS, []);
-        return [];
-      }
       writeStorage(STORAGE_KEYS.AGENTS, INITIAL_AGENTS);
       return [...INITIAL_AGENTS];
-    }
-    // In live environment, automatically filter out mock demo accounts (those with .example domains)
-    if (isLiveEnvironment()) {
-      const liveAgents = list.filter((a) => !a.email.toLowerCase().includes('.example'));
-      if (liveAgents.length !== list.length) {
-        writeStorage(STORAGE_KEYS.AGENTS, liveAgents);
-        return liveAgents;
-      }
     }
     return list;
   },
@@ -284,6 +271,10 @@ export const clientStorage = {
     return list;
   },
 
+  savePositionContracts(contracts: PositionContractTemplate[]): void {
+    writeStorage(STORAGE_KEYS.CONTRACTS, contracts);
+  },
+
   updatePositionContract(position: string, patch: Partial<PositionContractTemplate>): PositionContractTemplate {
     const list = this.getPositionContracts();
     const idx = list.findIndex((c) => c.position.toLowerCase() === position.toLowerCase());
@@ -360,6 +351,18 @@ export const clientStorage = {
         },
       },
     ]);
+  },
+
+  saveStaffAccounts(staff: StaffAccount[]): void {
+    writeStorage(STORAGE_KEYS.STAFF, staff);
+  },
+
+  getStaff(): StaffAccount[] {
+    return this.getStaffAccounts();
+  },
+
+  saveStaff(staff: StaffAccount[]): void {
+    this.saveStaffAccounts(staff);
   },
 
   getInvitations(): StaffInvitation[] {

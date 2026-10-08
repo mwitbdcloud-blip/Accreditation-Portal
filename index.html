@@ -2,13 +2,29 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="color-scheme" content="dark light" />
     <title>International Property Affiliates Portal</title>
     <meta name="description" content="One-stop shop portal for Megaworld International Property Affiliates (IPAs) - registration, permanent Affiliate Code, accreditation, 4-month renewal cycle, document management, and staff/admin review." />
     <meta property="og:title" content="International Property Affiliates Portal" />
     <meta property="og:description" content="One-stop shop portal for Megaworld International Property Affiliates (IPAs) - registration, permanent Affiliate Code, accreditation, 4-month renewal cycle, document management, and staff/admin review." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    
+    <!-- Cross-platform mobile and web application -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Megaworld IPA" />
+    <link rel="icon" type="image/svg+xml" href="/megaworld-logo.svg" />
+    <link rel="apple-touch-icon" href="/megaworld-logo.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Preconnect to Firebase endpoints for fast global access -->
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
   </head>
   <body>
     <div id="root"></div>

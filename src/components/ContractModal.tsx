@@ -68,7 +68,17 @@ export const ContractModal: React.FC<ContractModalProps> = ({
   const isPositionUnlocked = (pos: Position): boolean => {
     // Staff and Admin have unrestricted access across all contracts
     if (!isAgentUser) return true;
-    // Marketing Associate is always accessible to the agent
+
+    // An agent can only access or view the contract once staff or admin has confirmed/approved the application
+    const isApproved =
+      agent?.accreditationStatus === 'Active' ||
+      application?.status === 'Approved';
+
+    if (!isApproved) {
+      return false;
+    }
+
+    // Marketing Associate is accessible to the agent once approved
     if (pos === 'Marketing Associate') return true;
     // For MM and MD, agent must be endorsed and approved by Staff/Admin
     return unlockedPositions.includes(pos);
@@ -383,32 +393,54 @@ export const ContractModal: React.FC<ContractModalProps> = ({
                 <Lock className="w-8 h-8" />
               </div>
               <h3 className="text-lg font-bold text-white">
-                {activePosition} Contract Restricted
+                {agent?.accreditationStatus !== 'Active' && application?.status !== 'Approved'
+                  ? 'Application Under Review & Awaiting Approval'
+                  : `${activePosition} Contract Restricted`}
               </h3>
               <p className="text-xs text-slate-300 leading-relaxed">
-                As an accredited <strong>Marketing Associate</strong>, you cannot view, print, or download the {activePosition} contract. Access will be unlocked once approved by BD Staff or Admin.
+                {agent?.accreditationStatus !== 'Active' && application?.status !== 'Approved'
+                  ? 'Your accreditation application is currently under review. The official Sales Agency Agreement (SAA) and Certificate can only be viewed or accessed once BD Staff or Admin confirms and approves your application.'
+                  : `As an accredited Marketing Associate, you cannot view, print, or download the ${activePosition} contract. Access will be unlocked once approved by BD Staff or Admin.`}
               </p>
               <div className="p-3.5 bg-slate-800/80 border border-slate-700 rounded-xl text-left text-xs space-y-1.5 text-slate-300">
                 <div className="font-semibold text-amber-300 flex items-center gap-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5" /> How to Gain Access:
+                  <AlertTriangle className="w-3.5 h-3.5" /> Next Steps:
                 </div>
-                <p className="text-[11px] text-slate-400">
-                  1. Submit a Position Upgrade Request to your upline and assigned BD Operations staff.
-                </p>
-                <p className="text-[11px] text-slate-400">
-                  2. Upon review and approval by BD Staff or Super Admin, your position will be elevated and this contract will automatically unlock.
-                </p>
+                {agent?.accreditationStatus !== 'Active' && application?.status !== 'Approved' ? (
+                  <p className="text-[11px] text-slate-400">
+                    Our Business Development Operations team is actively verifying your submitted documents, 1x1 photo, and accreditation details. You will be notified immediately upon approval.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-[11px] text-slate-400">
+                      1. Submit a Position Upgrade Request to your upline and assigned BD Operations staff.
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      2. Upon review and approval by BD Staff or Super Admin, your position will be elevated and this contract will automatically unlock.
+                    </p>
+                  </>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setActivePosition('Marketing Associate');
-                  setLockedNotice(null);
-                }}
-                className="px-4 py-2 bg-blue-900 hover:bg-blue-800 text-white font-semibold text-xs rounded-xl transition shadow-xs"
-              >
-                Return to Marketing Associate Contract
-              </button>
+              {agent?.accreditationStatus !== 'Active' && application?.status !== 'Approved' ? (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 bg-blue-900 hover:bg-blue-800 text-white font-semibold text-xs rounded-xl transition shadow-xs cursor-pointer"
+                >
+                  Close & Return to Dashboard
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActivePosition('Marketing Associate');
+                    setLockedNotice(null);
+                  }}
+                  className="px-4 py-2 bg-blue-900 hover:bg-blue-800 text-white font-semibold text-xs rounded-xl transition shadow-xs cursor-pointer"
+                >
+                  Return to Marketing Associate Contract
+                </button>
+              )}
             </div>
           ) : (
             <div id="contract-print-area" className="w-full flex justify-center">

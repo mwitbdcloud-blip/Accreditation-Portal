@@ -1,0 +1,18 @@
+{
+  "name": "Megaworld International Property Affiliates Portal",
+  "short_name": "Megaworld IPA",
+  "description": "One-stop shop portal for Megaworld International Property Affiliates (IPAs) - registration, permanent Affiliate Code, accreditation, 4-month renewal cycle, document management, and staff/admin review.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/megaworld-logo.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

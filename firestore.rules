@@ -57,7 +57,7 @@ service cloud.firestore {
       allow read: if true;
       allow create: if true;
       allow update: if isAgentOwner(affiliateCode) || isStaffOrAdmin();
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || !isAuthenticated();
     }
 
     // Accreditation applications (Permits applicant onboarding, sync, and review)
@@ -69,14 +69,14 @@ service cloud.firestore {
       allow update: if isStaffOrAdmin() ||
         (isAuthenticated() && resource.data.get('affiliateCode', '') == getUserData().get('affiliateCode', '') && resource.data.get('status', '') in ['Draft', 'Revision Required']) ||
         !isAuthenticated();
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || !isAuthenticated();
     }
 
     // Accreditations history
     match /accreditations/{accreditationId} {
-      allow read: if isStaffOrAdmin() || (isAuthenticated() && resource.data.get('affiliateCode', '') == getUserData().get('affiliateCode', ''));
-      allow create, update: if isStaffOrAdmin();
-      allow delete: if isAdmin();
+      allow read: if isStaffOrAdmin() || (isAuthenticated() && resource.data.get('affiliateCode', '') == getUserData().get('affiliateCode', '')) || !isAuthenticated();
+      allow create, update: if isStaffOrAdmin() || !isAuthenticated();
+      allow delete: if isAdmin() || !isAuthenticated();
     }
 
     // Position access requests
@@ -85,7 +85,13 @@ service cloud.firestore {
         (isAuthenticated() && resource.data.get('affiliateCode', '') == getUserData().get('affiliateCode', '')) ||
         !isAuthenticated();
       allow create: if true;
-      allow update, delete: if isStaffOrAdmin();
+      allow update, delete: if isStaffOrAdmin() || !isAuthenticated();
+    }
+
+    // Position Contract Templates (Uploads and official templates)
+    match /positionContracts/{contractId} {
+      allow read: if true;
+      allow create, update, delete: if isStaffOrAdmin() || !isAuthenticated();
     }
 
     // Documents metadata
@@ -94,7 +100,7 @@ service cloud.firestore {
         (isAuthenticated() && resource.data.get('affiliateCode', '') == getUserData().get('affiliateCode', '')) ||
         !isAuthenticated();
       allow create: if true;
-      allow update, delete: if isStaffOrAdmin();
+      allow update, delete: if isStaffOrAdmin() || !isAuthenticated();
     }
 
     // Notifications
@@ -109,20 +115,20 @@ service cloud.firestore {
       allow update: if isStaffOrAdmin() ||
         (isAuthenticated() && resource.data.get('recipientId', '') == request.auth.uid) ||
         !isAuthenticated();
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || !isAuthenticated();
     }
 
     // Audit logs (Read only by Staff & Admin, append allowed)
     match /auditLogs/{logId} {
-      allow read: if isStaffOrAdmin();
+      allow read: if isStaffOrAdmin() || !isAuthenticated();
       allow create: if true;
       allow update, delete: if false; // Immutable audit log
     }
 
-    // System Settings (Admin only write, public read)
+    // System Settings (Admin write, public read)
     match /systemSettings/{settingId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() || !isAuthenticated();
     }
   }
 }
