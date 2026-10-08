@@ -1,1 +1,179 @@
 @import "tailwindcss";
+
+/* ==========================================================================
+   PRINT / SAVE PDF STYLES
+   Ensures only document pages are printed/saved to PDF, all pages are reflected,
+   and all UI chrome / screens / modals / backgrounds are cleanly hidden.
+   ========================================================================== */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 12mm 12mm 12mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide app navigation, sidebars, headers, floating toasts, modals other than contract */
+  header,
+  nav,
+  aside,
+  footer,
+  #main-navbar,
+  .no-print,
+  [data-no-print] {
+    display: none !important;
+  }
+
+  /* When printing contract: hide all root children except the contract modal */
+  body.printing-contract #root > *:not(:has(#contract-modal)),
+  body:has(#contract-modal) #root > *:not(:has(#contract-modal)) {
+    display: none !important;
+  }
+
+  /* If printing Digital ID Badge */
+  body:has(#digital-id-badge-card) #root > *:not(:has(#digital-id-badge-card)) {
+    display: none !important;
+  }
+
+  /* Contract modal outer overlay reset */
+  #contract-modal {
+    position: static !important;
+    display: block !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    width: 100% !important;
+    inset: auto !important;
+    z-index: auto !important;
+  }
+
+  /* Contract modal inner container */
+  #contract-modal > div {
+    position: static !important;
+    display: block !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    border: none !important;
+    box-shadow: none !important;
+    max-height: none !important;
+    height: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+  }
+
+  /* Hide modal chrome controls */
+  #contract-modal .contract-modal-header,
+  #contract-modal .contract-modal-toolbar,
+  #contract-modal .contract-modal-footer,
+  #contract-modal .contract-modal-drawer,
+  #contract-modal button,
+  #contract-modal input,
+  #contract-modal select,
+  #contract-modal .template-page-badge {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Scrollable body in modal */
+  #contract-modal .contract-modal-body {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    display: block !important;
+    width: 100% !important;
+  }
+
+  #contract-print-area {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  /* Template contract wrapper */
+  .template-contract-wrapper {
+    transform: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  .docx-viewer-root {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+
+  .docx-wrapper {
+    background: transparent !important;
+    background-color: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+  }
+
+  /* All pages must be displayed in print and properly page-broken */
+  section.docx,
+  .docx-wrapper > section.docx {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    margin: 0 auto !important;
+    padding: 20pt 28pt !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: auto !important;
+    box-sizing: border-box !important;
+    page-break-before: auto !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  section.docx:last-child,
+  .docx-wrapper > section.docx:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+}

@@ -1,7 +1,7 @@
 import { renderAsync } from 'docx-preview';
 import { jsPDF } from 'jspdf';
 import JSZip from 'jszip';
-import html2canvas from 'html2canvas-pro';
+import { safeHtml2Canvas } from './colorSanitizer';
 import { ContractData } from '../components/ContractDocument';
 import { Position } from '../types';
 import {
@@ -236,17 +236,19 @@ export async function exportDocxContainerToPdf(
     const prevDisplay = section.style.display;
     const prevVisibility = section.style.visibility;
     const prevBoxShadow = section.style.boxShadow;
+    const prevOpacity = section.style.opacity;
 
     section.style.display = 'block';
     section.style.visibility = 'visible';
+    section.style.opacity = '1';
     section.style.boxShadow = 'none';
 
     // Temporarily hide viewer-only badges
     const badges = Array.from(section.querySelectorAll<HTMLElement>('.template-page-badge'));
     badges.forEach((b) => (b.style.display = 'none'));
 
-    // High quality canvas capture
-    const canvas = await html2canvas(section, {
+    // High quality canvas capture with safe OKLCH handling
+    const canvas = await safeHtml2Canvas(section, {
       scale: 2,
       useCORS: true,
       allowTaint: true,
@@ -258,6 +260,7 @@ export async function exportDocxContainerToPdf(
     // Restore previous display state
     section.style.display = prevDisplay;
     section.style.visibility = prevVisibility;
+    section.style.opacity = prevOpacity;
     section.style.boxShadow = prevBoxShadow;
     badges.forEach((b) => (b.style.display = ''));
 
@@ -320,7 +323,7 @@ export async function generateContractPdfFromTemplate(
     const tempHost = document.createElement('div');
     tempHost.id = `docx-export-temp-${Date.now()}`;
     tempHost.style.cssText =
-      'position: fixed; left: -9999px; top: 0; width: 900px; opacity: 0; pointer-events: none; z-index: -99999; background: #ffffff;';
+      'position: fixed; left: 0; top: 0; width: 900px; opacity: 1; pointer-events: none; z-index: -99999; background: #ffffff;';
     document.body.appendChild(tempHost);
 
     try {

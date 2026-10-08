@@ -147,7 +147,32 @@ export const ContractModal: React.FC<ContractModalProps> = ({
 
   const handlePrint = () => {
     if (!isCurrentActiveUnlocked) return;
+    document.body.classList.add('printing-contract');
+
+    // Ensure all rendered docx sections are unhidden for the print engine
+    if (renderedContainerRef.current) {
+      const sections = renderedContainerRef.current.querySelectorAll<HTMLElement>(
+        '.docx-wrapper > section.docx, section.docx'
+      );
+      sections.forEach((sec) => {
+        sec.style.setProperty('display', 'block', 'important');
+      });
+    }
+
     window.print();
+
+    // Clean up printing state and restore pagination if in paginated view
+    setTimeout(() => {
+      document.body.classList.remove('printing-contract');
+      if (renderedContainerRef.current && viewMode === 'paginated') {
+        const sections = renderedContainerRef.current.querySelectorAll<HTMLElement>(
+          '.docx-wrapper > section.docx, section.docx'
+        );
+        sections.forEach((sec, idx) => {
+          sec.style.display = idx === currentPageIndex ? 'block' : 'none';
+        });
+      }
+    }, 1500);
   };
 
   const activeTemplateFileName =
@@ -157,7 +182,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
     <div id="contract-modal" className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/75 backdrop-blur-xs overflow-y-auto">
       <div className="relative w-full max-w-5xl my-4 sm:my-8 bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-700 flex flex-col max-h-[96vh]">
         {/* Top Control Bar */}
-        <div className="flex flex-wrap items-center justify-between px-5 py-3.5 bg-slate-900 border-b border-slate-800 text-white gap-3">
+        <div className="contract-modal-header no-print flex flex-wrap items-center justify-between px-5 py-3.5 bg-slate-900 border-b border-slate-800 text-white gap-3">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-900 text-blue-200 rounded-lg shadow-inner">
               <FileText className="w-5 h-5" />
@@ -193,7 +218,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
 
         {/* Download notification banner if available */}
         {downloadNotice && (
-          <div className="px-5 py-2.5 bg-emerald-950 border-b border-emerald-800 text-emerald-200 text-xs flex items-center justify-between gap-3">
+          <div className="no-print px-5 py-2.5 bg-emerald-950 border-b border-emerald-800 text-emerald-200 text-xs flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>{downloadNotice}</span>
@@ -205,7 +230,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
         )}
 
         {/* Position Template Selector Tabs & Viewing Controls */}
-        <div className="px-5 py-2.5 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="contract-modal-toolbar no-print px-5 py-2.5 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
           {/* Position Tabs */}
           <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800">
             <span className="text-[11px] font-semibold text-slate-400 px-2 select-none">Position:</span>
@@ -351,7 +376,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
         )}
 
         {/* Contract Pages Container */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-800/80 flex justify-center">
+        <div className="contract-modal-body flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-800/80 flex justify-center">
           {!isCurrentActiveUnlocked ? (
             <div className="w-full max-w-lg mx-auto my-8 p-8 bg-slate-900 border border-slate-700 rounded-2xl text-center space-y-4 shadow-2xl">
               <div className="w-16 h-16 mx-auto bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-center text-amber-400">
@@ -386,7 +411,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
               </button>
             </div>
           ) : (
-            <div className="w-full flex justify-center">
+            <div id="contract-print-area" className="w-full flex justify-center">
               <TemplateContractViewer
                 templateSource={activeTemplateSource}
                 contractData={contractData}
@@ -405,7 +430,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
 
         {/* Collapsible Tag Data Transfer Mapping Drawer at lower section */}
         {showMappingDrawer && (
-          <div className="px-5 py-3 bg-slate-900 border-t border-slate-800 text-xs animate-in fade-in duration-200">
+          <div className="contract-modal-drawer no-print px-5 py-3 bg-slate-900 border-t border-slate-800 text-xs animate-in fade-in duration-200">
             <div className="flex items-center justify-between mb-2">
               <span className="font-bold text-white flex items-center gap-1.5">
                 <FileCheck className="w-4 h-4 text-emerald-400" />
@@ -434,7 +459,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
         )}
 
         {/* Bottom Status Bar */}
-        <div className="px-5 py-3 bg-slate-900 border-t border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-400 gap-3">
+        <div className="contract-modal-footer no-print px-5 py-3 bg-slate-900 border-t border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-400 gap-3">
           <div className="flex items-center gap-2 flex-wrap">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             <span>

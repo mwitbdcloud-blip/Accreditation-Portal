@@ -24,7 +24,7 @@ import {
 import { AgentProfile, AccreditationApplication } from '../types';
 import { formatDate } from '../utils/dateFormatter';
 import { MegaworldLogo } from './MegaworldLogo';
-import html2canvas from 'html2canvas-pro';
+import { safeHtml2Canvas } from '../utils/colorSanitizer';
 import QRCode from 'qrcode';
 
 interface DigitalIdBadgeProps {
@@ -165,7 +165,7 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
     if (!targetRef.current || isDownloading) return;
     setIsDownloading(true);
     try {
-      const canvas = await html2canvas(targetRef.current, {
+      const canvas = await safeHtml2Canvas(targetRef.current, {
         scale: 2.5,
         useCORS: true,
         allowTaint: true,
