@@ -114,8 +114,8 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
   let nextActionType: 'action' | 'review' | 'active' | 'expired' = 'action';
 
   if (isUnderReview) {
-    nextActionTitle = 'Your application is currently under review';
-    nextActionDesc = 'Our BD Staff operations team is verifying your submitted valid ID, photo, and details. The official Sales Agency Agreement (SAA) and Certificate will be accessible once confirmed and approved by staff or admin.';
+    nextActionTitle = 'Your application is currently under review & for approval';
+    nextActionDesc = 'Our BD Staff operations team is verifying your submitted valid ID, 1x1 photo, and accreditation details. The official Sales Agency Agreement (SAA) and Certificate can only be viewed or accessed once confirmed and approved by staff or admin.';
     nextActionType = 'review';
   } else if (isActive) {
     nextActionTitle = `Your accreditation is active until ${formatDate(agent.accreditationExpiryDate) || 'the end of your 4-month cycle'}`;
@@ -194,13 +194,15 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
                   }`}
                 />
                 <span className="text-sm font-bold text-white">
-                  {isActive ? 'Active' : isUnderReview ? 'Under Review' : isExpired ? 'Expired' : 'Pending Submission'}
+                  {isActive ? 'Active' : isUnderReview ? 'Under Review & For Approval' : isExpired ? 'Expired' : 'Pending Submission'}
                 </span>
               </div>
               <p className="text-[10px] text-slate-300 mt-0.5">
                 {isActive && agent.accreditationExpiryDate
                   ? `Expires: ${formatDate(agent.accreditationExpiryDate)}`
-                  : 'Pending accreditation cycle'}
+                  : isUnderReview
+                  ? 'Awaiting Staff / Admin approval'
+                  : 'Pending accreditation submission'}
               </p>
             </div>
 

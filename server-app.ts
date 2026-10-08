@@ -471,6 +471,166 @@ async function startServer() {
     });
   });
 
+  // Google Authentication endpoint
+  app.post('/api/auth/google', (req, res) => {
+    const { uid, email, displayName, photoURL } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Please provide a valid Google email.' });
+    }
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanName = displayName || cleanEmail.split('@')[0] || 'Affiliate';
+    const photoUrl = photoURL || '';
+
+    // 1. Super Admin
+    if (
+      cleanEmail === 'admin@megaworld.com' ||
+      cleanEmail === 'mwi.tbdcloud@gmail.com' ||
+      cleanEmail === 'alexander.vance@megaworld.com'
+    ) {
+      db.log('Business Development Admin', 'admin', 'Google Login', 'ADM-001', 'Logged in as Super Admin via Google.');
+      return res.json({
+        success: true,
+        role: 'Admin',
+        user: {
+          uid,
+          email: cleanEmail,
+          role: 'Admin',
+          displayName: cleanName || 'Business Development Admin',
+          photoUrl: photoUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+          permissions: {
+            canReviewApplications: true,
+            canManageContracts: true,
+            canEditAgents: true,
+            canOverrideAccreditation: true,
+            canViewReports: true,
+            canManageSettings: true,
+            canInviteStaff: true,
+          },
+        },
+      });
+    }
+
+    // 2. Staff Accounts
+    if (cleanEmail === 'staff@megaworld.com' || cleanEmail === 'elena.ramos@megaworld.com') {
+      db.log('Elena Ramos', 'staff', 'Google Login', 'STF-001', 'Logged in as BD Staff via Google.');
+      return res.json({
+        success: true,
+        role: 'Staff',
+        user: {
+          uid,
+          email: cleanEmail,
+          role: 'Staff',
+          displayName: cleanName || 'Elena Ramos (BD Staff)',
+          photoUrl: photoUrl || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
+          permissions: {
+            canReviewApplications: true,
+            canManageContracts: false,
+            canEditAgents: true,
+            canOverrideAccreditation: false,
+            canViewReports: true,
+            canManageSettings: false,
+            canInviteStaff: false,
+          },
+        },
+      });
+    }
+
+    const matchedStaff = db.staffAccounts.find(
+      (s) => s.email.toLowerCase() === cleanEmail && s.status === 'Active'
+    );
+    if (matchedStaff) {
+      return res.json({
+        success: true,
+        role: 'Staff',
+        user: {
+          uid: matchedStaff.id,
+          email: cleanEmail,
+          role: matchedStaff.role || 'Staff',
+          displayName: matchedStaff.fullName || cleanName,
+          photoUrl,
+          permissions: matchedStaff.permissions,
+        },
+      });
+    }
+
+    // 3. Existing Agent check
+    let existingAgent = db.agents.find(
+      (a) =>
+        (a.firebaseUserId && a.firebaseUserId === uid) ||
+        a.email.toLowerCase() === cleanEmail
+    );
+
+    if (existingAgent) {
+      existingAgent.firebaseUserId = uid;
+      if (photoUrl) existingAgent.photoUrl = photoUrl;
+      if (displayName && (existingAgent.fullName === 'International Property Affiliate' || existingAgent.fullName.startsWith('Affiliate'))) {
+        existingAgent.fullName = cleanName;
+      }
+      db.log(existingAgent.fullName, 'agent', 'Google Login', existingAgent.affiliateCode, 'Logged in via Google Sign-In.');
+      return res.json({
+        success: true,
+        role: 'Agent',
+        user: {
+          uid,
+          email: existingAgent.email,
+          role: 'Agent',
+          affiliateCode: existingAgent.affiliateCode,
+          displayName: existingAgent.fullName,
+          region: existingAgent.region,
+          position: existingAgent.position,
+          positions: existingAgent.positions || [existingAgent.position],
+          photoUrl: existingAgent.photoUrl,
+        },
+        agent: existingAgent,
+      });
+    }
+
+    // 4. Brand New Unique Agent
+    const newAffiliateCode = db.generateAffiliateCode('Asia Pacific 2');
+    const today = new Date().toISOString().split('T')[0];
+    const newAgent: AgentProfile = {
+      affiliateCode: newAffiliateCode,
+      firebaseUserId: uid,
+      fullName: cleanName,
+      nickname: cleanName.split(' ')[0] || 'Affiliate',
+      email: cleanEmail,
+      photoUrl,
+      region: 'Asia Pacific 2',
+      position: 'Marketing Associate',
+      positions: ['Marketing Associate'],
+      role: 'agent',
+      registrationDate: today,
+      accountStatus: 'Active',
+      profileCompletion: 25,
+      currentAccreditationId: undefined, // Pristine!
+      accreditationStatus: 'Not Started', // Clean, unique brand new agent entity!
+      renewalEligibility: false,
+      unlockedPositions: ['Marketing Associate'],
+      assignedStaff: 'Elena Ramos (BD Staff)',
+    };
+
+    db.agents.unshift(newAgent);
+
+    db.log(cleanName, 'agent', 'Google Sign-In Account Provisioned', newAffiliateCode, `Unique agent entity created for ${cleanEmail} via Google Sign-In.`);
+
+    return res.json({
+      success: true,
+      role: 'Agent',
+      user: {
+        uid,
+        email: newAgent.email,
+        role: 'Agent',
+        affiliateCode: newAgent.affiliateCode,
+        displayName: newAgent.fullName,
+        region: newAgent.region,
+        position: newAgent.position,
+        positions: newAgent.positions || [newAgent.position],
+        photoUrl: newAgent.photoUrl,
+      },
+      agent: newAgent,
+    });
+  });
+
   // Login
   app.post('/api/auth/login', (req, res) => {
     const { identifier, password } = req.body;
@@ -617,61 +777,14 @@ async function startServer() {
         registrationDate: today,
         accountStatus: 'Active',
         profileCompletion: 25,
-        accreditationStatus: 'Pending',
+        currentAccreditationId: undefined,
+        accreditationStatus: 'Not Started',
         renewalEligibility: false,
         unlockedPositions: ['Marketing Associate'],
         assignedStaff: 'Elena Ramos (BD Staff)',
       };
 
       db.agents.unshift(newAgent);
-
-      // Blank draft application so they can continue and complete their accreditation inside
-      const newApp: AccreditationApplication = {
-        id: `app_${Date.now()}`,
-        affiliateCode: generatedCode,
-        applicationType: 'New',
-        position: 'Marketing Associate',
-        region: 'Asia Pacific 2',
-        status: 'Draft',
-        dateSubmitted: '',
-        personalDetails: {
-          firstName: newAgent.fullName.split(' ')[0] || '',
-          middleName: '',
-          lastName: newAgent.fullName.split(' ').slice(1).join(' ') || '',
-          suffix: '',
-          fullName: newAgent.fullName,
-          dateOfBirth: '',
-          nationality: '',
-          citizenship: '',
-          civilStatus: '',
-          residentialAddress: '',
-          country: '',
-          state: '',
-          telephoneNumber: '',
-          mobileNumber: '',
-          emailAddress: trimmedId,
-          tin: '',
-          idMatchConfirmed: false,
-        },
-        bankDetails: {
-          bankName: '',
-          accountName: newAgent.fullName,
-          accountNumber: '',
-          bankAddress: '',
-          swiftCode: '',
-        },
-        teamDetails: {
-          teamName: '',
-          upline: '',
-          teamLeader: '',
-          brokerGroup: 'Megaworld International Asia Pacific 2 Hub',
-        },
-        idVerificationStatus: 'Pending',
-        eSignatureConfirmed: false,
-        declarationAccepted: false,
-      };
-
-      db.applications.unshift(newApp);
 
       db.log(newAgent.fullName, 'agent', 'User Registration & Login', generatedCode, 'New account registered with permanent Affiliate Code. Ready for accreditation completion.');
 

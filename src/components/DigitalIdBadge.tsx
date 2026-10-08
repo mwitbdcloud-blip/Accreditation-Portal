@@ -91,13 +91,17 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
 
   const startDateFormatted = agent.accreditationStartDate
     ? formatDate(agent.accreditationStartDate)
-    : latestApplication?.submissionDate
-    ? formatDate(latestApplication.submissionDate)
-    : 'June 15, 2026';
+    : latestApplication?.dateSubmitted
+    ? formatDate(latestApplication.dateSubmitted)
+    : isActive
+    ? 'Official Term'
+    : 'Pending Approval';
 
   const expiryDateFormatted = agent.accreditationExpiryDate
     ? formatDate(agent.accreditationExpiryDate)
-    : 'October 15, 2026';
+    : isActive
+    ? 'Active Cycle'
+    : 'Pending Approval';
 
   // Status visual attributes
   const getStatusDisplay = () => {

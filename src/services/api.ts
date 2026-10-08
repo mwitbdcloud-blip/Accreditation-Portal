@@ -179,6 +179,254 @@ export const api = {
     };
   },
 
+  async loginWithGoogle(fbUser: {
+    uid: string;
+    email: string;
+    displayName?: string | null;
+    photoURL?: string | null;
+  }): Promise<{
+    success: boolean;
+    role: 'Admin' | 'Staff' | 'Agent';
+    user: any;
+    agent?: AgentProfile;
+  }> {
+    const cleanEmail = (fbUser.email || '').trim().toLowerCase();
+    const cleanName = fbUser.displayName || cleanEmail.split('@')[0] || 'Affiliate';
+    const photoUrl = fbUser.photoURL || '';
+
+    // First try server API endpoint if in full-stack dev environment
+    if (!isLiveEnvironment()) {
+      const res = await safeFetch<{
+        success: boolean;
+        role: 'Admin' | 'Staff' | 'Agent';
+        user: any;
+        agent?: AgentProfile;
+      }>(`${BASE_URL}/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: fbUser.uid,
+          email: cleanEmail,
+          displayName: cleanName,
+          photoURL: photoUrl,
+        }),
+      });
+
+      if (res.ok && res.data) {
+        if (res.data.agent) {
+          const list = clientStorage.getAgents();
+          if (!list.some((a) => a.affiliateCode === res.data!.agent!.affiliateCode)) {
+            list.unshift(res.data.agent);
+            clientStorage.saveAgents(list);
+          }
+          saveAgentToFirestore(res.data.agent).catch(() => {});
+        }
+        return res.data;
+      }
+    }
+
+    // 1. Super Admin Accounts
+    if (
+      cleanEmail === 'admin@megaworld.com' ||
+      cleanEmail === 'mwi.tbdcloud@gmail.com' ||
+      cleanEmail === 'alexander.vance@megaworld.com'
+    ) {
+      const adminUser = {
+        uid: fbUser.uid,
+        email: cleanEmail,
+        role: 'Admin',
+        displayName: cleanName || 'Business Development Admin',
+        photoUrl: photoUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+        permissions: {
+          canReviewApplications: true,
+          canManageContracts: true,
+          canEditAgents: true,
+          canOverrideAccreditation: true,
+          canViewReports: true,
+          canManageSettings: true,
+          canInviteStaff: true,
+        },
+      };
+      return { success: true, role: 'Admin', user: adminUser };
+    }
+
+    // 2. Staff Accounts
+    if (cleanEmail === 'staff@megaworld.com' || cleanEmail === 'elena.ramos@megaworld.com') {
+      const staffUser = {
+        uid: fbUser.uid,
+        email: cleanEmail,
+        role: 'Staff',
+        displayName: cleanName || 'Elena Ramos (BD Staff)',
+        photoUrl: photoUrl || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
+        permissions: {
+          canReviewApplications: true,
+          canManageContracts: false,
+          canEditAgents: true,
+          canOverrideAccreditation: false,
+          canViewReports: true,
+          canManageSettings: false,
+          canInviteStaff: false,
+        },
+      };
+      return { success: true, role: 'Staff', user: staffUser };
+    }
+
+    const matchedStaff = await findStaffByEmailInFirestore(cleanEmail);
+    if (matchedStaff) {
+      const staffUser = {
+        uid: fbUser.uid,
+        email: cleanEmail,
+        role: matchedStaff.role || 'Staff',
+        displayName: matchedStaff.fullName || cleanName,
+        photoUrl,
+        permissions: matchedStaff.permissions,
+      };
+      return { success: true, role: 'Staff', user: staffUser };
+    }
+
+    // 3. User is an Agent:
+    // Check Firestore to see if this agent entity ALREADY EXISTS
+    let existingAgent: AgentProfile | null = null;
+    try {
+      existingAgent = await findAgentByCredentialsInFirestore(cleanEmail);
+      if (!existingAgent) {
+        const allAgents = await fetchAgentsFromFirestore();
+        existingAgent =
+          allAgents.find(
+            (a) =>
+              (a.firebaseUserId && a.firebaseUserId === fbUser.uid) ||
+              a.email.toLowerCase() === cleanEmail
+          ) || null;
+      }
+    } catch (e) {
+      console.warn('Error checking existing agent for Google login in Firestore:', e);
+    }
+
+    if (!existingAgent) {
+      const localList = clientStorage.getAgents();
+      existingAgent =
+        localList.find(
+          (a) =>
+            (a.firebaseUserId && a.firebaseUserId === fbUser.uid) ||
+            a.email.toLowerCase() === cleanEmail
+        ) || null;
+    }
+
+    if (existingAgent) {
+      // Existing unique agent entity found!
+      const updatedAgent: AgentProfile = {
+        ...existingAgent,
+        firebaseUserId: fbUser.uid,
+        fullName:
+          existingAgent.fullName &&
+          existingAgent.fullName !== 'International Property Affiliate' &&
+          !existingAgent.fullName.startsWith('Affiliate')
+            ? existingAgent.fullName
+            : cleanName,
+        photoUrl: photoUrl || existingAgent.photoUrl,
+      };
+      await saveAgentToFirestore(updatedAgent).catch(() => {});
+      clientStorage.updateAgent(updatedAgent.affiliateCode, updatedAgent);
+
+      return {
+        success: true,
+        role: 'Agent',
+        user: {
+          uid: fbUser.uid,
+          email: updatedAgent.email,
+          role: 'Agent',
+          affiliateCode: updatedAgent.affiliateCode,
+          displayName: updatedAgent.fullName,
+          region: updatedAgent.region,
+          position: updatedAgent.position,
+          positions: updatedAgent.positions || [updatedAgent.position],
+          photoUrl: updatedAgent.photoUrl,
+        },
+        agent: updatedAgent,
+      };
+    }
+
+    // 4. Brand New Unique Agent Entity!
+    // Dynamically calculate the highest sequence number in Firestore & local storage for AP2
+    const allAgents = await fetchAgentsFromFirestore().catch(() => []);
+    let maxNum = 21; // Baseline for default sample seed accounts (IPA-AP2-000001 - 000021)
+    allAgents.forEach((a) => {
+      const match = a.affiliateCode.match(/^IPA-AP2-(\d+)/i);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (n > maxNum) maxNum = n;
+      }
+    });
+    clientStorage.getAgents().forEach((a) => {
+      const match = a.affiliateCode.match(/^IPA-AP2-(\d+)/i);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (n > maxNum) maxNum = n;
+      }
+    });
+
+    const nextCodeNum = String(maxNum + 1).padStart(6, '0');
+    const newAffiliateCode = `IPA-AP2-${nextCodeNum}`;
+    const today = new Date().toISOString().split('T')[0];
+
+    const newAgent: AgentProfile = {
+      affiliateCode: newAffiliateCode,
+      firebaseUserId: fbUser.uid,
+      fullName: cleanName,
+      nickname: cleanName.split(' ')[0] || 'Affiliate',
+      email: cleanEmail,
+      photoUrl,
+      region: 'Asia Pacific 2',
+      position: 'Marketing Associate',
+      positions: ['Marketing Associate'],
+      role: 'agent',
+      registrationDate: today,
+      accountStatus: 'Active',
+      profileCompletion: 25,
+      currentAccreditationId: undefined, // Pristine, brand new!
+      accreditationStatus: 'Not Started', // Clean, unique brand new agent entity!
+      renewalEligibility: false,
+      unlockedPositions: ['Marketing Associate'],
+      assignedStaff: 'Elena Ramos (BD Staff)',
+    };
+
+    // Save directly to Firestore collection 'agents'
+    await saveAgentToFirestore(newAgent).catch((err) => {
+      console.error('Failed to save new Google agent to Firestore:', err);
+    });
+
+    // Save to clientStorage
+    const currentList = clientStorage.getAgents();
+    currentList.unshift(newAgent);
+    clientStorage.saveAgents(currentList);
+
+    // Add Audit Log
+    clientStorage.addAuditLog({
+      user: cleanName,
+      role: 'agent',
+      action: 'Google Sign-In Account Provisioned',
+      recordAffected: newAffiliateCode,
+      details: `Unique agent entity created for ${cleanEmail} via Google Sign-In. Permanent code: ${newAffiliateCode}. Status: Not Started.`,
+    });
+
+    return {
+      success: true,
+      role: 'Agent',
+      user: {
+        uid: fbUser.uid,
+        email: newAgent.email,
+        role: 'Agent',
+        affiliateCode: newAgent.affiliateCode,
+        displayName: newAgent.fullName,
+        region: newAgent.region,
+        position: newAgent.position,
+        positions: newAgent.positions || [newAgent.position],
+        photoUrl: newAgent.photoUrl,
+      },
+      agent: newAgent,
+    };
+  },
+
   async login(
     identifier: string,
     password?: string

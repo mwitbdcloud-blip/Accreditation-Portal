@@ -174,8 +174,8 @@ export default function App() {
     registrationDate: new Date().toISOString().split('T')[0],
     accountStatus: 'Active',
     profileCompletion: 25,
-    currentAccreditationId: 'acc_001',
-    accreditationStatus: 'Pending',
+    currentAccreditationId: undefined,
+    accreditationStatus: 'Not Started',
     renewalEligibility: false,
     unlockedPositions: ['Marketing Associate'],
     assignedStaff: 'BD Staff Reviewer',
@@ -375,21 +375,39 @@ export default function App() {
         showToast('Google sign-in did not provide an email address.');
         return;
       }
-      try {
-        await handleLogin(fbUser.email);
-      } catch {
-        const displayName = fbUser.displayName || fbUser.email.split('@')[0];
-        const regRes = await api.register({
-          fullName: displayName,
-          email: fbUser.email,
-          region: 'Asia Pacific 2',
-          position: 'Marketing Associate',
-        });
-        if (regRes.agent) {
-          syncAgentToFirestore(regRes.agent).catch(() => {});
-        }
-        await handleLogin(regRes.affiliateCode);
+
+      const res = await api.loginWithGoogle(fbUser);
+      const user = res.user;
+
+      const userRoleStr = (res.role || user.role || '').toLowerCase();
+      const normalizedRole: 'Agent' | 'Staff' | 'Admin' =
+        userRoleStr.includes('admin')
+          ? 'Admin'
+          : userRoleStr.includes('staff')
+          ? 'Staff'
+          : 'Agent';
+
+      const displayName =
+        user.displayName ||
+        user.fullName ||
+        fbUser.displayName ||
+        (user.email ? user.email.split('@')[0] : normalizedRole);
+
+      setCurrentUser({
+        role: normalizedRole,
+        email: user.email,
+        affiliateCode: user.affiliateCode,
+        displayName,
+        photoUrl: user.photoUrl || fbUser.photoURL,
+      });
+
+      if (res.agent) {
+        setAgents((prev) => [res.agent!, ...prev.filter((a) => a.affiliateCode !== res.agent!.affiliateCode)]);
       }
+
+      setActiveTab(normalizedRole === 'Agent' ? 'dashboard' : 'overview');
+      showToast(`Welcome, ${displayName}! Signed in via Google.`);
+      await loadPortalData();
     } catch (err: any) {
       if (
         err?.code === 'auth/unauthorized-domain' ||
@@ -417,21 +435,44 @@ export default function App() {
       if (!cleanEmail) {
         throw new Error('Please enter a valid Google email address.');
       }
-      try {
-        await handleLogin(cleanEmail);
-      } catch {
-        const name = displayName || cleanEmail.split('@')[0];
-        const regRes = await api.register({
-          fullName: name,
-          email: cleanEmail,
-          region: 'Asia Pacific 2',
-          position: 'Marketing Associate',
-        });
-        if (regRes.agent) {
-          syncAgentToFirestore(regRes.agent).catch(() => {});
-        }
-        await handleLogin(regRes.affiliateCode);
+      const pseudoUser = {
+        uid: `usr_google_${Date.now()}`,
+        email: cleanEmail,
+        displayName: displayName || cleanEmail.split('@')[0],
+        photoURL: null,
+      };
+      const res = await api.loginWithGoogle(pseudoUser);
+      const user = res.user;
+
+      const userRoleStr = (res.role || user.role || '').toLowerCase();
+      const normalizedRole: 'Agent' | 'Staff' | 'Admin' =
+        userRoleStr.includes('admin')
+          ? 'Admin'
+          : userRoleStr.includes('staff')
+          ? 'Staff'
+          : 'Agent';
+
+      const resolvedName =
+        user.displayName ||
+        user.fullName ||
+        pseudoUser.displayName ||
+        (user.email ? user.email.split('@')[0] : normalizedRole);
+
+      setCurrentUser({
+        role: normalizedRole,
+        email: user.email,
+        affiliateCode: user.affiliateCode,
+        displayName: resolvedName,
+        photoUrl: user.photoUrl,
+      });
+
+      if (res.agent) {
+        setAgents((prev) => [res.agent!, ...prev.filter((a) => a.affiliateCode !== res.agent!.affiliateCode)]);
       }
+
+      setActiveTab(normalizedRole === 'Agent' ? 'dashboard' : 'overview');
+      showToast(`Signed in as ${resolvedName} (${normalizedRole})`);
+      await loadPortalData();
     } catch (err: any) {
       showToast(err?.message || 'Fallback sign-in failed');
       throw err;
@@ -1193,26 +1234,7 @@ export default function App() {
               <AgentDashboard
                 agent={activeAgent}
                 applications={applications.filter((a) => a.affiliateCode === activeAgent.affiliateCode)}
-                accreditations={
-                  accreditations.length > 0
-                    ? accreditations
-                    : activeAgent.accreditationStatus === 'Active' || activeAgent.accreditationStatus === 'Expired' || activeAgent.accreditationStatus === 'Expiring Soon'
-                    ? [
-                        {
-                          id: activeAgent.currentAccreditationId || 'acc_001',
-                          affiliateCode: activeAgent.affiliateCode,
-                          applicationType: 'New',
-                          position: activeAgent.position,
-                          startDate: activeAgent.accreditationStartDate || '2026-06-15',
-                          expiryDate: activeAgent.accreditationExpiryDate || '2026-10-15',
-                          status: activeAgent.accreditationStatus || 'Active',
-                          daysRemaining: 36,
-                          approvedBy: activeAgent.assignedStaff || 'Elena Ramos (BD Staff)',
-                          approvedDate: activeAgent.accreditationStartDate || '2026-06-15',
-                        },
-                      ]
-                    : []
-                }
+                accreditations={accreditations}
                 positionContract={positionContracts.find((c) => c.position === activeAgent.position)}
                 onNavigateToAccreditation={() => setActiveTab('accreditation')}
                 onViewContract={handleOpenAgentContract}
