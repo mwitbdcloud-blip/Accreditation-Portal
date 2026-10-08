@@ -4,6 +4,7 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  SECRETS_SCAN_OMIT_KEYS = "SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES"
 
 # Redirect API calls to the live Cloud backend proxy
 [[redirects]]
