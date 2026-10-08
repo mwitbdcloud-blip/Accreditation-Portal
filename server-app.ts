@@ -794,6 +794,57 @@ async function startServer() {
     });
   });
 
+  // Batch delete agents or delete all agents
+  app.post('/api/agents/batch-delete', (req, res) => {
+    const { codes, all, operatorName, operatorRole } = req.body || {};
+    let deletedCount = 0;
+
+    if (all) {
+      deletedCount = db.agents.length;
+      db.agents = [];
+      db.applications = [];
+      db.accreditations = [];
+      db.log(
+        operatorName || 'Admin/Staff',
+        operatorRole || 'admin',
+        'All Agent Accounts Deleted',
+        'ALL_RECORDS',
+        `Permanently deleted all (${deletedCount}) agent accounts and associated application records.`
+      );
+      return res.json({
+        success: true,
+        count: deletedCount,
+        message: `All ${deletedCount} agent account(s) have been deleted successfully.`,
+      });
+    }
+
+    if (Array.isArray(codes) && codes.length > 0) {
+      const codeSet = new Set(codes.map((c: string) => c.toLowerCase()));
+      const initialCount = db.agents.length;
+      db.agents = db.agents.filter((a) => !codeSet.has(a.affiliateCode.toLowerCase()));
+      deletedCount = initialCount - db.agents.length;
+
+      db.applications = db.applications.filter((a) => !codeSet.has(a.affiliateCode.toLowerCase()));
+      db.accreditations = db.accreditations.filter((a) => !codeSet.has(a.affiliateCode.toLowerCase()));
+
+      db.log(
+        operatorName || 'Admin/Staff',
+        operatorRole || 'admin',
+        'Batch Agent Accounts Deleted',
+        codes.slice(0, 10).join(', ') + (codes.length > 10 ? ` (+${codes.length - 10} more)` : ''),
+        `Permanently deleted ${deletedCount} agent accounts.`
+      );
+
+      return res.json({
+        success: true,
+        count: deletedCount,
+        message: `${deletedCount} agent account(s) deleted successfully.`,
+      });
+    }
+
+    return res.status(400).json({ error: 'No agent codes or all flag provided.' });
+  });
+
   // Send Credentials / Temporary Password Email for Access and Renewal
   app.post('/api/agents/:code/send-credentials', (req, res) => {
     const code = req.params.code;
@@ -1804,6 +1855,52 @@ async function startServer() {
     );
 
     res.json({ success: true, message: 'Application deleted successfully.' });
+  });
+
+  // Batch delete applications or delete all applications
+  app.post('/api/applications/batch-delete', (req, res) => {
+    const { ids, all, operatorName, operatorRole } = req.body || {};
+    let deletedCount = 0;
+
+    if (all) {
+      deletedCount = db.applications.length;
+      db.applications = [];
+      db.log(
+        operatorName || 'Staff/Admin',
+        operatorRole || 'staff',
+        'All Applications Deleted',
+        'ALL_RECORDS',
+        `Permanently deleted all (${deletedCount}) accreditation application records.`
+      );
+      return res.json({
+        success: true,
+        count: deletedCount,
+        message: `All ${deletedCount} application(s) deleted successfully.`,
+      });
+    }
+
+    if (Array.isArray(ids) && ids.length > 0) {
+      const idSet = new Set(ids);
+      const initialCount = db.applications.length;
+      db.applications = db.applications.filter((a) => !idSet.has(a.id));
+      deletedCount = initialCount - db.applications.length;
+
+      db.log(
+        operatorName || 'Staff/Admin',
+        operatorRole || 'staff',
+        'Batch Applications Deleted',
+        ids.slice(0, 10).join(', ') + (ids.length > 10 ? ` (+${ids.length - 10} more)` : ''),
+        `Permanently deleted ${deletedCount} application record(s).`
+      );
+
+      return res.json({
+        success: true,
+        count: deletedCount,
+        message: `${deletedCount} application(s) deleted successfully.`,
+      });
+    }
+
+    return res.status(400).json({ error: 'No application ids or all flag provided.' });
   });
 
   // Staff and Admin endpoint to change, revise, and edit application data if correction is needed

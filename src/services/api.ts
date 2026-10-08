@@ -396,6 +396,54 @@ export const api = {
     return { success: true, message: `Agent ${code} deleted.` };
   },
 
+  async deleteMultipleAgents(
+    codes: string[],
+    operatorName?: string,
+    operatorRole?: string
+  ): Promise<{ success: boolean; count: number; message: string }> {
+    const res = await safeFetch<{ success: boolean; count: number; message: string }>(
+      `${BASE_URL}/agents/batch-delete`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codes, operatorName, operatorRole }),
+      }
+    );
+
+    // Update local storage regardless
+    const codeSet = new Set(codes.map((c) => c.toLowerCase()));
+    const remaining = clientStorage.getAgents().filter((a) => !codeSet.has(a.affiliateCode.toLowerCase()));
+    clientStorage.saveAgents(remaining);
+    const remApps = clientStorage.getApplications().filter((a) => !codeSet.has(a.affiliateCode.toLowerCase()));
+    clientStorage.saveApplications(remApps);
+
+    if (res.ok && res.data) return res.data;
+
+    return { success: true, count: codes.length, message: `${codes.length} agent(s) deleted.` };
+  },
+
+  async deleteAllAgents(
+    operatorName?: string,
+    operatorRole?: string
+  ): Promise<{ success: boolean; count: number; message: string }> {
+    const res = await safeFetch<{ success: boolean; count: number; message: string }>(
+      `${BASE_URL}/agents/batch-delete`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ all: true, operatorName, operatorRole }),
+      }
+    );
+
+    const prevCount = clientStorage.getAgents().length;
+    clientStorage.saveAgents([]);
+    clientStorage.saveApplications([]);
+
+    if (res.ok && res.data) return res.data;
+
+    return { success: true, count: prevCount, message: `All ${prevCount} agent(s) deleted.` };
+  },
+
   // Applications
   async getApplications(): Promise<AccreditationApplication[]> {
     const res = await safeFetch<AccreditationApplication[]>(`${BASE_URL}/applications`);
@@ -435,6 +483,50 @@ export const api = {
     clientStorage.saveApplications(apps);
 
     return { success: true, message: `Application ${id} deleted.` };
+  },
+
+  async deleteMultipleApplications(
+    ids: string[],
+    operatorName?: string,
+    operatorRole?: string
+  ): Promise<{ success: boolean; count: number; message: string }> {
+    const res = await safeFetch<{ success: boolean; count: number; message: string }>(
+      `${BASE_URL}/applications/batch-delete`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, operatorName, operatorRole }),
+      }
+    );
+
+    const idSet = new Set(ids);
+    const remaining = clientStorage.getApplications().filter((a) => !idSet.has(a.id));
+    clientStorage.saveApplications(remaining);
+
+    if (res.ok && res.data) return res.data;
+
+    return { success: true, count: ids.length, message: `${ids.length} application(s) deleted.` };
+  },
+
+  async deleteAllApplications(
+    operatorName?: string,
+    operatorRole?: string
+  ): Promise<{ success: boolean; count: number; message: string }> {
+    const res = await safeFetch<{ success: boolean; count: number; message: string }>(
+      `${BASE_URL}/applications/batch-delete`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ all: true, operatorName, operatorRole }),
+      }
+    );
+
+    const prevCount = clientStorage.getApplications().length;
+    clientStorage.saveApplications([]);
+
+    if (res.ok && res.data) return res.data;
+
+    return { success: true, count: prevCount, message: `All ${prevCount} application(s) deleted.` };
   },
 
   async submitApplication(

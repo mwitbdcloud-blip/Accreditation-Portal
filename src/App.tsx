@@ -652,7 +652,7 @@ export default function App() {
   // Delete Agent account handler
   const handleDeleteAgent = async (affiliateCode: string) => {
     try {
-      await api.deleteAgent(affiliateCode);
+      await api.deleteAgent(affiliateCode, currentUser?.fullName, currentUser?.role);
       setAgents((prev) => prev.filter((a) => a.affiliateCode !== affiliateCode));
       setApplications((prev) => prev.filter((a) => a.affiliateCode !== affiliateCode));
       showToast(`Agent account ${affiliateCode} deleted successfully.`);
@@ -661,14 +661,64 @@ export default function App() {
     }
   };
 
+  // Delete multiple agents handler
+  const handleDeleteMultipleAgents = async (codes: string[]) => {
+    try {
+      await api.deleteMultipleAgents(codes, currentUser?.fullName, currentUser?.role);
+      const codeSet = new Set(codes.map((c) => c.toLowerCase()));
+      setAgents((prev) => prev.filter((a) => !codeSet.has(a.affiliateCode.toLowerCase())));
+      setApplications((prev) => prev.filter((a) => !codeSet.has(a.affiliateCode.toLowerCase())));
+      showToast(`${codes.length} agent(s) deleted successfully.`);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete agents');
+    }
+  };
+
+  // Delete all agents handler
+  const handleDeleteAllAgents = async () => {
+    try {
+      const count = agents.length;
+      await api.deleteAllAgents(currentUser?.fullName, currentUser?.role);
+      setAgents([]);
+      setApplications([]);
+      showToast(`All agents (${count}) deleted successfully.`);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete all agents');
+    }
+  };
+
   // Delete Application handler
   const handleDeleteApplication = async (id: string) => {
     try {
-      await api.deleteApplication(id);
+      await api.deleteApplication(id, currentUser?.fullName, currentUser?.role);
       setApplications((prev) => prev.filter((a) => a.id !== id));
       showToast(`Application ${id} deleted successfully.`);
     } catch (err: any) {
       showToast(err.message || 'Failed to delete application');
+    }
+  };
+
+  // Delete multiple applications handler
+  const handleDeleteMultipleApplications = async (ids: string[]) => {
+    try {
+      await api.deleteMultipleApplications(ids, currentUser?.fullName, currentUser?.role);
+      const idSet = new Set(ids);
+      setApplications((prev) => prev.filter((a) => !idSet.has(a.id)));
+      showToast(`${ids.length} application(s) deleted successfully.`);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete applications');
+    }
+  };
+
+  // Delete all applications handler
+  const handleDeleteAllApplications = async () => {
+    try {
+      const count = applications.length;
+      await api.deleteAllApplications(currentUser?.fullName, currentUser?.role);
+      setApplications([]);
+      showToast(`All applications (${count}) deleted successfully.`);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete all applications');
     }
   };
 
@@ -1186,6 +1236,8 @@ export default function App() {
                 onUpdateApplicationDetails={handleUpdateApplicationDetails}
                 onViewContractForApp={handleOpenContractForApp}
                 onDeleteApplication={handleDeleteApplication}
+                onDeleteMultipleApplications={handleDeleteMultipleApplications}
+                onDeleteAllApplications={handleDeleteAllApplications}
                 currentUserRole={currentUser.role}
               />
             )}
@@ -1198,6 +1250,8 @@ export default function App() {
                 isSyncingSheets={isSyncingSheets}
                 onUpdateAgent={handleUpdateAgent}
                 onDeleteAgent={handleDeleteAgent}
+                onDeleteMultipleAgents={handleDeleteMultipleAgents}
+                onDeleteAllAgents={handleDeleteAllAgents}
                 onRefreshData={loadPortalData}
                 currentUserRole={currentUser.role}
                 currentUser={currentUser}

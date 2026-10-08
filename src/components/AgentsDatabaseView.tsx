@@ -28,6 +28,9 @@ import {
   Shield,
   Copy,
   FileSpreadsheet,
+  CheckSquare,
+  Square,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   AgentProfile,
@@ -55,6 +58,8 @@ interface AgentsDatabaseViewProps {
   isSyncingSheets: boolean;
   onUpdateAgent: (code: string, updatedData: Partial<AgentProfile>) => void;
   onDeleteAgent?: (code: string, name: string) => Promise<void> | void;
+  onDeleteMultipleAgents?: (codes: string[]) => Promise<void> | void;
+  onDeleteAllAgents?: () => Promise<void> | void;
   onRefreshData?: () => void;
   currentUserRole: string;
   currentUser?: {
@@ -71,6 +76,8 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
   isSyncingSheets,
   onUpdateAgent,
   onDeleteAgent,
+  onDeleteMultipleAgents,
+  onDeleteAllAgents,
   onRefreshData,
   currentUserRole,
   currentUser = {
@@ -84,6 +91,14 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [regionFilter, setRegionFilter] = useState('All');
   const [editingAgent, setEditingAgent] = useState<AgentProfile | null>(null);
+
+  // Selected agents for batch selection & operations
+  const [selectedAgentCodes, setSelectedAgentCodes] = useState<Set<string>>(new Set());
+  const [bulkDeleteModal, setBulkDeleteModal] = useState<{
+    isOpen: boolean;
+    type: 'selected' | 'all';
+    count: number;
+  } | null>(null);
 
   // Staff and Admin Accounts & Invitations state loaded from backend
   const [staffAccounts, setStaffAccounts] = useState<StaffAccount[]>([]);
@@ -206,6 +221,108 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
     setEditingAgent(null);
   };
 
+  // Selection helpers for agents
+  const isAllFilteredAgentsSelected =
+    filteredAgents.length > 0 &&
+    filteredAgents.every((a) => selectedAgentCodes.has(a.affiliateCode));
+  const isSomeFilteredAgentsSelected =
+    filteredAgents.some((a) => selectedAgentCodes.has(a.affiliateCode)) &&
+    !isAllFilteredAgentsSelected;
+
+  const handleToggleSelectAgent = (code: string) => {
+    setSelectedAgentCodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  };
+
+  const handleToggleSelectAllAgents = () => {
+    if (isAllFilteredAgentsSelected) {
+      setSelectedAgentCodes((prev) => {
+        const next = new Set(prev);
+        filteredAgents.forEach((a) => next.delete(a.affiliateCode));
+        return next;
+      });
+    } else {
+      setSelectedAgentCodes((prev) => {
+        const next = new Set(prev);
+        filteredAgents.forEach((a) => next.add(a.affiliateCode));
+        return next;
+      });
+    }
+  };
+
+  const handleClearAgentSelection = () => {
+    setSelectedAgentCodes(new Set());
+  };
+
+  // Bulk delete triggers
+  const handlePromptDeleteSelectedAgents = () => {
+    if (selectedAgentCodes.size === 0) return;
+    setBulkDeleteModal({
+      isOpen: true,
+      type: 'selected',
+      count: selectedAgentCodes.size,
+    });
+  };
+
+  const handlePromptDeleteAllAgents = () => {
+    setBulkDeleteModal({
+      isOpen: true,
+      type: 'all',
+      count: agents.length,
+    });
+  };
+
+  const handleConfirmBulkDeleteAgents = async () => {
+    if (!bulkDeleteModal) return;
+    setIsDeleting(true);
+    try {
+      if (bulkDeleteModal.type === 'selected') {
+        const codes = Array.from(selectedAgentCodes);
+        if (onDeleteMultipleAgents) {
+          await onDeleteMultipleAgents(codes);
+        } else if (onDeleteAgent) {
+          for (const code of codes) {
+            const ag = agents.find((a) => a.affiliateCode === code);
+            await onDeleteAgent(code, ag?.fullName || code);
+          }
+        }
+        setSelectedAgentCodes(new Set());
+        setNotificationToast({
+          message: `${codes.length} agent account(s) permanently deleted.`,
+          type: 'success',
+        });
+      } else if (bulkDeleteModal.type === 'all') {
+        if (onDeleteAllAgents) {
+          await onDeleteAllAgents();
+        } else if (onDeleteMultipleAgents) {
+          const allCodes = agents.map((a) => a.affiliateCode);
+          await onDeleteMultipleAgents(allCodes);
+        } else if (onDeleteAgent) {
+          for (const ag of agents) {
+            await onDeleteAgent(ag.affiliateCode, ag.fullName);
+          }
+        }
+        setSelectedAgentCodes(new Set());
+        setNotificationToast({
+          message: `All agent accounts (${bulkDeleteModal.count}) permanently deleted.`,
+          type: 'success',
+        });
+      }
+      setBulkDeleteModal(null);
+    } catch (err: any) {
+      setNotificationToast({
+        message: `Failed to delete agents: ${err.message || 'Unknown error'}`,
+        type: 'error',
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
     setIsDeleting(true);
@@ -214,6 +331,11 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
         if (onDeleteAgent) {
           await onDeleteAgent(deleteTarget.idOrCode, deleteTarget.fullName);
         }
+        setSelectedAgentCodes((prev) => {
+          const next = new Set(prev);
+          next.delete(deleteTarget.idOrCode);
+          return next;
+        });
       } else {
         await api.deleteStaffAccount(deleteTarget.idOrCode, currentUser.fullName, currentUserRole);
         setStaffAccounts((prev) => prev.filter((s) => s.id !== deleteTarget.idOrCode));
@@ -224,7 +346,10 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
       }
       setDeleteTarget(null);
     } catch (err: any) {
-      alert(`Failed to delete account: ${err.message || 'Unknown error'}`);
+      setNotificationToast({
+        message: `Failed to delete account: ${err.message || 'Unknown error'}`,
+        type: 'error',
+      });
     } finally {
       setIsDeleting(false);
     }
@@ -426,6 +551,44 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
             >
               <Download className="w-3.5 h-3.5" /> Export 34-Col CSV
             </button>
+
+            {/* Select All / Deselect All Button for Agents */}
+            {activeSubtab === 'agents' && (
+              <button
+                type="button"
+                id="select-all-agents-btn"
+                onClick={handleToggleSelectAllAgents}
+                disabled={filteredAgents.length === 0}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg border transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isAllFilteredAgentsSelected
+                    ? 'bg-blue-900 text-white border-blue-900 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                }`}
+                title={isAllFilteredAgentsSelected ? 'Deselect all filtered agents' : 'Select all filtered agents'}
+              >
+                <CheckSquare className="w-3.5 h-3.5" />
+                {isAllFilteredAgentsSelected ? 'Deselect All' : 'Select All'}
+              </button>
+            )}
+
+            {/* Delete All Agents Button (Admin & Staff) */}
+            {(currentUserRole?.toLowerCase() === 'admin' ||
+              currentUserRole?.toLowerCase() === 'staff' ||
+              currentUser.role?.toLowerCase() === 'admin' ||
+              currentUser.role?.toLowerCase() === 'staff') &&
+              activeSubtab === 'agents' && (
+                <button
+                  type="button"
+                  id="delete-all-agents-btn"
+                  onClick={handlePromptDeleteAllAgents}
+                  disabled={agents.length === 0}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-xs transition"
+                  title="Delete All Agents"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete All
+                </button>
+              )}
           </div>
         </div>
 
@@ -586,39 +749,136 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
 
       {/* Main View Switching */}
       {activeSubtab === 'agents' ? (
-        /* Spreadsheet Replica Grid */
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto max-h-[600px]">
-            <table className="w-full text-xs text-left whitespace-nowrap">
-              <thead className="bg-slate-100 text-slate-700 uppercase tracking-wider font-semibold border-b border-slate-200 sticky top-0 z-10 shadow-xs">
-                <tr>
-                  <th className="py-2.5 px-3 border-r border-slate-200">#</th>
-                  <th className="py-2.5 px-3 border-r border-slate-200">Affiliate Code</th>
-                  <th className="py-2.5 px-3 border-r border-slate-200">Full Name</th>
-                  <th className="py-2.5 px-3 border-r border-slate-200">Email Address</th>
-                  <th className="py-2.5 px-3 border-r border-slate-200 text-amber-900 bg-amber-50/50">
-                    Temp Password (Staff/Admin)
-                  </th>
-                  <th className="py-2.5 px-3 border-r border-slate-200">Region</th>
-                  <th className="py-2.5 px-3 border-r border-slate-200">Position</th>
-                  <th className="py-2.5 px-3 border-r border-slate-200">Reg. Date</th>
-                  <th className="py-2.5 px-3 border-r border-slate-200">Account Status</th>
-                  <th className="py-2.5 px-3 border-r border-slate-200">Accreditation Status</th>
-                  <th className="py-2.5 px-3 border-r border-slate-200">Start Date</th>
-                  <th className="py-2.5 px-3 border-r border-slate-200">Expiry Date (4 Mo)</th>
-                  <th className="py-2.5 px-3 border-r border-slate-200">Renewal Eligibility</th>
-                  <th className="py-2.5 px-3 text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
-                {filteredAgents.map((agent, index) => {
-                  const isActive = agent.accreditationStatus === 'Active';
-                  const isExpiring = agent.accreditationStatus === 'Expiring Soon';
-                  const isExpired = agent.accreditationStatus === 'Expired';
+        <div className="space-y-4">
+          {/* Selected Agents Action Banner */}
+          {selectedAgentCodes.size > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-blue-900 text-white rounded-lg">
+                  <CheckSquare className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-blue-950">
+                    {selectedAgentCodes.size} of {agents.length} agent(s) selected
+                  </span>
+                  <p className="text-[11px] text-blue-700">
+                    {isAllFilteredAgentsSelected
+                      ? `All ${filteredAgents.length} filtered agents selected.`
+                      : `${filteredAgents.filter((a) => selectedAgentCodes.has(a.affiliateCode)).length} in current view selected.`}
+                  </p>
+                </div>
+              </div>
 
-                  return (
-                    <tr key={agent.affiliateCode} className="hover:bg-blue-50/40 transition">
-                      <td className="py-2 px-3 border-r border-slate-100 text-slate-400">{index + 1}</td>
+              <div className="flex flex-wrap items-center gap-2">
+                {!isAllFilteredAgentsSelected && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedAgentCodes((prev) => {
+                        const next = new Set(prev);
+                        filteredAgents.forEach((a) => next.add(a.affiliateCode));
+                        return next;
+                      })
+                    }
+                    className="px-3 py-1.5 text-xs font-semibold text-blue-900 bg-white hover:bg-blue-100 border border-blue-300 rounded-lg transition"
+                  >
+                    Select All {filteredAgents.length} in View
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleClearAgentSelection}
+                  className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg transition"
+                >
+                  Clear Selection
+                </button>
+                {(currentUserRole?.toLowerCase() === 'admin' ||
+                  currentUserRole?.toLowerCase() === 'staff' ||
+                  currentUser.role?.toLowerCase() === 'admin' ||
+                  currentUser.role?.toLowerCase() === 'staff') && (
+                  <button
+                    type="button"
+                    id="delete-selected-agents-btn"
+                    onClick={handlePromptDeleteSelectedAgents}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete Selected ({selectedAgentCodes.size})
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Spreadsheet Replica Grid */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="overflow-x-auto max-h-[600px]">
+              <table className="w-full text-xs text-left whitespace-nowrap">
+                <thead className="bg-slate-100 text-slate-700 uppercase tracking-wider font-semibold border-b border-slate-200 sticky top-0 z-10 shadow-xs">
+                  <tr>
+                    <th className="py-2.5 px-3 border-r border-slate-200 text-center w-10 sticky top-0 bg-slate-100 z-20">
+                      <input
+                        type="checkbox"
+                        checked={isAllFilteredAgentsSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = isSomeFilteredAgentsSelected;
+                        }}
+                        onChange={handleToggleSelectAllAgents}
+                        className="w-4 h-4 rounded text-blue-900 focus:ring-blue-900 border-slate-300 cursor-pointer"
+                        title={isAllFilteredAgentsSelected ? 'Deselect all in view' : 'Select all in view'}
+                      />
+                    </th>
+                    <th className="py-2.5 px-3 border-r border-slate-200">#</th>
+                    <th className="py-2.5 px-3 border-r border-slate-200">Affiliate Code</th>
+                    <th className="py-2.5 px-3 border-r border-slate-200">Full Name</th>
+                    <th className="py-2.5 px-3 border-r border-slate-200">Email Address</th>
+                    <th className="py-2.5 px-3 border-r border-slate-200 text-amber-900 bg-amber-50/50">
+                      Temp Password (Staff/Admin)
+                    </th>
+                    <th className="py-2.5 px-3 border-r border-slate-200">Region</th>
+                    <th className="py-2.5 px-3 border-r border-slate-200">Position</th>
+                    <th className="py-2.5 px-3 border-r border-slate-200">Reg. Date</th>
+                    <th className="py-2.5 px-3 border-r border-slate-200">Account Status</th>
+                    <th className="py-2.5 px-3 border-r border-slate-200">Accreditation Status</th>
+                    <th className="py-2.5 px-3 border-r border-slate-200">Start Date</th>
+                    <th className="py-2.5 px-3 border-r border-slate-200">Expiry Date (4 Mo)</th>
+                    <th className="py-2.5 px-3 border-r border-slate-200">Renewal Eligibility</th>
+                    <th className="py-2.5 px-3 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                  {filteredAgents.length === 0 ? (
+                    <tr>
+                      <td colSpan={15} className="py-8 text-center text-slate-400 text-xs font-sans">
+                        No affiliate agents found matching the selected search/filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredAgents.map((agent, index) => {
+                      const isSelected = selectedAgentCodes.has(agent.affiliateCode);
+                      const isActive = agent.accreditationStatus === 'Active';
+                      const isExpiring = agent.accreditationStatus === 'Expiring Soon';
+                      const isExpired = agent.accreditationStatus === 'Expired';
+
+                      return (
+                        <tr
+                          key={agent.affiliateCode}
+                          className={`transition ${
+                            isSelected
+                              ? 'bg-blue-50/70 border-l-2 border-l-blue-900 font-semibold'
+                              : 'hover:bg-blue-50/40'
+                          }`}
+                        >
+                          <td className="py-2 px-3 border-r border-slate-100 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectAgent(agent.affiliateCode)}
+                              className="w-4 h-4 rounded text-blue-900 focus:ring-blue-900 border-slate-300 cursor-pointer"
+                              aria-label={`Select agent ${agent.fullName}`}
+                            />
+                          </td>
+                          <td className="py-2 px-3 border-r border-slate-100 text-slate-400">{index + 1}</td>
                       <td className="py-2 px-3 border-r border-slate-100 font-bold text-blue-950">
                         {agent.affiliateCode}
                       </td>
@@ -760,12 +1020,13 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
                       </td>
                     </tr>
                   );
-                })}
+                }))}
               </tbody>
             </table>
           </div>
         </div>
-      ) : staffSubtab === 'pending' ? (
+      </div>
+    ) : staffSubtab === 'pending' ? (
         /* Pending Invitations Table */
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
           <div className="overflow-x-auto max-h-[600px]">
@@ -1220,6 +1481,100 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 {isDeleting ? 'Deleting...' : 'Confirm Delete Account'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Agents Confirmation Modal */}
+      {bulkDeleteModal && bulkDeleteModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+            <div className="px-6 py-4 bg-rose-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-300" />
+                <h3 className="font-bold text-base">
+                  {bulkDeleteModal.type === 'all'
+                    ? 'Permanently Delete All Agents'
+                    : `Delete Selected Agents (${bulkDeleteModal.count})`}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBulkDeleteModal(null)}
+                className="text-white/80 hover:text-white"
+                disabled={isDeleting}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-700 leading-relaxed">
+                {bulkDeleteModal.type === 'all' ? (
+                  <>
+                    Are you sure you want to permanently delete <strong>ALL {bulkDeleteModal.count} agent accounts</strong> in the Personnel & Agents Database System?
+                  </>
+                ) : (
+                  <>
+                    Are you sure you want to permanently delete the <strong>{bulkDeleteModal.count} selected agent account(s)</strong>?
+                  </>
+                )}
+              </p>
+
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5 font-mono">
+                <p>
+                  Scope:{' '}
+                  <strong className="text-slate-900 font-sans">
+                    {bulkDeleteModal.type === 'all'
+                      ? `Entire Agents Database (${bulkDeleteModal.count} Records)`
+                      : `${bulkDeleteModal.count} Selected Agent Records`}
+                  </strong>
+                </p>
+                <p>
+                  Operator:{' '}
+                  <span className="text-blue-900 capitalize font-semibold">{currentUserRole}</span>
+                </p>
+              </div>
+
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-1">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  Irreversible Action Warning
+                </p>
+                <p className="text-[11px] text-rose-700">
+                  This operation cannot be undone. Associated login credentials, accreditations, and digital ID badge records will be permanently wiped from both the local database and backend server.
+                </p>
+              </div>
+            </div>
+
+            <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBulkDeleteModal(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="confirm-delete-agents-btn"
+                onClick={handleConfirmBulkDeleteAgents}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 rounded-lg transition inline-flex items-center gap-1.5"
+              >
+                {isDeleting ? (
+                  <>Deleting...</>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {bulkDeleteModal.type === 'all'
+                      ? 'Confirm Delete All Agents'
+                      : `Confirm Delete (${bulkDeleteModal.count})`}
+                  </>
+                )}
               </button>
             </div>
           </div>

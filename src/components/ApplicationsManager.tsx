@@ -20,6 +20,10 @@ import {
   Network,
   Save,
   Lock,
+  CheckSquare,
+  Square,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 import {
   AccreditationApplication,
@@ -79,6 +83,8 @@ interface ApplicationsManagerProps {
   ) => Promise<void> | void;
   onViewContractForApp: (app: AccreditationApplication) => void;
   onDeleteApplication?: (id: string) => void;
+  onDeleteMultipleApplications?: (ids: string[]) => Promise<void> | void;
+  onDeleteAllApplications?: () => Promise<void> | void;
   currentUserRole: string;
 }
 
@@ -89,6 +95,8 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
   onUpdateApplicationDetails,
   onViewContractForApp,
   onDeleteApplication,
+  onDeleteMultipleApplications,
+  onDeleteAllApplications,
   currentUserRole,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -96,6 +104,19 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
   const [positionFilter, setPositionFilter] = useState<string>('All');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [typeFilter, setTypeFilter] = useState<string>('All');
+
+  // Selected applications for batch selection & operations
+  const [selectedAppIds, setSelectedAppIds] = useState<Set<string>>(new Set());
+
+  // Delete modal state
+  const [deleteModal, setDeleteModal] = useState<{
+    isOpen: boolean;
+    type: 'single' | 'selected' | 'all';
+    targetId?: string;
+    targetName?: string;
+    count: number;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Selected application for detail review modal
   const [selectedApp, setSelectedApp] = useState<AccreditationApplication | null>(null);
@@ -306,6 +327,113 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
     return matchesSearch && matchesRegion && matchesPosition && matchesStatus && matchesType;
   });
 
+  // Selection helpers
+  const isAllFilteredSelected =
+    filteredApps.length > 0 && filteredApps.every((a) => selectedAppIds.has(a.id));
+  const isSomeFilteredSelected =
+    filteredApps.some((a) => selectedAppIds.has(a.id)) && !isAllFilteredSelected;
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedAppIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (isAllFilteredSelected) {
+      setSelectedAppIds((prev) => {
+        const next = new Set(prev);
+        filteredApps.forEach((a) => next.delete(a.id));
+        return next;
+      });
+    } else {
+      setSelectedAppIds((prev) => {
+        const next = new Set(prev);
+        filteredApps.forEach((a) => next.add(a.id));
+        return next;
+      });
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedAppIds(new Set());
+  };
+
+  // Delete modal triggers
+  const handlePromptDeleteSingle = (app: AccreditationApplication) => {
+    setDeleteModal({
+      isOpen: true,
+      type: 'single',
+      targetId: app.id,
+      targetName: `${app.personalDetails.fullName} (${app.affiliateCode})`,
+      count: 1,
+    });
+  };
+
+  const handlePromptDeleteSelected = () => {
+    if (selectedAppIds.size === 0) return;
+    setDeleteModal({
+      isOpen: true,
+      type: 'selected',
+      count: selectedAppIds.size,
+    });
+  };
+
+  const handlePromptDeleteAll = () => {
+    setDeleteModal({
+      isOpen: true,
+      type: 'all',
+      count: applications.length,
+    });
+  };
+
+  const handleExecuteDelete = async () => {
+    if (!deleteModal) return;
+    setIsDeleting(true);
+    try {
+      if (deleteModal.type === 'single' && deleteModal.targetId) {
+        if (onDeleteApplication) {
+          await onDeleteApplication(deleteModal.targetId);
+        }
+        setSelectedAppIds((prev) => {
+          const next = new Set(prev);
+          next.delete(deleteModal.targetId!);
+          return next;
+        });
+      } else if (deleteModal.type === 'selected') {
+        const ids = Array.from(selectedAppIds);
+        if (onDeleteMultipleApplications) {
+          await onDeleteMultipleApplications(ids);
+        } else if (onDeleteApplication) {
+          for (const id of ids) {
+            await onDeleteApplication(id);
+          }
+        }
+        setSelectedAppIds(new Set());
+      } else if (deleteModal.type === 'all') {
+        if (onDeleteAllApplications) {
+          await onDeleteAllApplications();
+        } else if (onDeleteMultipleApplications) {
+          const allIds = applications.map((a) => a.id);
+          await onDeleteMultipleApplications(allIds);
+        } else if (onDeleteApplication) {
+          for (const app of applications) {
+            await onDeleteApplication(app.id);
+          }
+        }
+        setSelectedAppIds(new Set());
+      }
+      setDeleteModal(null);
+    } catch (err: any) {
+      console.error('Failed to execute deletion:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const handleExecuteReview = async (action: 'Approve' | 'Reject' | 'Revision Required') => {
     if (!selectedApp) return;
     setIsProcessing(true);
@@ -368,8 +496,43 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
               Review, verify government documents, approve accreditations, and trigger official Sales Agreement contract generation.
             </p>
           </div>
-          <div className="text-xs font-semibold px-3 py-1.5 bg-blue-50 text-blue-900 rounded-lg border border-blue-200">
-            Showing {filteredApps.length} of {applications.length} Applications
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Select All / Deselect All Button */}
+            <button
+              type="button"
+              id="select-all-apps-btn"
+              onClick={handleToggleSelectAll}
+              disabled={filteredApps.length === 0}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                isAllFilteredSelected
+                  ? 'bg-blue-900 text-white border-blue-900 shadow-xs'
+                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+              }`}
+              title={isAllFilteredSelected ? 'Deselect all filtered applications' : 'Select all filtered applications'}
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              {isAllFilteredSelected ? 'Deselect All' : 'Select All'}
+            </button>
+
+            {/* Delete All Button (Admin & Staff) */}
+            {(currentUserRole === 'Admin' || currentUserRole === 'Staff') && (
+              <button
+                type="button"
+                id="delete-all-apps-btn"
+                onClick={handlePromptDeleteAll}
+                disabled={applications.length === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-xs transition"
+                title="Delete All Applications"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete All
+              </button>
+            )}
+
+            <div className="text-xs font-semibold px-3 py-1.5 bg-blue-50 text-blue-900 rounded-lg border border-blue-200">
+              Showing {filteredApps.length} of {applications.length} Applications
+            </div>
           </div>
         </div>
 
@@ -450,12 +613,81 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
         </div>
       </div>
 
+      {/* Selected Action Banner */}
+      {selectedAppIds.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-blue-900 text-white rounded-lg">
+              <CheckSquare className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-xs font-bold text-blue-950">
+                {selectedAppIds.size} of {applications.length} application(s) selected
+              </span>
+              <p className="text-[11px] text-blue-700">
+                {isAllFilteredSelected
+                  ? `All ${filteredApps.length} filtered applications selected.`
+                  : `${filteredApps.filter((a) => selectedAppIds.has(a.id)).length} in current view selected.`}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {!isAllFilteredSelected && (
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedAppIds((prev) => {
+                    const next = new Set(prev);
+                    filteredApps.forEach((a) => next.add(a.id));
+                    return next;
+                  })
+                }
+                className="px-3 py-1.5 text-xs font-semibold text-blue-900 bg-white hover:bg-blue-100 border border-blue-300 rounded-lg transition"
+              >
+                Select All {filteredApps.length} Filtered
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleClearSelection}
+              className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg transition"
+            >
+              Clear Selection
+            </button>
+            {(currentUserRole === 'Admin' || currentUserRole === 'Staff') && (
+              <button
+                type="button"
+                id="delete-selected-apps-btn"
+                onClick={handlePromptDeleteSelected}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete Selected ({selectedAppIds.size})
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Applications Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
             <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
               <tr>
+                <th className="py-3 px-3 text-center w-10">
+                  <input
+                    type="checkbox"
+                    checked={isAllFilteredSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = isSomeFilteredSelected;
+                    }}
+                    onChange={handleToggleSelectAll}
+                    className="w-4 h-4 rounded text-blue-900 focus:ring-blue-900 border-slate-300 cursor-pointer"
+                    title={isAllFilteredSelected ? 'Deselect all in view' : 'Select all in view'}
+                  />
+                </th>
                 <th className="py-3 px-4">Affiliate Code</th>
                 <th className="py-3 px-4">Full Name</th>
                 <th className="py-3 px-4">Region</th>
@@ -470,14 +702,31 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filteredApps.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400 text-xs">
+                  <td colSpan={10} className="py-8 text-center text-slate-400 text-xs">
                     No applications found matching the selected filters.
                   </td>
                 </tr>
               ) : (
                 filteredApps.map((app) => {
+                  const isSelected = selectedAppIds.has(app.id);
                   return (
-                    <tr key={app.id} className="hover:bg-slate-50 transition">
+                    <tr
+                      key={app.id}
+                      className={`transition ${
+                        isSelected
+                          ? 'bg-blue-50/70 border-l-2 border-l-blue-900 font-medium'
+                          : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <td className="py-3.5 px-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelect(app.id)}
+                          className="w-4 h-4 rounded text-blue-900 focus:ring-blue-900 border-slate-300 cursor-pointer"
+                          aria-label={`Select application for ${app.personalDetails.fullName}`}
+                        />
+                      </td>
                       <td className="py-3.5 px-4 font-mono font-bold text-blue-950">
                         {app.affiliateCode}
                       </td>
@@ -547,18 +796,10 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                             </button>
                           )}
 
-                          {(currentUserRole === 'Admin' || currentUserRole === 'Staff') && onDeleteApplication && (
+                          {(currentUserRole === 'Admin' || currentUserRole === 'Staff') && (onDeleteApplication || onDeleteMultipleApplications) && (
                             <button
                               type="button"
-                              onClick={() => {
-                                if (
-                                  window.confirm(
-                                    `Are you sure you want to delete application ${app.id} for ${app.personalDetails.fullName}?`
-                                  )
-                                ) {
-                                  onDeleteApplication(app.id);
-                                }
-                              }}
+                              onClick={() => handlePromptDeleteSingle(app)}
                               className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
                               title="Delete Application"
                             >
@@ -1605,6 +1846,111 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                   <ShieldCheck className="w-4 h-4" /> Approve & Generate SAA Agreement (4 Mo)
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Applications Confirmation Modal */}
+      {deleteModal && deleteModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+            <div className="px-6 py-4 bg-rose-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-300" />
+                <h3 className="font-bold text-base">
+                  {deleteModal.type === 'all'
+                    ? 'Permanently Delete All Applications'
+                    : deleteModal.type === 'selected'
+                    ? `Delete Selected Applications (${deleteModal.count})`
+                    : 'Permanently Delete Application'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteModal(null)}
+                className="text-white/80 hover:text-white"
+                disabled={isDeleting}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-700 leading-relaxed">
+                {deleteModal.type === 'all' ? (
+                  <>
+                    Are you sure you want to permanently delete <strong>ALL {deleteModal.count} applications</strong> in the system?
+                  </>
+                ) : deleteModal.type === 'selected' ? (
+                  <>
+                    Are you sure you want to permanently delete the <strong>{deleteModal.count} selected application(s)</strong>?
+                  </>
+                ) : (
+                  <>
+                    Are you sure you want to permanently delete the application for{' '}
+                    <strong>{deleteModal.targetName}</strong>?
+                  </>
+                )}
+              </p>
+
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5 font-mono">
+                <p>
+                  Scope:{' '}
+                  <strong className="text-slate-900 font-sans">
+                    {deleteModal.type === 'all'
+                      ? `Entire Database (${deleteModal.count} Records)`
+                      : deleteModal.type === 'selected'
+                      ? `${deleteModal.count} Selected Records`
+                      : deleteModal.targetName}
+                  </strong>
+                </p>
+                <p>
+                  Operator:{' '}
+                  <span className="text-blue-900 capitalize font-semibold">{currentUserRole}</span>
+                </p>
+              </div>
+
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-1">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  Irreversible Action Warning
+                </p>
+                <p className="text-[11px] text-rose-700">
+                  This operation cannot be undone. Associated accreditation forms, documents, and review records will be permanently wiped.
+                </p>
+              </div>
+            </div>
+
+            <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteModal(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="confirm-delete-apps-btn"
+                onClick={handleExecuteDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 rounded-lg transition inline-flex items-center gap-1.5"
+              >
+                {isDeleting ? (
+                  <>Deleting...</>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {deleteModal.type === 'all'
+                      ? 'Confirm Delete All'
+                      : deleteModal.type === 'selected'
+                      ? `Confirm Delete (${deleteModal.count})`
+                      : 'Confirm Delete'}
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
