@@ -46,7 +46,7 @@ const DEFAULT_SETTINGS: SystemSettings = {
   googleSpreadsheetId: '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms',
   googleAppsScriptUrl: '',
   googleDriveFolderId: '0B_MegaWorldAgents_GlobalRoot',
-  contractTemplateName: 'Megaworld Sales Agreement Agency',
+  contractTemplateName: 'MWI Sales Agency Agreement',
   contractTemplateText: '',
   autoSyncGoogleSheets: true,
   autoRenewalUnlock: true,
@@ -285,7 +285,7 @@ export const clientStorage = {
     }
     const newTpl: PositionContractTemplate = {
       position: position as Position,
-      title: patch.title || `Sales Agreement Agency — ${position}`,
+      title: patch.title || `Sales Agency Agreement — ${position}`,
       fileName: patch.fileName || `Megaworld_SAA_${position.replace(/\s+/g, '_')}.pdf`,
       fileType: patch.fileType || 'application/pdf',
       fileSize: patch.fileSize || '300 KB',
@@ -319,8 +319,8 @@ export const clientStorage = {
         fullName: 'Business Development Admin',
         email: 'admin@megaworld.com',
         role: 'Admin',
-        positionTitle: 'BD Directorate Super Admin',
-        department: 'Business Development International',
+        positionTitle: 'BD Super Admin',
+        department: 'Business Development Group',
         status: 'Active',
         permissions: {
           canReviewApplications: true,
@@ -334,11 +334,11 @@ export const clientStorage = {
       },
       {
         id: 'usr_staff_001',
-        fullName: 'Elena Ramos (BD Staff)',
+        fullName: 'Rolly Manaog (BD Staff)',
         email: 'staff@megaworld.com',
         role: 'Staff',
-        positionTitle: 'Senior Accreditation Officer',
-        department: 'Business Development International',
+        positionTitle: 'Junior BD Supervisor',
+        department: 'Business Development Group',
         status: 'Active',
         permissions: {
           canReviewApplications: true,
@@ -607,7 +607,7 @@ export const clientStorage = {
         renewalEligibility: false,
         unlockedPositions: positionsList,
         tempPassword,
-        assignedStaff: 'Elena Ramos (BD Staff)',
+        assignedStaff: 'Rolly Manaog (BD Staff)',
         personalDetails,
         bankDetails,
         teamDetails,
