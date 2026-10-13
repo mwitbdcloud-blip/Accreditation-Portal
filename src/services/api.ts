@@ -45,7 +45,15 @@ import {
   seedInitialDataToFirestoreIfEmpty,
   findAgentByCredentialsInFirestore,
   findStaffByEmailInFirestore,
+  purgeSampleAgentsFromFirestore,
 } from './firebase';
+import {
+  isSampleAgent,
+  isSampleApplication,
+  isPublishedMode,
+  filterNonSampleAgents,
+  filterNonSampleApplications,
+} from '../utils/sampleDataFilter';
 
 const BASE_URL = '/api';
 
@@ -157,6 +165,9 @@ export const api = {
       unlockedPositions: initialPosition !== 'Pending Accreditation' ? [initialPosition] : [],
       tempPassword: `Mega@${nextCodeNum}`,
       assignedStaff: 'Elena Ramos (BD Staff)',
+      isRegistered: true,
+      isSample: false,
+      registrationOrigin: 'self_registration',
     };
 
     localAgents.unshift(newAgent);
@@ -388,6 +399,9 @@ export const api = {
       renewalEligibility: false,
       unlockedPositions: ['Marketing Associate'],
       assignedStaff: 'Elena Ramos (BD Staff)',
+      isRegistered: true,
+      isSample: false,
+      registrationOrigin: 'google_signin',
     };
 
     // Save directly to Firestore collection 'agents'
@@ -572,23 +586,25 @@ export const api = {
       };
     }
 
-    // Default demo agent fallback if 'agent' is entered
-    if (trimmedId === 'agent@megaworld.com' || trimmedId === 'agent') {
+    // Default demo agent fallback if 'agent' is entered (only in non-published development preview)
+    if (!isPublishedMode() && (trimmedId === 'agent@megaworld.com' || trimmedId === 'agent')) {
       const defaultAgent = localAgents[0] || INITIAL_AGENTS[0];
-      return {
-        success: true,
-        user: {
-          uid: defaultAgent.firebaseUserId,
-          email: defaultAgent.email,
-          role: 'Agent',
-          affiliateCode: defaultAgent.affiliateCode,
-          displayName: defaultAgent.fullName,
-          region: defaultAgent.region,
-          position: defaultAgent.position,
-          positions: defaultAgent.positions || [defaultAgent.position],
-          photoUrl: defaultAgent.photoUrl,
-        },
-      };
+      if (defaultAgent) {
+        return {
+          success: true,
+          user: {
+            uid: defaultAgent.firebaseUserId,
+            email: defaultAgent.email,
+            role: 'Agent',
+            affiliateCode: defaultAgent.affiliateCode,
+            displayName: defaultAgent.fullName,
+            region: defaultAgent.region,
+            position: defaultAgent.position,
+            positions: defaultAgent.positions || [defaultAgent.position],
+            photoUrl: defaultAgent.photoUrl,
+          },
+        };
+      }
     }
 
     throw new Error(
@@ -631,27 +647,51 @@ export const api = {
   async getAgents(): Promise<AgentProfile[]> {
     if (!isLiveEnvironment()) {
       const res = await safeFetch<AgentProfile[]>(`${BASE_URL}/agents`);
-      if (res.ok && Array.isArray(res.data) && res.data.length > 0) {
-        clientStorage.saveAgents(res.data);
-        return res.data;
+      if (res.ok && Array.isArray(res.data)) {
+        const filtered = isPublishedMode() ? filterNonSampleAgents(res.data) : res.data;
+        clientStorage.saveAgents(filtered);
+        return filtered;
       }
     }
 
     try {
       const cloudAgents = await fetchAgentsFromFirestore();
       if (cloudAgents && cloudAgents.length > 0) {
-        clientStorage.saveAgents(cloudAgents);
-        return cloudAgents;
+        const filtered = isPublishedMode() ? filterNonSampleAgents(cloudAgents) : cloudAgents;
+        clientStorage.saveAgents(filtered);
+        return filtered;
       }
     } catch (err: any) {
       console.warn('Firestore fetchAgents offline or error:', err?.message || err);
     }
 
     const local = clientStorage.getAgents();
-    if (local && local.length > 0) {
-      seedInitialDataToFirestoreIfEmpty(local, clientStorage.getApplications()).catch(() => {});
-    }
     return local;
+  },
+
+  // Purge sample demo records across storage, backend, and Firestore
+  async purgeSampleData(operatorName = 'Business Development Admin', operatorRole = 'Admin'): Promise<{
+    success: boolean;
+    removedAgents: number;
+    removedApplications: number;
+    message: string;
+  }> {
+    const { removedAgents, removedApplications } = clientStorage.purgeAllSampleData();
+
+    safeFetch(`${BASE_URL}/admin/purge-sample-data`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operatorName, operatorRole }),
+    }).catch(() => {});
+
+    purgeSampleAgentsFromFirestore().catch(() => {});
+
+    return {
+      success: true,
+      removedAgents,
+      removedApplications,
+      message: `Sample data purged successfully. ${removedAgents} sample record(s) removed. Database now contains only uploaded files and real registered agents.`,
+    };
   },
 
   async getAgent(code: string): Promise<{
@@ -1684,7 +1724,12 @@ export const api = {
       }
     );
 
-    if (res.ok && res.data) return res.data;
+    if (res.ok && res.data) {
+      if (res.data.invitation) {
+        clientStorage.saveInvitation(res.data.invitation);
+      }
+      return res.data;
+    }
 
     // Clean client-side fallback with standard MWI-INV-XXXXXX code
     const invCode = `MWI-INV-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -1772,7 +1817,12 @@ export const api = {
       }
     );
 
-    if (res.ok && res.data) return res.data;
+    if (res.ok && res.data) {
+      if (res.data.invitation) {
+        clientStorage.saveInvitation(res.data.invitation);
+      }
+      return res.data;
+    }
 
     const invs = clientStorage.getInvitations();
     const inv = invs.find((i) => i.id === id) || invs[0];

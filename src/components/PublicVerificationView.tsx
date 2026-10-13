@@ -21,6 +21,7 @@ import {
 import { AgentProfile, AccreditationApplication } from '../types';
 import { MegaworldLogo } from './MegaworldLogo';
 import { formatDate } from '../utils/dateFormatter';
+import { isSampleAgent } from '../utils/sampleDataFilter';
 import QRCode from 'qrcode';
 
 interface PublicVerificationViewProps {
@@ -57,8 +58,11 @@ export const PublicVerificationView: React.FC<PublicVerificationViewProps> = ({
     );
   }, [activeCode]);
 
-  // Find agent by code
-  const matchedAgent = agents.find(
+  // Filter out any sample demo records so only uploaded and registered agents reflect
+  const realAgents = agents.filter((a) => !isSampleAgent(a));
+
+  // Find agent by code (only legitimate real agents)
+  const matchedAgent = realAgents.find(
     (a) =>
       a.affiliateCode.trim().toLowerCase() === activeCode.trim().toLowerCase() ||
       a.email?.trim().toLowerCase() === activeCode.trim().toLowerCase()
@@ -391,25 +395,28 @@ export const PublicVerificationView: React.FC<PublicVerificationViewProps> = ({
                 Affiliate Code Not Found: &ldquo;{activeCode || 'None'}&rdquo;
               </h3>
               <p className="text-xs text-slate-400 max-w-md mx-auto">
-                Please ensure the International Property Affiliate code was entered correctly. Sample codes in the registry include:
+                Please verify that the International Property Affiliate code was entered correctly (e.g. IPA-AP2-XXXXXX). Only active accredited affiliates registered in the official database are verified.
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-              {agents.slice(0, 4).map((a) => (
-                <button
-                  key={a.affiliateCode}
-                  type="button"
-                  onClick={() => {
-                    setSearchCode(a.affiliateCode);
-                    setActiveCode(a.affiliateCode);
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-mono text-amber-300 cursor-pointer"
-                >
-                  {a.affiliateCode} ({a.fullName.split(' ')[0]})
-                </button>
-              ))}
-            </div>
+            {realAgents.length > 0 && (
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                <span className="text-[11px] text-slate-400 w-full mb-1">Registered Affiliates in Registry:</span>
+                {realAgents.slice(0, 4).map((a) => (
+                  <button
+                    key={a.affiliateCode}
+                    type="button"
+                    onClick={() => {
+                      setSearchCode(a.affiliateCode);
+                      setActiveCode(a.affiliateCode);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-mono text-amber-300 cursor-pointer"
+                  >
+                    {a.affiliateCode} ({a.fullName.split(' ')[0]})
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="border-t border-slate-800 pt-4 text-[11px] text-slate-500">
               If you suspect unaccredited or unauthorized representation, please contact Megaworld International Compliance at <span className="text-amber-400">compliance@megaworldinternational.com</span>.

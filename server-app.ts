@@ -39,15 +39,18 @@ import {
 } from './src/utils/agentDatasetExport';
 import { generateContractPdf } from './src/utils/contractPdfGenerator';
 import { extractContractData } from './src/components/ContractDocument';
+import { sendEmailNotification, generateStaffInvitationEmailHtml } from './server-mailer';
 
-// In-Memory Database Store with initial seed data
+// In-Memory Database Store: on published site and by default, start clean with uploaded and registered data only
+const shouldLoadSampleData = process.env.LOAD_SAMPLE_DATA === 'true';
+
 class DatabaseStore {
-  agents: AgentProfile[] = [...INITIAL_AGENTS];
-  applications: AccreditationApplication[] = [...INITIAL_APPLICATIONS];
-  accreditations: AccreditationRecord[] = [...INITIAL_ACCREDITATIONS];
-  positionRequests: PositionAccessRequest[] = [...INITIAL_POSITION_REQUESTS];
-  notifications: NotificationItem[] = [...INITIAL_NOTIFICATIONS];
-  auditLogs: AuditLog[] = [...INITIAL_AUDIT_LOGS];
+  agents: AgentProfile[] = shouldLoadSampleData ? [...INITIAL_AGENTS] : [];
+  applications: AccreditationApplication[] = shouldLoadSampleData ? [...INITIAL_APPLICATIONS] : [];
+  accreditations: AccreditationRecord[] = shouldLoadSampleData ? [...INITIAL_ACCREDITATIONS] : [];
+  positionRequests: PositionAccessRequest[] = shouldLoadSampleData ? [...INITIAL_POSITION_REQUESTS] : [];
+  notifications: NotificationItem[] = shouldLoadSampleData ? [...INITIAL_NOTIFICATIONS] : [];
+  auditLogs: AuditLog[] = [];
   settings: SystemSettings = { ...INITIAL_SETTINGS };
   positionContracts: PositionContractTemplate[] = [...INITIAL_POSITION_CONTRACTS];
 
@@ -297,6 +300,28 @@ class DatabaseStore {
     if (updatedCount > 0) {
       this.log('System Automation', 'admin', 'Automated Expiry Evaluation', 'Accreditation Monitoring', `Updated ${updatedCount} accreditation status records.`);
     }
+  }
+
+  purgeSampleData(): { removedAgents: number; removedApplications: number } {
+    const isSample = (a: any) => {
+      if (a.isUploaded || a.isRegistered || a.importSource) return false;
+      if (a.isSample) return true;
+      const em = (a.email || '').toLowerCase();
+      if (em.includes('.example') || em.includes('sample@') || em.includes('megaworld-ipa.example')) return true;
+      const cd = (a.affiliateCode || '').toUpperCase();
+      if (/^IPA-AP2-0000(0[1-9]|1[0-9]|2[0-1])$/.test(cd)) return true;
+      return false;
+    };
+
+    const initialAgentCount = this.agents.length;
+    this.agents = this.agents.filter((a) => !isSample(a));
+    const removedAgents = initialAgentCount - this.agents.length;
+
+    const initialAppCount = this.applications.length;
+    this.applications = this.applications.filter((app) => !isSample(app));
+    const removedApplications = initialAppCount - this.applications.length;
+
+    return { removedAgents, removedApplications };
   }
 }
 
@@ -801,10 +826,43 @@ async function startServer() {
     return res.status(401).json({ error: 'Invalid Affiliate Code, Email, or Password.' });
   });
 
-  // 2. Agents list & details
+  // 2. Agents list & details (only uploaded files and registered agents by default)
   app.get('/api/agents', (req, res) => {
     db.evaluateExpiries();
-    res.json(db.agents);
+    const shouldIncludeSample = req.query.sample === 'true' && shouldLoadSampleData;
+    if (shouldIncludeSample) {
+      return res.json(db.agents);
+    }
+    const nonSample = db.agents.filter((a: any) => {
+      if (a.isUploaded || a.isRegistered || a.importSource) return true;
+      if (a.isSample) return false;
+      const em = (a.email || '').toLowerCase();
+      if (em.includes('.example') || em.includes('sample@') || em.includes('megaworld-ipa.example')) return false;
+      const cd = (a.affiliateCode || '').toUpperCase();
+      if (/^IPA-AP2-0000(0[1-9]|1[0-9]|2[0-1])$/.test(cd)) return false;
+      return true;
+    });
+    res.json(nonSample);
+  });
+
+  // Admin purge sample data endpoint
+  app.post('/api/admin/purge-sample-data', (req, res) => {
+    const { operatorName = 'Business Development Admin', operatorRole = 'Admin' } = req.body;
+    const { removedAgents, removedApplications } = db.purgeSampleData();
+    db.log(
+      operatorName,
+      (operatorRole || 'Admin').toLowerCase() as any,
+      'Purge Sample Data',
+      'Registry',
+      `Purged ${removedAgents} sample agent records and ${removedApplications} sample applications.`
+    );
+    res.json({
+      success: true,
+      removedAgents,
+      removedApplications,
+      remainingAgents: db.agents.length,
+      message: `Successfully purged sample data. Only uploaded files and registered agents remain active.`,
+    });
   });
 
   // Export 34-column dataset (must be defined before /api/agents/:code)
@@ -959,7 +1017,7 @@ async function startServer() {
   });
 
   // Send Credentials / Temporary Password Email for Access and Renewal
-  app.post('/api/agents/:code/send-credentials', (req, res) => {
+  app.post('/api/agents/:code/send-credentials', async (req, res) => {
     const code = req.params.code;
     const { operatorName = 'Business Development Operations', operatorRole = 'staff', customNote = '' } = req.body || {};
     const agent = db.agents.find((a) => a.affiliateCode.toLowerCase() === code.toLowerCase());
@@ -973,6 +1031,10 @@ async function startServer() {
       agent.tempPassword = `Mega@${lastPart}`;
     }
 
+    const host = req.get('host') || 'localhost:3000';
+    const protocol = req.protocol || 'http';
+    const portalUrl = process.env.APP_URL || `${protocol}://${host}`;
+
     const emailSubject = `Megaworld International: Credentials & Temporary Password for Portal Access (${agent.affiliateCode})`;
     const emailBody = [
       `Dear ${agent.fullName},`,
@@ -982,7 +1044,7 @@ async function startServer() {
       `• Permanent Affiliate Code (Access Point): ${agent.affiliateCode}`,
       `• Temporary Password: ${agent.tempPassword}`,
       `• Registered Email: ${agent.email}`,
-      `• Portal Access URL: ${req.protocol}://${req.get('host') || 'ais-pre-zqosip4jfkfqe52ceyf7yn-139025000629.asia-southeast1.run.app'}`,
+      `• Portal Access URL: ${portalUrl}`,
       ``,
       `Please use your Affiliate Code or registered email address along with this temporary password to sign in and complete your 4-month accreditation renewal.`,
       customNote ? `\nSpecial Instructions from Operations:\n${customNote}` : '',
@@ -990,6 +1052,41 @@ async function startServer() {
       `Warm regards,`,
       `Megaworld International Global Operations & BD Accreditation Team`,
     ].filter(Boolean).join('\n');
+
+    const htmlBody = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; padding: 24px; color: #1e293b;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 14px; border: 1px solid #e2e8f0; overflow: hidden;">
+          <div style="background: #002B66; padding: 24px; text-align: center; border-bottom: 3px solid #d97706;">
+            <h2 style="color: #ffffff; margin: 0 0 4px 0; font-size: 18px; letter-spacing: 0.5px;">MEGAWORLD INTERNATIONAL</h2>
+            <p style="color: #93c5fd; margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Portal Access & Renewal Credentials</p>
+          </div>
+          <div style="padding: 24px; font-size: 14px; line-height: 1.6;">
+            <p style="font-weight: 700; color: #0f172a; margin-top: 0;">Dear ${agent.fullName},</p>
+            <p style="color: #475569;">Your official Megaworld International Property Affiliate credentials have been dispatched:</p>
+            <div style="background: #f1f5f9; border-radius: 10px; padding: 16px; margin: 18px 0; border: 1px solid #cbd5e1;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <tr><td style="padding: 5px 0; color: #64748b;">Affiliate Code:</td><td style="font-weight: 800; color: #002B66; text-align: right; font-family: monospace; font-size: 15px;">${agent.affiliateCode}</td></tr>
+                <tr><td style="padding: 5px 0; color: #64748b;">Temporary Password:</td><td style="font-weight: 800; color: #b45309; text-align: right; font-family: monospace; font-size: 15px;">${agent.tempPassword}</td></tr>
+                <tr><td style="padding: 5px 0; color: #64748b;">Registered Email:</td><td style="font-weight: 700; color: #0f172a; text-align: right;">${agent.email}</td></tr>
+              </table>
+            </div>
+            ${customNote ? `<div style="background: #fffbeb; border-left: 3px solid #f59e0b; padding: 10px; margin: 14px 0; font-size: 12px; color: #92400e;">${customNote}</div>` : ''}
+            <div style="text-align: center; margin: 24px 0 12px 0;">
+              <a href="${portalUrl}" style="background: #002B66; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 13px; display: inline-block;">Access Affiliate Portal</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    `.trim();
+
+    // Actual email transmission via nodemailer
+    const mailResult = await sendEmailNotification({
+      to: agent.email,
+      recipientName: agent.fullName,
+      subject: emailSubject,
+      text: emailBody,
+      html: htmlBody,
+    });
 
     // Create Notification and Dispatched Email Record
     const notificationId = `notif_${Date.now()}_cred`;
@@ -1011,14 +1108,16 @@ async function startServer() {
       (operatorRole.toLowerCase() as any),
       'Dispatched Credentials Email',
       agent.affiliateCode,
-      `Sent email with Affiliate Code access point and temporary password to ${agent.fullName} (${agent.email}).`
+      `Sent email with Affiliate Code access point and temporary password to ${agent.fullName} (${agent.email}) via ${mailResult.deliveryChannel}.`
     );
 
     res.json({
       success: true,
-      message: `Credentials email with temporary password successfully sent to ${agent.email}.`,
+      message: `Credentials email with temporary password successfully dispatched to ${agent.email} via ${mailResult.deliveryChannel}.`,
       affiliateCode: agent.affiliateCode,
       tempPassword: agent.tempPassword,
+      deliveryChannel: mailResult.deliveryChannel,
+      previewUrl: mailResult.previewUrl || undefined,
       emailPreview: {
         to: agent.email,
         subject: emailSubject,
@@ -1699,7 +1798,7 @@ async function startServer() {
   });
 
   // Admin manually invites a member to make them a staff and grant access with specific role
-  app.post('/api/admin/invite-staff', (req, res) => {
+  app.post('/api/admin/invite-staff', async (req, res) => {
     const {
       recipientEmail,
       recipientName,
@@ -1746,6 +1845,34 @@ async function startServer() {
     const emailSubject = `Official Appointment: Megaworld International BD Staff Invitation (${positionTitle})`;
     const emailBodyPreview = `Dear ${recipientName}, you have been officially appointed as ${positionTitle} (${role}) in the ${department} department by ${operatorName}. Your granted privileges include: ${Object.entries(defaultPerms).filter(([_, v]) => v).map(([k]) => k.replace(/([A-Z])/g, ' $1').toLowerCase()).join(', ')}. Please use invitation code ${invCode} to access your staff portal.`;
 
+    const host = req.get('host') || 'localhost:3000';
+    const protocol = req.protocol || 'http';
+    const portalUrl = process.env.APP_URL || `${protocol}://${host}`;
+
+    const { html: emailHtml, text: emailText } = generateStaffInvitationEmailHtml({
+      recipientName,
+      recipientEmail: normalizedEmail,
+      role: role === 'Admin' ? 'Admin' : 'Staff',
+      positionTitle,
+      department,
+      invitationCode: invCode,
+      expiresIso,
+      operatorName,
+      operatorEmail,
+      portalUrl,
+      customMessage: customMessage || undefined,
+      permissions: defaultPerms,
+    });
+
+    // Actually dispatch email notification via nodemailer mailer
+    const mailResult = await sendEmailNotification({
+      to: normalizedEmail,
+      recipientName,
+      subject: emailSubject,
+      text: emailText,
+      html: emailHtml,
+    });
+
     const newInvitation: StaffInvitation = {
       id: `inv_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
       invitationCode: invCode,
@@ -1767,8 +1894,10 @@ async function startServer() {
         subject: emailSubject,
         sentAt: nowIso,
         status: 'Delivered',
-        deliveryChannel: 'Official Megaworld Mail Server (SMTP Relay)',
+        deliveryChannel: mailResult.deliveryChannel,
         bodyPreview: emailBodyPreview,
+        previewUrl: mailResult.previewUrl || undefined,
+        messageId: mailResult.messageId || undefined,
       },
     };
 
@@ -1797,7 +1926,7 @@ async function startServer() {
       undefined,
       'admin',
       'Staff Invitation Dispatched',
-      `${operatorName} manually invited ${recipientName} (${normalizedEmail}) as ${positionTitle} (${role}). Notification email delivered.`,
+      `${operatorName} manually invited ${recipientName} (${normalizedEmail}) as ${positionTitle} (${role}). Notification email delivered via ${mailResult.deliveryChannel}.`,
       'System',
       'staff-database'
     );
@@ -1808,18 +1937,19 @@ async function startServer() {
       'admin',
       'Manual Staff Invitation & Role Grant',
       normalizedEmail,
-      `Sent manual staff invitation to ${recipientName} (${normalizedEmail}) with role ${role} (${positionTitle}), Department: ${department}. Email notification dispatched.`
+      `Sent manual staff invitation to ${recipientName} (${normalizedEmail}) with role ${role} (${positionTitle}), Department: ${department}. Email dispatched via ${mailResult.deliveryChannel}.`
     );
 
     res.json({
       success: true,
-      message: `Official staff invitation and email notification sent to ${normalizedEmail} successfully.`,
+      message: `Official staff invitation and email notification dispatched to ${normalizedEmail} successfully (${mailResult.deliveryChannel}).`,
       invitation: newInvitation,
+      previewUrl: mailResult.previewUrl || undefined,
     });
   });
 
   // Resend invitation email
-  app.post('/api/admin/invitations/:id/resend', (req, res) => {
+  app.post('/api/admin/invitations/:id/resend', async (req, res) => {
     const id = req.params.id;
     const { operatorName = 'Business Development Admin (Super Admin)' } = req.body || {};
     const inv = db.staffInvitations.find((i) => i.id === id);
@@ -1829,21 +1959,56 @@ async function startServer() {
     }
 
     const nowIso = new Date().toISOString();
+    const host = req.get('host') || 'localhost:3000';
+    const protocol = req.protocol || 'http';
+    const portalUrl = process.env.APP_URL || `${protocol}://${host}`;
+
+    const { html: emailHtml, text: emailText } = generateStaffInvitationEmailHtml({
+      recipientName: inv.recipientName,
+      recipientEmail: inv.recipientEmail,
+      role: inv.role,
+      positionTitle: inv.positionTitle,
+      department: inv.department,
+      invitationCode: inv.invitationCode,
+      expiresIso: inv.expiresAt,
+      operatorName,
+      operatorEmail: inv.invitedByEmail || 'admin@megaworld.com',
+      portalUrl,
+      customMessage: inv.customMessage,
+      permissions: inv.permissions,
+    });
+
+    const mailResult = await sendEmailNotification({
+      to: inv.recipientEmail,
+      recipientName: inv.recipientName,
+      subject: inv.emailDispatchLog.subject || `Official Appointment: Megaworld International BD Staff Invitation (${inv.positionTitle})`,
+      text: emailText,
+      html: emailHtml,
+    });
+
     inv.emailDispatchLog.sentAt = nowIso;
     inv.emailDispatchLog.status = 'Delivered';
+    inv.emailDispatchLog.deliveryChannel = mailResult.deliveryChannel;
+    if (mailResult.previewUrl) {
+      inv.emailDispatchLog.previewUrl = mailResult.previewUrl;
+    }
+    if (mailResult.messageId) {
+      inv.emailDispatchLog.messageId = mailResult.messageId;
+    }
 
     db.log(
       operatorName,
       'admin',
       'Resend Staff Invitation Email',
       inv.recipientEmail,
-      `Re-sent official staff invitation email to ${inv.recipientEmail} (${inv.invitationCode}).`
+      `Re-sent official staff invitation email to ${inv.recipientEmail} (${inv.invitationCode}) via ${mailResult.deliveryChannel}.`
     );
 
     res.json({
       success: true,
-      message: `Invitation email re-sent to ${inv.recipientEmail} successfully.`,
+      message: `Invitation email re-sent to ${inv.recipientEmail} successfully via ${mailResult.deliveryChannel}.`,
       invitation: inv,
+      previewUrl: mailResult.previewUrl || undefined,
     });
   });
 

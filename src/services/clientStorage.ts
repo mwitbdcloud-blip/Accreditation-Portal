@@ -26,6 +26,13 @@ import {
 import { computeExpiryDate, safeDatePart } from '../utils/dateFormatter';
 import { isLiveEnvironment } from '../utils/environment';
 import { REGIONAL_TERRITORY_HEADS } from '../utils/agentDatasetExport';
+import {
+  isSampleAgent,
+  isSampleApplication,
+  isPublishedMode,
+  filterNonSampleAgents,
+  filterNonSampleApplications,
+} from '../utils/sampleDataFilter';
 
 const STORAGE_KEYS = {
   AGENTS: 'mwi_agents_cache',
@@ -88,6 +95,20 @@ function writeStorage<T>(key: string, data: T): void {
 export const clientStorage = {
   getAgents(): AgentProfile[] {
     const list = readStorage<AgentProfile[]>(STORAGE_KEYS.AGENTS, []);
+
+    // On published website, ensure ONLY uploaded files and registered agents are returned
+    if (isPublishedMode()) {
+      if (!Array.isArray(list) || list.length === 0) {
+        return [];
+      }
+      const cleanList = filterNonSampleAgents(list);
+      if (cleanList.length !== list.length) {
+        writeStorage(STORAGE_KEYS.AGENTS, cleanList);
+      }
+      return cleanList;
+    }
+
+    // Development preview fallback
     if (!Array.isArray(list) || list.length === 0) {
       writeStorage(STORAGE_KEYS.AGENTS, INITIAL_AGENTS);
       return [...INITIAL_AGENTS];
@@ -97,10 +118,28 @@ export const clientStorage = {
 
   clearDemoAccounts(): { removed: number; remaining: number } {
     const list = readStorage<AgentProfile[]>(STORAGE_KEYS.AGENTS, []);
-    const filtered = list.filter((a) => !a.email.toLowerCase().includes('.example'));
+    const filtered = filterNonSampleAgents(list);
     const removed = list.length - filtered.length;
     this.saveAgents(filtered);
     return { removed, remaining: filtered.length };
+  },
+
+  purgeAllSampleData(): { removedAgents: number; removedApplications: number } {
+    const rawAgents = readStorage<AgentProfile[]>(STORAGE_KEYS.AGENTS, []);
+    const cleanAgents = filterNonSampleAgents(rawAgents);
+    const removedAgents = rawAgents.length - cleanAgents.length;
+    this.saveAgents(cleanAgents);
+
+    const rawApps = readStorage<AccreditationApplication[]>(STORAGE_KEYS.APPLICATIONS, []);
+    const cleanApps = filterNonSampleApplications(rawApps);
+    const removedApplications = rawApps.length - cleanApps.length;
+    this.saveApplications(cleanApps);
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('mwi_published_clean_mode', 'true');
+    }
+
+    return { removedAgents, removedApplications };
   },
 
   saveAgents(agents: AgentProfile[]): void {
@@ -132,6 +171,20 @@ export const clientStorage = {
 
   getApplications(): AccreditationApplication[] {
     const list = readStorage<AccreditationApplication[]>(STORAGE_KEYS.APPLICATIONS, []);
+
+    // On published website, ensure ONLY uploaded and registered applications are returned
+    if (isPublishedMode()) {
+      if (!Array.isArray(list) || list.length === 0) {
+        return [];
+      }
+      const cleanList = filterNonSampleApplications(list);
+      if (cleanList.length !== list.length) {
+        writeStorage(STORAGE_KEYS.APPLICATIONS, cleanList);
+      }
+      return cleanList;
+    }
+
+    // Development preview fallback
     if (!Array.isArray(list) || list.length === 0) {
       writeStorage(STORAGE_KEYS.APPLICATIONS, INITIAL_APPLICATIONS);
       return [...INITIAL_APPLICATIONS];
@@ -194,6 +247,9 @@ export const clientStorage = {
 
   getAuditLogs(): AuditLog[] {
     const list = readStorage<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, []);
+    if (isPublishedMode()) {
+      return Array.isArray(list) ? list : [];
+    }
     if (!Array.isArray(list) || list.length === 0) {
       writeStorage(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
       return [...INITIAL_AUDIT_LOGS];
@@ -218,7 +274,10 @@ export const clientStorage = {
 
   getNotifications(affiliateCode?: string, role?: string): NotificationItem[] {
     const list = readStorage<NotificationItem[]>(STORAGE_KEYS.NOTIFICATIONS, []);
-    const items = (!Array.isArray(list) || list.length === 0) ? [...INITIAL_NOTIFICATIONS] : list;
+    const items = isPublishedMode()
+      ? (Array.isArray(list) ? list : [])
+      : (!Array.isArray(list) || list.length === 0 ? [...INITIAL_NOTIFICATIONS] : list);
+
     return items.filter((n) => {
       if (role && (role.toLowerCase() === 'admin' || role.toLowerCase() === 'staff')) {
         return !n.targetRole || n.targetRole === 'all' || n.targetRole === 'staff';
@@ -231,7 +290,7 @@ export const clientStorage = {
   },
 
   addNotification(notif: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>): void {
-    const list = readStorage<NotificationItem[]>(STORAGE_KEYS.NOTIFICATIONS, [...INITIAL_NOTIFICATIONS]);
+    const list = this.getNotifications();
     const item: NotificationItem = {
       ...notif,
       id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
@@ -243,7 +302,7 @@ export const clientStorage = {
   },
 
   markNotificationRead(id: string): void {
-    const list = readStorage<NotificationItem[]>(STORAGE_KEYS.NOTIFICATIONS, [...INITIAL_NOTIFICATIONS]);
+    const list = this.getNotifications();
     const item = list.find((n) => n.id === id);
     if (item) {
       item.read = true;
@@ -301,6 +360,9 @@ export const clientStorage = {
 
   getPositionRequests(): PositionAccessRequest[] {
     const list = readStorage<PositionAccessRequest[]>(STORAGE_KEYS.POSITION_REQUESTS, []);
+    if (isPublishedMode()) {
+      return Array.isArray(list) ? list : [];
+    }
     if (!Array.isArray(list) || list.length === 0) {
       writeStorage(STORAGE_KEYS.POSITION_REQUESTS, INITIAL_POSITION_REQUESTS);
       return [...INITIAL_POSITION_REQUESTS];
@@ -611,6 +673,11 @@ export const clientStorage = {
         personalDetails,
         bankDetails,
         teamDetails,
+        isUploaded: true,
+        isSample: false,
+        importSource: 'file_upload',
+        importedAt: new Date().toISOString(),
+        importedBy: payload.importedBy || 'Staff / Admin',
       };
 
       currentAgents.push(newAgent);
@@ -629,6 +696,8 @@ export const clientStorage = {
         idVerificationStatus: 'Verified',
         eSignatureConfirmed: true,
         declarationAccepted: true,
+        isUploaded: true,
+        isSample: false,
       });
 
       newImported++;

@@ -50,6 +50,7 @@ import { ImportAgentsModal } from './ImportAgentsModal';
 import { AgentCredentialsModal } from './AgentCredentialsModal';
 import { formatDate, formatDateTime } from '../utils/dateFormatter';
 import { download34ColumnCsv, download34ColumnExcel } from '../utils/agentDatasetExport';
+import { isSampleAgent } from '../utils/sampleDataFilter';
 
 interface AgentsDatabaseViewProps {
   agents: AgentProfile[];
@@ -448,6 +449,32 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
     });
   };
 
+  const sampleAgentsCount = agents.filter(isSampleAgent).length;
+
+  const handlePurgeSampleRecords = async () => {
+    if (
+      !window.confirm(
+        'Confirm purge of all sample demo records? This ensures the database will only reflect uploaded files and registered agents.'
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await api.purgeSampleData(currentUser.fullName, currentUserRole);
+      setNotificationToast({
+        message: res.message,
+        type: 'success',
+      });
+      if (onRefreshData) onRefreshData();
+      else onSyncGoogleSheets();
+    } catch (err: any) {
+      setNotificationToast({
+        message: err.message || 'Failed to purge sample records.',
+        type: 'error',
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Toast Notification */}
@@ -571,6 +598,25 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
               </button>
             )}
 
+            {/* Purge Sample Data Button (Admin & Staff) if sample records detected */}
+            {sampleAgentsCount > 0 &&
+              (currentUserRole?.toLowerCase() === 'admin' ||
+                currentUserRole?.toLowerCase() === 'staff' ||
+                currentUser.role?.toLowerCase() === 'admin' ||
+                currentUser.role?.toLowerCase() === 'staff') &&
+              activeSubtab === 'agents' && (
+                <button
+                  type="button"
+                  id="purge-sample-records-btn"
+                  onClick={handlePurgeSampleRecords}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-xs transition"
+                  title="Purge Sample Demo Records"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Purge Samples ({sampleAgentsCount})
+                </button>
+              )}
+
             {/* Delete All Agents Button (Admin & Staff) */}
             {(currentUserRole?.toLowerCase() === 'admin' ||
               currentUserRole?.toLowerCase() === 'staff' ||
@@ -592,8 +638,8 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
           </div>
         </div>
 
-        {/* Sync status ribbon */}
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center justify-between">
+        {/* Sync & Registry status ribbon */}
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>
@@ -601,10 +647,34 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
               <strong className="uppercase">{settings.sheetsSyncStatus}</strong>
             </span>
           </div>
-          <span className="text-[11px] text-emerald-800">
-            Last Synced: {settings.lastSheetsSyncTimestamp ? formatDateTime(settings.lastSheetsSyncTimestamp) : 'Just now'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
+              Published Registry: Uploaded & Registered Only
+            </span>
+            <span className="text-[11px] text-emerald-800">
+              Last Synced: {settings.lastSheetsSyncTimestamp ? formatDateTime(settings.lastSheetsSyncTimestamp) : 'Just now'}
+            </span>
+          </div>
         </div>
+
+        {/* Sample Records Alert Ribbon if detected */}
+        {sampleAgentsCount > 0 && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                Detected <strong>{sampleAgentsCount}</strong> legacy sample record(s) in database. To avoid confusion on published deployment, you can purge them now.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handlePurgeSampleRecords}
+              className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg shadow-xs text-xs"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Purge Sample Records Now
+            </button>
+          </div>
+        )}
 
         {/* Primary Subtabs: Agents Database vs Google Spreadsheet vs Admin & Staff Accounts */}
         <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
@@ -847,7 +917,41 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
-                  {filteredAgents.length === 0 ? (
+                  {agents.length === 0 ? (
+                    <tr>
+                      <td colSpan={15} className="py-14 px-6 text-center text-xs font-sans">
+                        <div className="max-w-md mx-auto space-y-3">
+                          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-900 mx-auto flex items-center justify-center border border-blue-100 shadow-xs">
+                            <FileSpreadsheet className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-900">
+                              No Agent Records In Database
+                            </h4>
+                            <p className="text-slate-500 text-xs mt-1 leading-relaxed">
+                              This portal is running in published mode. Only uploaded spreadsheet files from Staff and Admin, and real registered agents, reflect in this registry. Sample records have been excluded to prevent confusion.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                            <button
+                              type="button"
+                              onClick={() => setIsImportModalOpen(true)}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 shadow-xs transition cursor-pointer"
+                            >
+                              <FileSpreadsheet className="w-3.5 h-3.5" /> Upload Agent File (CSV / Excel)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setActiveSubtab('monitoring')}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-blue-950 bg-white hover:bg-blue-50 border border-blue-300 shadow-xs transition cursor-pointer"
+                            >
+                              <Database className="w-3.5 h-3.5" /> Sync Google Spreadsheet
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredAgents.length === 0 ? (
                     <tr>
                       <td colSpan={15} className="py-8 text-center text-slate-400 text-xs font-sans">
                         No affiliate agents found matching the selected search/filters.
@@ -1133,16 +1237,33 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
 
                           {/* Resend Email */}
                           {inv.status === 'Pending' && (
-                            <button
-                              type="button"
-                              disabled={actionLoadingId === inv.id}
-                              onClick={() => handleResendInvitation(inv)}
-                              className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 hover:text-amber-900 hover:underline px-1.5 py-1 rounded hover:bg-amber-50 disabled:opacity-50"
-                              title="Resend email notification to recipient"
-                            >
-                              <RotateCcw className={`w-3 h-3 ${actionLoadingId === inv.id ? 'animate-spin' : ''}`} />
-                              Resend
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                disabled={actionLoadingId === inv.id}
+                                onClick={() => handleResendInvitation(inv)}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 hover:text-amber-900 hover:underline px-1.5 py-1 rounded hover:bg-amber-50 disabled:opacity-50"
+                                title="Resend email notification to recipient via mail server"
+                              >
+                                <RotateCcw className={`w-3 h-3 ${actionLoadingId === inv.id ? 'animate-spin' : ''}`} />
+                                Resend
+                              </button>
+                              <a
+                                href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+                                  inv.recipientEmail
+                                )}&su=${encodeURIComponent(
+                                  inv.emailDispatchLog?.subject || `Official Appointment: Megaworld International BD Staff Invitation`
+                                )}&body=${encodeURIComponent(
+                                  `Dear ${inv.recipientName},\n\nYou have been officially appointed as ${inv.positionTitle} (${inv.role}) in the ${inv.department} department.\n\nOfficial Invitation Code: ${inv.invitationCode}\n\nPlease visit ${typeof window !== 'undefined' ? window.location.origin : ''} to activate your staff access.\n\nMegaworld International Business Development Team`
+                                )}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-[11px] font-medium text-red-600 hover:text-red-800 hover:underline px-1.5 py-1 rounded hover:bg-red-50"
+                                title="Open pre-filled invitation draft in Gmail Web"
+                              >
+                                <Mail className="w-3 h-3" /> Gmail
+                              </a>
+                            </>
                           )}
 
                           {/* Manual Activate */}

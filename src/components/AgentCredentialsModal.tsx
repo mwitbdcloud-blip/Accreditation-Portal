@@ -344,6 +344,36 @@ export const AgentCredentialsModal: React.FC<AgentCredentialsModalProps> = ({
                 </>
               )}
             </button>
+
+            <div className="flex items-center justify-center gap-2 pt-1">
+              <span className="text-[10px] text-slate-500 font-medium">Direct Mail:</span>
+              <a
+                href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+                  agent.email
+                )}&su=${encodeURIComponent(
+                  `Megaworld International: Credentials & Temporary Password for Portal Access (${agent.affiliateCode})`
+                )}&body=${encodeURIComponent(
+                  `Dear ${agent.fullName},\n\nYour Megaworld International Property Affiliate portal credentials are:\n• Affiliate Code: ${agent.affiliateCode}\n• Temporary Password: ${currentTempPass}\n• Registered Email: ${agent.email}\n• Portal URL: ${typeof window !== 'undefined' ? window.location.origin : ''}\n\n${customNote ? customNote + '\n\n' : ''}Warm regards,\nMegaworld International BD Team`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-red-600 hover:text-red-800 bg-white border border-slate-200 rounded-lg hover:bg-red-50 transition"
+              >
+                <Mail className="w-3 h-3" /> Open in Gmail
+              </a>
+              <a
+                href={`mailto:${encodeURIComponent(
+                  agent.email
+                )}?subject=${encodeURIComponent(
+                  `Megaworld International: Credentials & Temporary Password for Portal Access (${agent.affiliateCode})`
+                )}&body=${encodeURIComponent(
+                  `Dear ${agent.fullName},\n\nYour Megaworld International Property Affiliate portal credentials are:\n• Affiliate Code: ${agent.affiliateCode}\n• Temporary Password: ${currentTempPass}\n• Registered Email: ${agent.email}\n• Portal URL: ${typeof window !== 'undefined' ? window.location.origin : ''}\n\n${customNote ? customNote + '\n\n' : ''}Warm regards,\nMegaworld International BD Team`
+                )}`}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:text-slate-900 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition"
+              >
+                <ExternalLink className="w-3 h-3" /> Mail App
+              </a>
+            </div>
           </div>
         </div>
 

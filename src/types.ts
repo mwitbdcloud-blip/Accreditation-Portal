@@ -150,6 +150,9 @@ export interface AccreditationApplication {
   declarationAccepted: boolean;
   contractUrl?: string;
   contractGeneratedAt?: string;
+  isUploaded?: boolean;
+  isRegistered?: boolean;
+  isSample?: boolean;
 }
 
 export interface AccreditationRecord {
@@ -164,6 +167,8 @@ export interface AccreditationRecord {
   approvedBy: string;
   approvedDate: string;
   contractId?: string;
+  isUploaded?: boolean;
+  isSample?: boolean;
 }
 
 export interface AgentProfile {
@@ -202,6 +207,13 @@ export interface AgentProfile {
   eSignatureConfirmed?: boolean;
   governmentIdUrl?: string;
   idPhotoUrl?: string;
+  isUploaded?: boolean;
+  isRegistered?: boolean;
+  isSample?: boolean;
+  importSource?: 'file_upload' | 'google_sheets' | 'manual';
+  registrationOrigin?: string;
+  importedBy?: string;
+  importedAt?: string;
 }
 
 export interface StaffPermissions {
@@ -253,6 +265,8 @@ export interface StaffInvitation {
     status: 'Delivered' | 'Pending';
     deliveryChannel: string;
     bodyPreview: string;
+    previewUrl?: string;
+    messageId?: string;
   };
 }
 

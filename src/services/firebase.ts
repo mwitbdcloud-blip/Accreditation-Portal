@@ -40,6 +40,7 @@ import {
   PositionContractTemplate,
   StaffAccount,
 } from '../types';
+import { isSampleAgent, isSampleApplication, isPublishedMode } from '../utils/sampleDataFilter';
 
 // Initialize Firebase App
 export const app = initializeApp(firebaseConfig);
@@ -243,6 +244,10 @@ export async function fetchAgentsFromFirestore(): Promise<AgentProfile[]> {
         results.push(data as AgentProfile);
       }
     });
+
+    if (isPublishedMode()) {
+      return results.filter((a) => !isSampleAgent(a));
+    }
     return results;
   } catch (err: any) {
     console.warn('Firestore fetchAgents offline or error, falling back:', err?.message || err);
@@ -625,30 +630,34 @@ export async function seedInitialDataToFirestoreIfEmpty(
       seededAny = true;
     }
 
-    // 3. Ensure agents exist if collection is empty
-    const agentSnap = await getDocs(query(collection(db, 'agents'), limit(1)));
-    if (agentSnap.empty && initialAgents.length > 0) {
-      for (let i = 0; i < initialAgents.length; i += 20) {
-        const slice = initialAgents.slice(i, i + 20);
-        const batch = writeBatch(db);
-        slice.forEach((agent) => {
-          batch.set(doc(db, 'agents', agent.affiliateCode), cleanPayload(agent));
-        });
-        await batch.commit();
-      }
-      seededAny = true;
-    }
-
-    // 4. Ensure applications exist if collection is empty
-    if (initialApplications.length > 0) {
-      const appSnap = await getDocs(query(collection(db, 'applications'), limit(1)));
-      if (appSnap.empty) {
-        const appBatch = writeBatch(db);
-        initialApplications.forEach((app) => {
-          appBatch.set(doc(db, 'applications', app.id), cleanPayload(app));
-        });
-        await appBatch.commit();
+    // 3. Ensure agents exist if collection is empty (Only in non-published development preview!)
+    if (!isPublishedMode()) {
+      const agentSnap = await getDocs(query(collection(db, 'agents'), limit(1)));
+      if (agentSnap.empty && initialAgents.length > 0) {
+        const nonSample = initialAgents.filter((a) => !isSampleAgent(a));
+        const listToSeed = nonSample.length > 0 ? nonSample : initialAgents;
+        for (let i = 0; i < listToSeed.length; i += 20) {
+          const slice = listToSeed.slice(i, i + 20);
+          const batch = writeBatch(db);
+          slice.forEach((agent) => {
+            batch.set(doc(db, 'agents', agent.affiliateCode), cleanPayload(agent));
+          });
+          await batch.commit();
+        }
         seededAny = true;
+      }
+
+      // 4. Ensure applications exist if collection is empty
+      if (initialApplications.length > 0) {
+        const appSnap = await getDocs(query(collection(db, 'applications'), limit(1)));
+        if (appSnap.empty) {
+          const appBatch = writeBatch(db);
+          initialApplications.forEach((app) => {
+            appBatch.set(doc(db, 'applications', app.id), cleanPayload(app));
+          });
+          await appBatch.commit();
+          seededAny = true;
+        }
       }
     }
 
@@ -656,6 +665,28 @@ export async function seedInitialDataToFirestoreIfEmpty(
   } catch (err: any) {
     console.warn('Could not seed Firestore (offline or rule constraint):', err?.message || err);
     return false;
+  }
+}
+
+export async function purgeSampleAgentsFromFirestore(): Promise<number> {
+  try {
+    const snap = await getDocs(collection(db, 'agents'));
+    let count = 0;
+    const batch = writeBatch(db);
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (isSampleAgent(data as AgentProfile)) {
+        batch.delete(docSnap.ref);
+        count++;
+      }
+    });
+    if (count > 0) {
+      await batch.commit();
+    }
+    return count;
+  } catch (err: any) {
+    console.warn('purgeSampleAgentsFromFirestore error:', err?.message || err);
+    return 0;
   }
 }
 

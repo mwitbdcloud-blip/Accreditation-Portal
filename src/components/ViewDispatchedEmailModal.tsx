@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StaffInvitation } from '../types';
-import { X, Mail, CheckCircle2, Copy, Check } from 'lucide-react';
+import { X, Mail, CheckCircle2, Copy, Check, ExternalLink, Send } from 'lucide-react';
 import { MegaworldLogo } from './MegaworldLogo';
 import { formatDateTime } from '../utils/dateFormatter';
 
@@ -15,7 +15,8 @@ export const ViewDispatchedEmailModal: React.FC<ViewDispatchedEmailModalProps> =
   onClose,
   invitation,
 }) => {
-  const [copied, setCopied] = React.useState(false);
+  const [copied, setCopied] = useState(false);
+  const [copiedFull, setCopiedFull] = useState(false);
 
   if (!isOpen || !invitation) return null;
 
@@ -24,6 +25,49 @@ export const ViewDispatchedEmailModal: React.FC<ViewDispatchedEmailModalProps> =
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const portalUrl = typeof window !== 'undefined' ? window.location.origin : 'https://megaworldinternational.com';
+
+  const fullLetterText = `MEGAWORLD INTERNATIONAL
+Official Staff Appointment & Role Grant
+
+Dear ${invitation.recipientName},
+
+You have been officially invited and appointed by ${invitation.invitedBy} (${invitation.invitedByEmail}) to join the Megaworld International Business Development (BD) Staff as ${invitation.positionTitle} (${invitation.role}) in the ${invitation.department} department.
+
+==================================================
+OFFICIAL INVITATION TOKEN:
+${invitation.invitationCode}
+==================================================
+
+APPOINTMENT SUMMARY:
+• Recipient: ${invitation.recipientName} (${invitation.recipientEmail})
+• Role: ${invitation.role} (${invitation.positionTitle})
+• Department: ${invitation.department}
+• Invitation Code: ${invitation.invitationCode}
+
+${invitation.customMessage ? `NOTE FROM APPOINTING OFFICER:\n"${invitation.customMessage}"\n\n` : ''}HOW TO ACTIVATE YOUR ACCESS:
+1. Open the Megaworld International Portal: ${portalUrl}
+2. Sign in using your registered email (${invitation.recipientEmail}) or enter the Invitation Code: ${invitation.invitationCode}
+3. Your staff privileges are active immediately.
+
+Warm regards,
+Business Development Accreditation Board
+Megaworld International`;
+
+  const handleCopyFull = () => {
+    navigator.clipboard.writeText(fullLetterText);
+    setCopiedFull(true);
+    setTimeout(() => setCopiedFull(false), 2000);
+  };
+
+  const mailtoHref = `mailto:${encodeURIComponent(invitation.recipientEmail)}?subject=${encodeURIComponent(
+    invitation.emailDispatchLog.subject
+  )}&body=${encodeURIComponent(fullLetterText)}`;
+
+  const gmailHref = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+    invitation.recipientEmail
+  )}&su=${encodeURIComponent(invitation.emailDispatchLog.subject)}&body=${encodeURIComponent(fullLetterText)}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
@@ -60,6 +104,57 @@ export const ViewDispatchedEmailModal: React.FC<ViewDispatchedEmailModalProps> =
             <span className="text-[10px] text-emerald-700">
               {formatDateTime(invitation.emailDispatchLog.sentAt)}
             </span>
+          </div>
+
+          {/* Online Preview Link if available */}
+          {invitation.emailDispatchLog.previewUrl && (
+            <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between">
+              <span className="text-[11px] text-blue-900 font-medium">Delivered Message Preview Online:</span>
+              <a
+                href={invitation.emailDispatchLog.previewUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:text-blue-900 underline"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> View Ethereal Webmail
+              </a>
+            </div>
+          )}
+
+          {/* Quick Mail Dispatch Actions */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+              <span className="flex items-center gap-1.5">
+                <Send className="w-3.5 h-3.5 text-blue-900" /> Direct Delivery Actions:
+              </span>
+              <span className="text-[10px] text-slate-500 font-normal">
+                Use if recipient cannot find email in inbox
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={gmailHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-white bg-red-600 hover:bg-red-700 rounded transition"
+              >
+                <Mail className="w-3 h-3" /> Open in Gmail
+              </a>
+              <a
+                href={mailtoHref}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-blue-950 bg-white hover:bg-blue-50 border border-blue-300 rounded transition"
+              >
+                <ExternalLink className="w-3 h-3" /> Send via Mail App
+              </a>
+              <button
+                type="button"
+                onClick={handleCopyFull}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded transition"
+              >
+                {copiedFull ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                {copiedFull ? 'Copied Full Letter' : 'Copy Full Letter'}
+              </button>
+            </div>
           </div>
 
           {/* Email Headers */}

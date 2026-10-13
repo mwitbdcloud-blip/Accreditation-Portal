@@ -18,6 +18,7 @@ import {
   X,
   User,
   ExternalLink,
+  RotateCcw,
 } from 'lucide-react';
 import { MegaworldLogo } from './MegaworldLogo';
 import { formatDateTime } from '../utils/dateFormatter';
@@ -82,6 +83,9 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [dispatchResult, setDispatchResult] = useState<StaffInvitation | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedEmailText, setCopiedEmailText] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [resendStatus, setResendStatus] = useState<string | null>(null);
 
   // Sync when preselectedAgent changes
   React.useEffect(() => {
@@ -164,6 +168,62 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
+  const getFullInvitationLetter = (inv: StaffInvitation) => {
+    const portalUrl = typeof window !== 'undefined' ? window.location.origin : 'https://megaworldinternational.com';
+    return `MEGAWORLD INTERNATIONAL
+Official Staff Appointment & Role Grant
+
+Dear ${inv.recipientName},
+
+You have been officially invited and appointed by ${inv.invitedBy} (${inv.invitedByEmail}) to join the Megaworld International Business Development (BD) Staff as ${inv.positionTitle} (${inv.role}) in the ${inv.department} department.
+
+==================================================
+OFFICIAL INVITATION TOKEN:
+${inv.invitationCode}
+==================================================
+
+APPOINTMENT SUMMARY:
+• Recipient: ${inv.recipientName} (${inv.recipientEmail})
+• Role: ${inv.role} (${inv.positionTitle})
+• Department: ${inv.department}
+• Invitation Code: ${inv.invitationCode}
+
+${inv.customMessage ? `NOTE FROM APPOINTING OFFICER:\n"${inv.customMessage}"\n\n` : ''}HOW TO ACTIVATE YOUR ACCESS:
+1. Open the Megaworld International Portal: ${portalUrl}
+2. Sign in using your registered email (${inv.recipientEmail}) or enter the Invitation Code: ${inv.invitationCode}
+3. Your staff privileges are active immediately.
+
+Warm regards,
+Business Development Accreditation Board
+Megaworld International`;
+  };
+
+  const copyFullEmailText = () => {
+    if (!dispatchResult) return;
+    navigator.clipboard.writeText(getFullInvitationLetter(dispatchResult));
+    setCopiedEmailText(true);
+    setTimeout(() => setCopiedEmailText(false), 2500);
+  };
+
+  const handleResendInvitation = async () => {
+    if (!dispatchResult) return;
+    setIsResending(true);
+    setResendStatus(null);
+    try {
+      const res = await api.resendStaffInvitation(dispatchResult.id, currentUser.fullName);
+      if (res.success && res.invitation) {
+        setDispatchResult(res.invitation);
+        setResendStatus('Invitation re-dispatched to recipient email successfully via mail relay.');
+      } else {
+        setResendStatus('Failed to re-dispatch invitation.');
+      }
+    } catch (err: any) {
+      setResendStatus(err.message || 'Error re-sending invitation.');
+    } finally {
+      setIsResending(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
       <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200 my-8">
@@ -227,10 +287,24 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
               </div>
               <div className="flex justify-between items-center pb-2 border-b border-slate-200">
                 <span className="text-slate-500 font-medium">Delivery Channel:</span>
-                <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                  <Mail className="w-3.5 h-3.5" /> Official Megaworld Mail Server (SMTP)
+                <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5" />
+                  {dispatchResult.emailDispatchLog.deliveryChannel || 'Official Megaworld Mail Server (SMTP)'}
                 </span>
               </div>
+              {dispatchResult.emailDispatchLog.previewUrl && (
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200 bg-blue-50/60 -mx-4 px-4 py-1.5">
+                  <span className="text-blue-900 font-medium">Delivered Message Preview:</span>
+                  <a
+                    href={dispatchResult.emailDispatchLog.previewUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:text-blue-900 underline"
+                  >
+                    <ExternalLink className="w-3 h-3" /> View Online Ethereal Mail
+                  </a>
+                </div>
+              )}
               <div className="flex justify-between items-center">
                 <span className="text-slate-500 font-medium">Official Invitation Code:</span>
                 <div className="flex items-center gap-2">
@@ -247,6 +321,73 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
                   </button>
                 </div>
               </div>
+            </div>
+
+            {/* Direct Recipient Delivery & Mailbox Dispatch Panel */}
+            <div className="bg-gradient-to-r from-blue-50 to-amber-50/40 border border-blue-200 rounded-xl p-4 text-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-blue-950 flex items-center gap-1.5">
+                  <Send className="w-3.5 h-3.5 text-blue-800" /> Direct Delivery & Mailbox Options
+                </span>
+                <span className="text-[10px] text-emerald-800 bg-emerald-100 font-bold px-2 py-0.5 rounded">
+                  Instant Recipient Inbox
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                If the recipient did not find the email in their inbox or spam folder, you can open your email application to send it directly from your own email account, or copy the complete formal invitation letter below:
+              </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <a
+                  href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+                    dispatchResult.recipientEmail
+                  )}&su=${encodeURIComponent(
+                    dispatchResult.emailDispatchLog.subject
+                  )}&body=${encodeURIComponent(getFullInvitationLetter(dispatchResult))}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white bg-red-600 hover:bg-red-700 shadow-xs transition"
+                  title="Open pre-filled draft in Gmail Web"
+                >
+                  <Mail className="w-3.5 h-3.5" /> Open in Gmail Web
+                </a>
+                <a
+                  href={`mailto:${encodeURIComponent(
+                    dispatchResult.recipientEmail
+                  )}?subject=${encodeURIComponent(
+                    dispatchResult.emailDispatchLog.subject
+                  )}&body=${encodeURIComponent(getFullInvitationLetter(dispatchResult))}`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-blue-950 bg-white hover:bg-blue-50 border border-blue-300 shadow-xs transition"
+                  title="Open default email client (Outlook, Apple Mail)"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Send via Mail App (Outlook)
+                </a>
+                <button
+                  type="button"
+                  onClick={copyFullEmailText}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 shadow-xs transition"
+                >
+                  {copiedEmailText ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                  {copiedEmailText ? 'Copied Full Message' : 'Copy Full Message Text'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResendInvitation}
+                  disabled={isResending}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 shadow-xs transition disabled:opacity-50"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
+                  {isResending ? 'Re-sending...' : 'Re-send Email'}
+                </button>
+              </div>
+              {resendStatus && (
+                <div className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+                  {resendStatus}
+                </div>
+              )}
             </div>
 
             {/* Email Transcript Preview */}

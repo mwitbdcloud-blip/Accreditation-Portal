@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Settings, Save, ShieldAlert, CheckCircle2, Database, Mail, FileText, Flame } from 'lucide-react';
+import { Settings, Save, ShieldAlert, CheckCircle2, Database, Mail, FileText, Flame, Trash2, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { SystemSettings } from '../types';
 import { firebaseConfig } from '../services/firebaseConfig';
+import { api } from '../services/api';
 
 interface SystemSettingsViewProps {
   settings: SystemSettings;
@@ -23,6 +24,28 @@ export const SystemSettingsView: React.FC<SystemSettingsViewProps> = ({
   const [auditRetentionYears, setAuditRetentionYears] = useState(settings.auditRetentionYears);
   const [maintenanceMode, setMaintenanceMode] = useState(settings.maintenanceMode);
   const [isSaved, setIsSaved] = useState(false);
+  const [purgeStatus, setPurgeStatus] = useState<string | null>(null);
+  const [isPurging, setIsPurging] = useState(false);
+
+  const handlePurgeSampleData = async () => {
+    if (
+      !window.confirm(
+        'Confirm purge of all sample demo records from database and storage? Only uploaded files from Staff/Admin and real registered agents will remain active.'
+      )
+    ) {
+      return;
+    }
+    setIsPurging(true);
+    setPurgeStatus(null);
+    try {
+      const res = await api.purgeSampleData('System Administrator', currentUserRole);
+      setPurgeStatus(res.message);
+    } catch (err: any) {
+      setPurgeStatus(err.message || 'Failed to purge sample records.');
+    } finally {
+      setIsPurging(false);
+    }
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -222,6 +245,52 @@ export const SystemSettingsView: React.FC<SystemSettingsViewProps> = ({
               <p className="font-mono font-bold text-slate-800">{firebaseConfig.storageBucket || 'steam-dynamics-xq6d2.firebasestorage.app'}</p>
               <p className="text-[11px] text-slate-500">Stores Government IDs, Signatures, and PDFs</p>
             </div>
+          </div>
+        </div>
+
+        {/* Published Data Hygiene & Sample Records Policy */}
+        <div className="p-5 bg-gradient-to-r from-slate-50 to-blue-50/50 rounded-2xl border border-slate-200 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 bg-blue-900 text-white rounded-lg">
+                <ShieldCheck className="w-4 h-4" />
+              </span>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Published Website Data Policy</h3>
+                <p className="text-xs text-slate-500">
+                  Ensures only real uploaded files from Staff/Admin and genuine registered agents reflect on the live portal.
+                </p>
+              </div>
+            </div>
+            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full border border-emerald-300">
+              Clean Published Mode Active
+            </span>
+          </div>
+
+          <div className="p-3 bg-white rounded-xl border border-slate-200 text-xs text-slate-600 leading-relaxed space-y-2">
+            <p>
+              <strong>Data Isolation Rule:</strong> On the published website, mock sample data is automatically suppressed so new agents are never confused by simulated demo profiles. The registry only displays agent profiles and accreditation documents uploaded directly by Staff or Admin, and self-registered agents.
+            </p>
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-slate-500 text-[11px]">
+                Need to purge lingering local or cloud demo records from prior sessions?
+              </span>
+              <button
+                type="button"
+                onClick={handlePurgeSampleData}
+                disabled={isPurging}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 shadow-xs transition disabled:opacity-50 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {isPurging ? 'Purging...' : 'Purge All Sample / Demo Data'}
+              </button>
+            </div>
+            {purgeStatus && (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-xs font-semibold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{purgeStatus}</span>
+              </div>
+            )}
           </div>
         </div>
 
