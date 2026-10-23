@@ -46,7 +46,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({
 
   const newApplications = applications.filter((app) => app.applicationType === 'New').length;
   const renewalApplications = applications.filter((app) => app.applicationType === 'Renewal').length;
-  const pendingApprovals = applications.filter((app) => app.status === 'Submitted' || app.status === 'Under Review').length;
+  const pendingApprovals = applications.filter((app) => app.status === 'Submitted' || app.status === 'Under Review' || app.status === 'Draft' || (app.status as string) === 'Pending').length;
   const pendingDocuments = applications.filter(
     (app) => !app.governmentIdUrl || !app.idPhotoUrl || app.idVerificationStatus === 'Pending' || app.idVerificationStatus === 'For Review'
   ).length;

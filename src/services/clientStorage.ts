@@ -33,6 +33,7 @@ import {
   filterNonSampleAgents,
   filterNonSampleApplications,
 } from '../utils/sampleDataFilter';
+import { syncAgentsAndApplications } from '../utils/applicationSync';
 
 const STORAGE_KEYS = {
   AGENTS: 'mwi_agents_cache',
@@ -144,6 +145,14 @@ export const clientStorage = {
 
   saveAgents(agents: AgentProfile[]): void {
     writeStorage(STORAGE_KEYS.AGENTS, agents);
+    // Keep applications synchronized whenever agents are saved
+    try {
+      const currentApps = readStorage<AccreditationApplication[]>(STORAGE_KEYS.APPLICATIONS, []);
+      const synced = syncAgentsAndApplications(agents, Array.isArray(currentApps) ? currentApps : []);
+      writeStorage(STORAGE_KEYS.APPLICATIONS, synced);
+    } catch (e) {
+      console.warn('[ClientStorage] Auto-sync applications error on saveAgents:', e);
+    }
   },
 
   getAgent(code: string): AgentProfile | null {
@@ -171,25 +180,21 @@ export const clientStorage = {
 
   getApplications(): AccreditationApplication[] {
     const list = readStorage<AccreditationApplication[]>(STORAGE_KEYS.APPLICATIONS, []);
+    const agents = this.getAgents();
 
     // On published website, ensure ONLY uploaded and registered applications are returned
     if (isPublishedMode()) {
-      if (!Array.isArray(list) || list.length === 0) {
-        return [];
-      }
-      const cleanList = filterNonSampleApplications(list);
-      if (cleanList.length !== list.length) {
-        writeStorage(STORAGE_KEYS.APPLICATIONS, cleanList);
-      }
-      return cleanList;
+      const cleanList = Array.isArray(list) ? filterNonSampleApplications(list) : [];
+      const synced = syncAgentsAndApplications(agents, cleanList);
+      writeStorage(STORAGE_KEYS.APPLICATIONS, synced);
+      return synced;
     }
 
     // Development preview fallback
-    if (!Array.isArray(list) || list.length === 0) {
-      writeStorage(STORAGE_KEYS.APPLICATIONS, INITIAL_APPLICATIONS);
-      return [...INITIAL_APPLICATIONS];
-    }
-    return list;
+    const baseList = (!Array.isArray(list) || list.length === 0) ? [...INITIAL_APPLICATIONS] : list;
+    const synced = syncAgentsAndApplications(agents, baseList);
+    writeStorage(STORAGE_KEYS.APPLICATIONS, synced);
+    return synced;
   },
 
   saveApplications(apps: AccreditationApplication[]): void {

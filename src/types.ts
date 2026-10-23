@@ -94,6 +94,9 @@ export interface PersonalDetails {
   tin?: string;
   lastContractPeriod?: string;
   idMatchConfirmed: boolean;
+  accreditationDate?: string;
+  accreditationStartDate?: string;
+  accreditationExpiryDate?: string;
 }
 
 export interface BankDetails {
@@ -153,6 +156,9 @@ export interface AccreditationApplication {
   isUploaded?: boolean;
   isRegistered?: boolean;
   isSample?: boolean;
+  accreditationDate?: string;
+  accreditationStartDate?: string;
+  accreditationExpiryDate?: string;
 }
 
 export interface AccreditationRecord {
@@ -191,6 +197,7 @@ export interface AgentProfile {
   profileCompletion: number;
   currentAccreditationId?: string;
   accreditationStatus: AccreditationStatus;
+  accreditationDate?: string;
   accreditationStartDate?: string;
   accreditationExpiryDate?: string;
   lastAccreditationDate?: string;

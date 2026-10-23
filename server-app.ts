@@ -44,6 +44,18 @@ import { sendEmailNotification, generateStaffInvitationEmailHtml } from './serve
 // In-Memory Database Store: on published site and by default, start clean with uploaded and registered data only
 const shouldLoadSampleData = process.env.LOAD_SAMPLE_DATA === 'true';
 
+export function computeServerExpiryDate(startDateStr: string | null | undefined, months = 4): string {
+  try {
+    if (!startDateStr) return '';
+    const d = new Date(startDateStr);
+    if (isNaN(d.getTime())) return '';
+    d.setMonth(d.getMonth() + months);
+    return d.toISOString().split('T')[0];
+  } catch {
+    return '';
+  }
+}
+
 class DatabaseStore {
   agents: AgentProfile[] = shouldLoadSampleData ? [...INITIAL_AGENTS] : [];
   applications: AccreditationApplication[] = shouldLoadSampleData ? [...INITIAL_APPLICATIONS] : [];
@@ -364,7 +376,7 @@ async function startServer() {
 
   // 1. Authentication & Registration
   app.post('/api/auth/register', (req, res) => {
-    const { fullName, email, password, region, position, mobileNumber } = req.body;
+    const { fullName, email, password, region, position, mobileNumber, accreditationStartDate } = req.body;
 
     if (!fullName || !email || !password || !region) {
       return res.status(400).json({ error: 'All required registration fields must be provided.' });
@@ -387,6 +399,8 @@ async function startServer() {
     const affiliateCode = db.generateAffiliateCode(region);
     const userId = `usr_${Date.now()}`;
     const today = new Date().toISOString().split('T')[0];
+    const startDate = accreditationStartDate ? String(accreditationStartDate).trim() : today;
+    const expiryDate = computeServerExpiryDate(startDate, 4);
 
     const initialPosition = position && position !== 'Pending Accreditation' ? position : 'Pending Accreditation';
 
@@ -404,6 +418,9 @@ async function startServer() {
       accountStatus: 'Active',
       profileCompletion: 25, // Initial basic details provided
       accreditationStatus: 'Pending', // Pending until they complete accreditation inside
+      accreditationStartDate: startDate,
+      accreditationExpiryDate: expiryDate,
+      lastAccreditationDate: startDate,
       renewalEligibility: false,
       unlockedPositions: initialPosition !== 'Pending Accreditation' ? [initialPosition] : [],
     };
@@ -418,8 +435,11 @@ async function startServer() {
       applicationType: 'New',
       position,
       region,
-      status: 'Draft',
-      dateSubmitted: '',
+      status: 'Submitted',
+      dateSubmitted: today,
+      accreditationDate: startDate,
+      accreditationStartDate: startDate,
+      accreditationExpiryDate: expiryDate,
       personalDetails: {
         firstName: fullName.trim().split(' ')[0] || '',
         middleName: '',
@@ -427,17 +447,20 @@ async function startServer() {
         suffix: '',
         fullName: fullName.trim(),
         dateOfBirth: '',
-        nationality: '',
-        citizenship: '',
-        civilStatus: '',
+        nationality: 'Filipino',
+        citizenship: 'Filipino',
+        civilStatus: 'Single',
         residentialAddress: '',
-        country: '',
+        country: 'Philippines',
         state: '',
         telephoneNumber: '',
         mobileNumber: mobileNumber ? mobileNumber.trim() : '',
         emailAddress: normalizedEmail,
         tin: '',
-        idMatchConfirmed: false,
+        idMatchConfirmed: true,
+        accreditationDate: startDate,
+        accreditationStartDate: startDate,
+        accreditationExpiryDate: expiryDate,
       },
       bankDetails: {
         bankName: '',
@@ -447,16 +470,18 @@ async function startServer() {
         swiftCode: '',
       },
       teamDetails: {
-        teamName: '',
-        upline: '',
-        teamLeader: '',
+        teamName: 'Team Apex Horizon',
+        upline: 'Ricardo Gomez',
+        teamLeader: 'Victoria Del Rosario',
         brokerGroup: `Megaworld International ${region} Hub`,
       },
       idVerificationStatus: 'Pending',
-      eSignatureConfirmed: false,
-      declarationAccepted: false,
+      eSignatureConfirmed: true,
+      declarationAccepted: true,
+      isRegistered: true,
+      isSample: false,
     };
-    db.applications.push(newApp);
+    db.applications.unshift(newApp);
 
     // Audit log
     db.log(
@@ -493,6 +518,7 @@ async function startServer() {
       message: 'Registration Successful!',
       affiliateCode,
       agent: newAgent,
+      application: newApp,
     });
   });
 
@@ -594,6 +620,8 @@ async function startServer() {
       db.log(existingAgent.fullName, 'agent', 'Google Login', existingAgent.affiliateCode, 'Logged in via Google Sign-In.');
       return res.json({
         success: true,
+        hasAccount: true,
+        requiresRegistration: false,
         role: 'Agent',
         user: {
           uid,
@@ -610,49 +638,19 @@ async function startServer() {
       });
     }
 
-    // 4. Brand New Unique Agent
-    const newAffiliateCode = db.generateAffiliateCode('Asia Pacific 2');
-    const today = new Date().toISOString().split('T')[0];
-    const newAgent: AgentProfile = {
-      affiliateCode: newAffiliateCode,
-      firebaseUserId: uid,
-      fullName: cleanName,
-      nickname: cleanName.split(' ')[0] || 'Affiliate',
-      email: cleanEmail,
-      photoUrl,
-      region: 'Asia Pacific 2',
-      position: 'Marketing Associate',
-      positions: ['Marketing Associate'],
-      role: 'agent',
-      registrationDate: today,
-      accountStatus: 'Active',
-      profileCompletion: 25,
-      currentAccreditationId: undefined, // Pristine!
-      accreditationStatus: 'Not Started', // Clean, unique brand new agent entity!
-      renewalEligibility: false,
-      unlockedPositions: ['Marketing Associate'],
-      assignedStaff: 'Elena Ramos (BD Staff)',
-    };
-
-    db.agents.unshift(newAgent);
-
-    db.log(cleanName, 'agent', 'Google Sign-In Account Provisioned', newAffiliateCode, `Unique agent entity created for ${cleanEmail} via Google Sign-In.`);
-
+    // 4. Agent has no record yet:
+    // Proceed to New Affiliate Registration instead of auto-provisioning a blank generic account
     return res.json({
       success: true,
-      role: 'Agent',
-      user: {
+      hasAccount: false,
+      requiresRegistration: true,
+      message: 'No affiliate account record found for this Google email yet. Please proceed to complete New Affiliate Registration.',
+      googleUser: {
         uid,
-        email: newAgent.email,
-        role: 'Agent',
-        affiliateCode: newAgent.affiliateCode,
-        displayName: newAgent.fullName,
-        region: newAgent.region,
-        position: newAgent.position,
-        positions: newAgent.positions || [newAgent.position],
-        photoUrl: newAgent.photoUrl,
+        email: cleanEmail,
+        displayName: cleanName,
+        photoURL: photoUrl,
       },
-      agent: newAgent,
     });
   });
 
@@ -671,6 +669,7 @@ async function startServer() {
       trimmedId === 'admin' ||
       trimmedId === 'admin@megaworld.com' ||
       trimmedId === 'admin@megaworldinternational.com' ||
+      trimmedId === 'mwi.tbdcloud@gmail.com' ||
       trimmedId === 'alexander.vance@megaworld.com' ||
       trimmedId === 'bd.admin@megaworld.com' ||
       trimmedId === 'adm-001'
@@ -682,7 +681,7 @@ async function startServer() {
           firebaseUserId: 'usr_admin',
           fullName: 'Business Development Admin',
           displayName: 'Business Development Admin',
-          email: 'admin@megaworld.com',
+          email: trimmedId.includes('@') ? trimmedId : 'admin@megaworld.com',
           role: 'Admin',
           position: 'Super Administrator',
           region: 'Asia Pacific 2',
@@ -747,7 +746,7 @@ async function startServer() {
       trimmedId === 'agent@megaworldinternational.com' ||
       trimmedId === 'elena.cruz@megaworld.com'
     ) {
-      const demoAgent = db.agents[0];
+      const demoAgent = db.agents[0] || INITIAL_AGENTS[0];
       if (demoAgent) {
         db.log(demoAgent.fullName, 'agent', 'User Login', demoAgent.affiliateCode, 'Logged in to agent portal.');
         return res.json({
@@ -761,8 +760,12 @@ async function startServer() {
       }
     }
 
-    // 4. Search by Affiliate Code or Email in registered agents
+    // 4. Search by Affiliate Code or Email in registered agents or demo seed agents
     let agent = db.agents.find(
+      (a) =>
+        a.affiliateCode.toLowerCase() === trimmedId ||
+        a.email.toLowerCase() === trimmedId
+    ) || INITIAL_AGENTS.find(
       (a) =>
         a.affiliateCode.toLowerCase() === trimmedId ||
         a.email.toLowerCase() === trimmedId
@@ -913,7 +916,7 @@ async function startServer() {
       return res.status(404).json({ error: 'Agent not found.' });
     }
 
-    const { fullName, email, region, position, accountStatus, assignedStaff, editorName, editorRole } = req.body;
+    const { fullName, email, region, position, accountStatus, assignedStaff, accreditationStartDate, accreditationDate, editorName, editorRole } = req.body;
     const prevData = { ...agent };
 
     if (fullName) agent.fullName = fullName;
@@ -923,12 +926,32 @@ async function startServer() {
     if (accountStatus) agent.accountStatus = accountStatus;
     if (assignedStaff) agent.assignedStaff = assignedStaff;
 
+    const newAccredDate = accreditationStartDate || accreditationDate;
+    if (newAccredDate) {
+      agent.accreditationStartDate = newAccredDate;
+      agent.accreditationExpiryDate = computeServerExpiryDate(newAccredDate, 4);
+      agent.lastAccreditationDate = newAccredDate;
+      // Synchronize to matching application
+      db.applications.forEach((app) => {
+        if (app.affiliateCode === agent.affiliateCode) {
+          app.accreditationDate = newAccredDate;
+          app.accreditationStartDate = newAccredDate;
+          app.accreditationExpiryDate = agent.accreditationExpiryDate;
+          if (app.personalDetails) {
+            app.personalDetails.accreditationDate = newAccredDate;
+            app.personalDetails.accreditationStartDate = newAccredDate;
+            app.personalDetails.accreditationExpiryDate = agent.accreditationExpiryDate;
+          }
+        }
+      });
+    }
+
     db.log(
       editorName || 'Admin/Staff',
       editorRole || 'staff',
       'Agent Profile Updated',
       agent.affiliateCode,
-      `Updated agent details. Previous: ${JSON.stringify({ fullName: prevData.fullName, region: prevData.region })}`
+      `Updated agent details. Previous: ${JSON.stringify({ fullName: prevData.fullName, region: prevData.region, accreditationStartDate: prevData.accreditationStartDate })}`
     );
 
     res.json({ success: true, agent });
@@ -2106,6 +2129,85 @@ async function startServer() {
 
   // 3. Applications
   app.get('/api/applications', (req, res) => {
+    // Ensure all agents in db.agents have a synchronized application in db.applications
+    db.agents.forEach((agent) => {
+      const exists = db.applications.find(
+        (a) =>
+          a.affiliateCode === agent.affiliateCode ||
+          (agent.email && a.personalDetails?.emailAddress?.toLowerCase() === agent.email.toLowerCase())
+      );
+      if (!exists) {
+        const p = agent.personalDetails || ({} as any);
+        const b = agent.bankDetails || ({} as any);
+        const t = agent.teamDetails || ({} as any);
+        const newApp: AccreditationApplication = {
+          id: `app_${agent.affiliateCode || Date.now()}`,
+          affiliateCode: agent.affiliateCode,
+          applicationType: 'New',
+          position: (agent.position as Position) || 'Marketing Associate',
+          region: agent.region || 'Asia Pacific 2',
+          status: agent.accreditationStatus === 'Active' ? 'Approved' : 'Submitted',
+          dateSubmitted: agent.registrationDate || agent.accreditationStartDate || new Date().toISOString().split('T')[0],
+          personalDetails: {
+            ...p,
+            firstName: p.firstName || agent.fullName.split(' ')[0] || '',
+            middleName: p.middleName || '',
+            lastName: p.lastName || agent.fullName.split(' ').slice(1).join(' ') || '',
+            suffix: p.suffix || '',
+            fullName: agent.fullName,
+            dateOfBirth: agent.birthday || p.dateOfBirth || '',
+            nationality: p.nationality || 'Filipino',
+            citizenship: p.citizenship || 'Filipino',
+            civilStatus: p.civilStatus || 'Single',
+            residentialAddress: agent.residentialAddress || p.residentialAddress || '',
+            country: p.country || 'Philippines',
+            state: p.state || '',
+            telephoneNumber: p.telephoneNumber || '',
+            mobileNumber: agent.mobileNumber || p.mobileNumber || '',
+            emailAddress: agent.email,
+            tin: agent.tin || p.tin || '',
+            idMatchConfirmed: true,
+          },
+          bankDetails: {
+            bankName: b.bankName || '',
+            accountName: b.accountName || agent.fullName,
+            accountNumber: b.accountNumber || '',
+            bankAddress: b.bankAddress || '',
+            swiftCode: b.swiftCode || '',
+            ...b,
+          },
+          teamDetails: {
+            teamName: t.teamName || 'Team Apex Horizon',
+            upline: t.upline || 'Ricardo Gomez',
+            teamLeader: t.teamLeader || 'Victoria Del Rosario',
+            brokerGroup: t.brokerGroup || `Megaworld International ${agent.region || 'Asia Pacific 2'} Hub`,
+            leadership: t.leadership || {
+              seniorMarketingAssociate: 'Ricardo Gomez',
+              marketingManager: 'Jonathan Cruz',
+              marketingDirector: 'Victoria Del Rosario',
+              assistanceCountryManager: 'Ferdinand Marcos Jr.',
+              countryManager: 'Eduardo Valenzuela',
+              seniorCountryManager: 'Grace P. Tan',
+              assistanceVicePresident: 'Roberto De Leon',
+              vicePresident: 'Ma. Lourdes Santos',
+              seniorVicePresident: 'Antonio Morales',
+              referrerName: 'Ricardo Gomez',
+              referrerPosition: 'Senior Marketing Associate',
+            },
+            ...t,
+          },
+          idPhotoUrl: agent.idPhotoUrl || agent.photoUrl,
+          governmentIdUrl: agent.governmentIdUrl,
+          idVerificationStatus: agent.accreditationStatus === 'Active' ? 'Verified' : 'Pending',
+          eSignatureConfirmed: true,
+          declarationAccepted: true,
+          isUploaded: agent.isUploaded,
+          isRegistered: true,
+          isSample: false,
+        };
+        db.applications.unshift(newApp);
+      }
+    });
     res.json(db.applications);
   });
 
@@ -2231,6 +2333,18 @@ async function startServer() {
     if (eSignatureUrl !== undefined) targetApp.eSignatureUrl = eSignatureUrl;
     if (notes) targetApp.reviewNotes = notes;
 
+    const newAccredDate =
+      personalDetails?.accreditationDate ||
+      personalDetails?.accreditationStartDate ||
+      req.body.accreditationDate ||
+      req.body.accreditationStartDate;
+
+    if (newAccredDate) {
+      targetApp.accreditationDate = newAccredDate;
+      targetApp.accreditationStartDate = newAccredDate;
+      targetApp.accreditationExpiryDate = computeServerExpiryDate(newAccredDate, 4);
+    }
+
     // Sync changes to the associated agent profile
     const agent = db.agents.find((a) => a.affiliateCode === targetApp.affiliateCode);
     if (agent) {
@@ -2252,6 +2366,11 @@ async function startServer() {
       if (position) {
         agent.position = position;
       }
+      if (newAccredDate) {
+        agent.accreditationStartDate = newAccredDate;
+        agent.accreditationExpiryDate = computeServerExpiryDate(newAccredDate, 4);
+        agent.lastAccreditationDate = newAccredDate;
+      }
     }
 
     db.log(
@@ -2270,9 +2389,28 @@ async function startServer() {
     if (!targetApp) return res.status(404).json({ error: 'Application not found.' });
     Object.assign(targetApp, req.body);
     const agent = db.agents.find((a) => a.affiliateCode === targetApp.affiliateCode);
-    if (agent && req.body.personalDetails) {
-      agent.fullName = req.body.personalDetails.fullName || agent.fullName;
-      agent.personalDetails = { ...agent.personalDetails, ...req.body.personalDetails };
+    const newAccredDate =
+      req.body.personalDetails?.accreditationDate ||
+      req.body.personalDetails?.accreditationStartDate ||
+      req.body.accreditationDate ||
+      req.body.accreditationStartDate;
+
+    if (newAccredDate) {
+      targetApp.accreditationDate = newAccredDate;
+      targetApp.accreditationStartDate = newAccredDate;
+      targetApp.accreditationExpiryDate = computeServerExpiryDate(newAccredDate, 4);
+    }
+
+    if (agent) {
+      if (req.body.personalDetails) {
+        agent.fullName = req.body.personalDetails.fullName || agent.fullName;
+        agent.personalDetails = { ...agent.personalDetails, ...req.body.personalDetails };
+      }
+      if (newAccredDate) {
+        agent.accreditationStartDate = newAccredDate;
+        agent.accreditationExpiryDate = computeServerExpiryDate(newAccredDate, 4);
+        agent.lastAccreditationDate = newAccredDate;
+      }
     }
     res.json({ success: true, application: targetApp });
   });
@@ -2325,6 +2463,15 @@ async function startServer() {
       }
     }
 
+    const submittedAccredDate =
+      personalDetails?.accreditationDate ||
+      personalDetails?.accreditationStartDate ||
+      data.accreditationDate ||
+      data.accreditationStartDate ||
+      agent.accreditationStartDate ||
+      new Date().toISOString().split('T')[0];
+    const expiryDate = computeServerExpiryDate(submittedAccredDate, 4);
+
     // Check if updating existing draft or creating new application record
     let targetApp = db.applications.find(
       (a) => a.affiliateCode === affiliateCode && (a.status === 'Draft' || a.status === 'Revision Required')
@@ -2339,7 +2486,15 @@ async function startServer() {
         region: agent.region,
         status: 'Submitted',
         dateSubmitted: new Date().toISOString(),
-        personalDetails: personalDetails!,
+        accreditationDate: submittedAccredDate,
+        accreditationStartDate: submittedAccredDate,
+        accreditationExpiryDate: expiryDate,
+        personalDetails: {
+          ...personalDetails!,
+          accreditationDate: submittedAccredDate,
+          accreditationStartDate: submittedAccredDate,
+          accreditationExpiryDate: expiryDate,
+        },
         bankDetails: bankDetails!,
         teamDetails: teamDetails!,
         idPhotoUrl: data.idPhotoUrl,
@@ -2356,7 +2511,17 @@ async function startServer() {
       targetApp.applicationType = applicationType || targetApp.applicationType;
       targetApp.status = 'Submitted';
       targetApp.dateSubmitted = new Date().toISOString();
-      if (personalDetails) targetApp.personalDetails = personalDetails;
+      targetApp.accreditationDate = submittedAccredDate;
+      targetApp.accreditationStartDate = submittedAccredDate;
+      targetApp.accreditationExpiryDate = expiryDate;
+      if (personalDetails) {
+        targetApp.personalDetails = {
+          ...personalDetails,
+          accreditationDate: submittedAccredDate,
+          accreditationStartDate: submittedAccredDate,
+          accreditationExpiryDate: expiryDate,
+        };
+      }
       if (bankDetails) targetApp.bankDetails = bankDetails;
       if (teamDetails) targetApp.teamDetails = teamDetails;
       if (data.idPhotoUrl) targetApp.idPhotoUrl = data.idPhotoUrl;
@@ -2369,6 +2534,10 @@ async function startServer() {
     // Update Agent profile completion & reflect submitted position and all target fields
     agent.profileCompletion = 100;
     agent.accreditationStatus = applicationType === 'Renewal' ? 'Renewal Pending' : 'Pending Review';
+    agent.accreditationStartDate = submittedAccredDate;
+    agent.accreditationExpiryDate = expiryDate;
+    agent.lastAccreditationDate = submittedAccredDate;
+
     if (targetApp.position) {
       agent.position = targetApp.position;
       const currentUnlocked = agent.unlockedPositions || [];
@@ -2379,7 +2548,13 @@ async function startServer() {
 
     // Reflect and generate all Target Fields in Agent Profile based on submitted application
     if (personalDetails) {
-      agent.personalDetails = { ...agent.personalDetails, ...personalDetails };
+      agent.personalDetails = {
+        ...agent.personalDetails,
+        ...personalDetails,
+        accreditationDate: submittedAccredDate,
+        accreditationStartDate: submittedAccredDate,
+        accreditationExpiryDate: expiryDate,
+      };
       if (personalDetails.fullName) agent.fullName = personalDetails.fullName;
       if (personalDetails.emailAddress) agent.email = personalDetails.emailAddress;
       if (personalDetails.mobileNumber) agent.mobileNumber = personalDetails.mobileNumber;

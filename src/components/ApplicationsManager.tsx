@@ -35,7 +35,7 @@ import {
   TeamDetails,
   TeamLeadershipDetails,
 } from '../types';
-import { formatDate, calculateAgeFromDob } from '../utils/dateFormatter';
+import { formatDate, calculateAgeFromDob, computeExpiryDate } from '../utils/dateFormatter';
 
 const DEFAULT_LEADERSHIP: TeamLeadershipDetails = {
   seniorMarketingAssociate: 'Ricardo Gomez',
@@ -277,11 +277,21 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
 
     const updatedTeam = editableTeamDetails || selectedApp.teamDetails;
 
+    const newAccredDate = editablePersonalDetails?.accreditationDate || editablePersonalDetails?.accreditationStartDate;
+    if (newAccredDate) {
+      updatedPersonal.accreditationDate = newAccredDate;
+      updatedPersonal.accreditationStartDate = newAccredDate;
+      updatedPersonal.accreditationExpiryDate = computeExpiryDate(newAccredDate, 4);
+    }
+
     const payload: Partial<AccreditationApplication> = {
       personalDetails: updatedPersonal,
       bankDetails: updatedBank,
       teamDetails: updatedTeam,
       idVerificationStatus: editableDocStatus as any,
+      accreditationDate: newAccredDate,
+      accreditationStartDate: newAccredDate,
+      accreditationExpiryDate: newAccredDate ? computeExpiryDate(newAccredDate, 4) : undefined,
     };
 
     if (editableDocPhotoUrl !== null) {
@@ -314,14 +324,22 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
 
   // Filter applications
   const filteredApps = applications.filter((app) => {
+    const code = (app.affiliateCode || '').toLowerCase();
+    const fullName = (app.personalDetails?.fullName || '').toLowerCase();
+    const email = (app.personalDetails?.emailAddress || '').toLowerCase();
+    const term = searchTerm.toLowerCase();
+
     const matchesSearch =
-      app.affiliateCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.personalDetails.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.personalDetails.emailAddress.toLowerCase().includes(searchTerm.toLowerCase());
+      code.includes(term) ||
+      fullName.includes(term) ||
+      email.includes(term);
 
     const matchesRegion = regionFilter === 'All' || app.region === regionFilter;
     const matchesPosition = positionFilter === 'All' || app.position === positionFilter;
-    const matchesStatus = statusFilter === 'All' || app.status === statusFilter;
+    const matchesStatus =
+      statusFilter === 'All' ||
+      app.status === statusFilter ||
+      (statusFilter === 'Submitted' && (app.status === 'Submitted' || app.status === 'Draft' || (app.status as string) === 'Pending'));
     const matchesType = typeFilter === 'All' || app.applicationType === typeFilter;
 
     return matchesSearch && matchesRegion && matchesPosition && matchesStatus && matchesType;
@@ -595,6 +613,7 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
               <option value="Approved">Approved</option>
               <option value="Rejected">Rejected</option>
               <option value="Revision Required">Revision Required</option>
+              <option value="Draft">Draft</option>
             </select>
           </div>
 
@@ -724,15 +743,15 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                           checked={isSelected}
                           onChange={() => handleToggleSelect(app.id)}
                           className="w-4 h-4 rounded text-blue-900 focus:ring-blue-900 border-slate-300 cursor-pointer"
-                          aria-label={`Select application for ${app.personalDetails.fullName}`}
+                          aria-label={`Select application for ${app.personalDetails?.fullName || app.affiliateCode}`}
                         />
                       </td>
                       <td className="py-3.5 px-4 font-mono font-bold text-blue-950">
                         {app.affiliateCode}
                       </td>
                       <td className="py-3.5 px-4">
-                        <span className="font-semibold text-slate-900 block">{app.personalDetails.fullName}</span>
-                        <span className="text-[11px] text-slate-400">{app.personalDetails.emailAddress}</span>
+                        <span className="font-semibold text-slate-900 block">{app.personalDetails?.fullName || 'Affiliate Applicant'}</span>
+                        <span className="text-[11px] text-slate-400">{app.personalDetails?.emailAddress || '—'}</span>
                       </td>
                       <td className="py-3.5 px-4 text-slate-700">{app.region}</td>
                       <td className="py-3.5 px-4 text-slate-700">{app.position}</td>
@@ -757,6 +776,8 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                               ? 'bg-amber-100 text-amber-800'
                               : app.status === 'Revision Required'
                               ? 'bg-purple-100 text-purple-800'
+                              : app.status === 'Draft'
+                              ? 'bg-slate-100 text-slate-700 border border-slate-300'
                               : 'bg-rose-100 text-rose-800'
                           }`}
                         >
@@ -975,6 +996,20 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                       <span className="text-slate-400 block text-[11px]">Residential Address:</span>
                       <strong className="text-slate-900 text-xs">{editablePersonalDetails?.residentialAddress || selectedApp.personalDetails.residentialAddress}</strong>
                     </div>
+                    <div className="col-span-2 sm:col-span-3 p-3 bg-blue-50/70 rounded-xl border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <span className="text-blue-900 block text-[11px] font-bold">Accreditation Date (Start of Accreditation):</span>
+                        <strong className="text-blue-950 text-sm font-mono font-bold">
+                          {formatDate(editablePersonalDetails?.accreditationDate || selectedApp.personalDetails.accreditationDate || selectedApp.accreditationStartDate || selectedApp.dateSubmitted)}
+                        </strong>
+                      </div>
+                      <div className="text-xs text-slate-700 bg-white px-3 py-1.5 rounded-lg border border-blue-200">
+                        <span className="text-slate-500 text-[11px]">4-Month Cycle Expiry: </span>
+                        <strong className="text-blue-950 font-bold font-mono">
+                          {computeExpiryDate(editablePersonalDetails?.accreditationDate || selectedApp.personalDetails.accreditationDate || selectedApp.accreditationStartDate || selectedApp.dateSubmitted, 4) ? formatDate(computeExpiryDate(editablePersonalDetails?.accreditationDate || selectedApp.personalDetails.accreditationDate || selectedApp.accreditationStartDate || selectedApp.dateSubmitted, 4)) : '—'}
+                        </strong>
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <div className="p-4 bg-slate-50 rounded-xl border border-slate-300 space-y-3">
@@ -1142,6 +1177,23 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                         onChange={(e) => handlePersonalFieldChange('residentialAddress', e.target.value)}
                         className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
                       />
+                    </div>
+
+                    <div className="p-3 bg-blue-50/80 rounded-xl border border-blue-200 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold text-blue-950 block">
+                          Accreditation Date (Start of Accreditation)
+                        </label>
+                      </div>
+                      <input
+                        type="date"
+                        value={editablePersonalDetails?.accreditationDate || selectedApp.personalDetails.accreditationDate || selectedApp.accreditationStartDate || ''}
+                        onChange={(e) => handlePersonalFieldChange('accreditationDate', e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-blue-300 rounded-lg focus:ring-1 focus:ring-blue-900 font-mono font-bold text-slate-900"
+                      />
+                      <span className="text-[10px] text-slate-600 block">
+                        Recalibrates 4-Month Cycle Expiry: <strong>{computeExpiryDate(editablePersonalDetails?.accreditationDate || selectedApp.personalDetails.accreditationDate || selectedApp.accreditationStartDate, 4) ? formatDate(computeExpiryDate(editablePersonalDetails?.accreditationDate || selectedApp.personalDetails.accreditationDate || selectedApp.accreditationStartDate, 4)) : '—'}</strong>
+                      </span>
                     </div>
                   </div>
                 )}

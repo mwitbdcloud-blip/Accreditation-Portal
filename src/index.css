@@ -1,6 +1,44 @@
 @import "tailwindcss";
 
 /* ==========================================================================
+   INPUTS & AUTOFILL STYLING
+   Forces form inputs and browser autofill to have crisp white backgrounds and
+   black/dark slate font text, preventing browser user-agent dark/gray styling.
+   ========================================================================== */
+input,
+select,
+textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  -webkit-text-fill-color: #0f172a !important;
+  color: #0f172a !important;
+  caret-color: #0f172a !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+input:autofill,
+textarea:autofill,
+select:autofill {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+}
+
+/* ==========================================================================
    PRINT / SAVE PDF STYLES
    Ensures only document pages are printed/saved to PDF, all pages are reflected,
    and all UI chrome / screens / modals / backgrounds are cleanly hidden.

@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "VITE_DEV=true NODE_ENV=development tsx server-app.ts",
+    "dev": "PORT=3000 VITE_DEV=true NODE_ENV=development tsx server-app.ts",
     "build": "vite build && esbuild server-app.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server-bundle.cjs",
     "start": "node server.ts",
     "preview": "vite preview",

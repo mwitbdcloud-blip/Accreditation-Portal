@@ -61,6 +61,8 @@ export const GoogleSpreadsheetMonitoring: React.FC<GoogleSpreadsheetMonitoringPr
       list = list.filter((a) => a.accreditationStatus === 'Active');
     } else if (activeSheetTab === 'expiry_monitoring') {
       list = list.filter((a) => a.accreditationStatus === 'Expiring Soon' || a.accreditationStatus === 'Expired');
+    } else if (activeSheetTab === 'pending_applications') {
+      list = list.filter((a) => a.accreditationStatus !== 'Active');
     }
 
     if (searchQuery.trim()) {
@@ -485,6 +487,19 @@ export const GoogleSpreadsheetMonitoring: React.FC<GoogleSpreadsheetMonitoringPr
           >
             <Clock className="w-3.5 h-3.5 text-amber-600" />
             4-Month Expiry Queue ({agents.filter((a) => a.accreditationStatus === 'Expiring Soon' || a.accreditationStatus === 'Expired').length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSheetTab('pending_applications')}
+            className={`px-3 py-1.5 rounded-t font-semibold text-xs flex items-center gap-1.5 border-t-2 transition ${
+              activeSheetTab === 'pending_applications'
+                ? 'bg-white border-blue-600 text-slate-900 shadow-xs'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5 text-blue-600" />
+            Pending Applications ({agents.filter((a) => a.accreditationStatus !== 'Active').length})
           </button>
         </div>
 

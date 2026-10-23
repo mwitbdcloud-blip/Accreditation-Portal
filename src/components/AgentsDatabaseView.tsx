@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import {
   AgentProfile,
+  AccreditationApplication,
   SystemSettings,
   Region,
   Position,
@@ -48,12 +49,13 @@ import { ViewDispatchedEmailModal } from './ViewDispatchedEmailModal';
 import { GoogleSpreadsheetMonitoring } from './GoogleSpreadsheetMonitoring';
 import { ImportAgentsModal } from './ImportAgentsModal';
 import { AgentCredentialsModal } from './AgentCredentialsModal';
-import { formatDate, formatDateTime } from '../utils/dateFormatter';
+import { formatDate, formatDateTime, computeExpiryDate } from '../utils/dateFormatter';
 import { download34ColumnCsv, download34ColumnExcel } from '../utils/agentDatasetExport';
 import { isSampleAgent } from '../utils/sampleDataFilter';
 
 interface AgentsDatabaseViewProps {
   agents: AgentProfile[];
+  applications?: AccreditationApplication[];
   settings: SystemSettings;
   onSyncGoogleSheets: () => void;
   isSyncingSheets: boolean;
@@ -72,6 +74,7 @@ interface AgentsDatabaseViewProps {
 
 export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
   agents,
+  applications = [],
   settings,
   onSyncGoogleSheets,
   isSyncingSheets,
@@ -145,6 +148,7 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
   const [editPosition, setEditPosition] = useState<Position>('Marketing Associate');
   const [editAccountStatus, setEditAccountStatus] = useState<'Active' | 'Suspended' | 'Pending'>('Active');
   const [editAssignedStaff, setEditAssignedStaff] = useState('');
+  const [editAccreditationStartDate, setEditAccreditationStartDate] = useState('');
 
   // Fetch staff accounts & invitations from backend API
   const loadStaffData = async () => {
@@ -207,10 +211,17 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
     setEditPosition(agent.position);
     setEditAccountStatus(agent.accountStatus);
     setEditAssignedStaff(agent.assignedStaff || 'Elena Ramos');
+    setEditAccreditationStartDate(
+      agent.accreditationStartDate || agent.accreditationDate || agent.registrationDate || ''
+    );
   };
 
   const handleSaveEdit = () => {
     if (!editingAgent) return;
+    const computedExpiry = editAccreditationStartDate
+      ? computeExpiryDate(editAccreditationStartDate, 4)
+      : editingAgent.accreditationExpiryDate;
+
     onUpdateAgent(editingAgent.affiliateCode, {
       fullName: editFullName,
       email: editEmail,
@@ -218,6 +229,10 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
       position: editPosition,
       accountStatus: editAccountStatus,
       assignedStaff: editAssignedStaff,
+      accreditationStartDate: editAccreditationStartDate || undefined,
+      accreditationDate: editAccreditationStartDate || undefined,
+      accreditationExpiryDate: computedExpiry || undefined,
+      lastAccreditationDate: editAccreditationStartDate || undefined,
     });
     setEditingAgent(null);
   };
@@ -1304,7 +1319,7 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
       ) : activeSubtab === 'spreadsheet' ? (
         <GoogleSpreadsheetMonitoring
           agents={agents}
-          applications={[]}
+          applications={applications}
           settings={settings}
           staffAccounts={staffAccounts}
           onSyncGoogleSheets={onSyncGoogleSheets}
@@ -1518,6 +1533,26 @@ export const AgentsDatabaseView: React.FC<AgentsDatabaseViewProps> = ({
                     onChange={(e) => setEditAssignedStaff(e.target.value)}
                     className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
                   />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Accreditation Date (Start of Accreditation)
+                </label>
+                <input
+                  type="date"
+                  value={editAccreditationStartDate}
+                  onChange={(e) => setEditAccreditationStartDate(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                />
+                <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                  <span>Start of 4-month accreditation period</span>
+                  {editAccreditationStartDate && (
+                    <span className="font-semibold text-emerald-700">
+                      Recalibrated Expiry: {computeExpiryDate(editAccreditationStartDate, 4)}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

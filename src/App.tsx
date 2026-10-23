@@ -43,6 +43,7 @@ import {
   subscribeToPositionContracts,
 } from './services/firebaseConfig';
 import { clientStorage } from './services/clientStorage';
+import { syncAgentsAndApplications } from './utils/applicationSync';
 
 // Components
 import { AuthView } from './components/AuthView';
@@ -72,6 +73,13 @@ export default function App() {
     email: string;
     affiliateCode?: string;
     displayName: string;
+    photoUrl?: string;
+  } | null>(null);
+
+  // Google Sign-In redirect to New Affiliate Registration when no record exists yet
+  const [googleRegistrationPrefill, setGoogleRegistrationPrefill] = useState<{
+    email: string;
+    fullName: string;
     photoUrl?: string;
   } | null>(null);
 
@@ -202,8 +210,10 @@ export default function App() {
         api.getPositionContracts().catch(() => []),
       ]);
 
+      const syncedApps = syncAgentsAndApplications(agentsData, appsData);
+
       setAgents(agentsData);
-      setApplications(appsData);
+      setApplications(syncedApps);
       setPositionRequests(posData);
       setAuditLogs(logsData);
       setNotifications(notifsData);
@@ -245,6 +255,7 @@ export default function App() {
       if (cloudAgents && cloudAgents.length > 0) {
         setAgents(cloudAgents);
         clientStorage.saveAgents(cloudAgents);
+        setApplications((prevApps) => syncAgentsAndApplications(cloudAgents, prevApps));
       }
     });
 
@@ -304,6 +315,7 @@ export default function App() {
         displayName,
         photoUrl: user.photoUrl,
       });
+      setGoogleRegistrationPrefill(null);
 
       setActiveTab(normalizedRole === 'Agent' ? 'dashboard' : 'overview');
       showToast(`Signed in as ${displayName} (${normalizedRole})`);
@@ -345,12 +357,17 @@ export default function App() {
         syncAgentToFirestore(res.agent).catch(() => {});
       }
 
+      if (res.application) {
+        setApplications((prev) => [res.application!, ...prev.filter((a) => a.id !== res.application!.id && a.affiliateCode !== res.application!.affiliateCode)]);
+      }
+
       setCurrentUser({
         role: 'Agent',
         email: data.email,
         affiliateCode: res.affiliateCode,
         displayName: data.fullName,
       });
+      setGoogleRegistrationPrefill(null);
 
       setActiveTab('dashboard');
       showToast(`Welcome! Your permanent Affiliate Code is ${res.affiliateCode}`);
@@ -377,8 +394,24 @@ export default function App() {
       }
 
       const res = await api.loginWithGoogle(fbUser);
-      const user = res.user;
 
+      // If the agent has no record yet, proceed to answer the New Affiliate Registration form
+      if (res.requiresRegistration || res.hasAccount === false || !res.user) {
+        const email = res.googleUser?.email || fbUser.email;
+        const fullName = res.googleUser?.displayName || fbUser.displayName || email.split('@')[0];
+        const photoUrl = res.googleUser?.photoURL || fbUser.photoURL || undefined;
+
+        setGoogleRegistrationPrefill({
+          email,
+          fullName,
+          photoUrl,
+        });
+
+        showToast('No affiliate account found for this Google email yet. Please complete New Affiliate Registration.');
+        return;
+      }
+
+      const user = res.user;
       const userRoleStr = (res.role || user.role || '').toLowerCase();
       const normalizedRole: 'Agent' | 'Staff' | 'Admin' =
         userRoleStr.includes('admin')
@@ -400,6 +433,7 @@ export default function App() {
         displayName,
         photoUrl: user.photoUrl || fbUser.photoURL,
       });
+      setGoogleRegistrationPrefill(null);
 
       if (res.agent) {
         setAgents((prev) => [res.agent!, ...prev.filter((a) => a.affiliateCode !== res.agent!.affiliateCode)]);
@@ -442,8 +476,18 @@ export default function App() {
         photoURL: null,
       };
       const res = await api.loginWithGoogle(pseudoUser);
-      const user = res.user;
 
+      // If the agent has no record yet, proceed to answer the New Affiliate Registration form
+      if (res.requiresRegistration || res.hasAccount === false || !res.user) {
+        setGoogleRegistrationPrefill({
+          email: cleanEmail,
+          fullName: displayName || cleanEmail.split('@')[0],
+        });
+        showToast('No affiliate account found for this Google email yet. Please complete New Affiliate Registration.');
+        return;
+      }
+
+      const user = res.user;
       const userRoleStr = (res.role || user.role || '').toLowerCase();
       const normalizedRole: 'Agent' | 'Staff' | 'Admin' =
         userRoleStr.includes('admin')
@@ -465,6 +509,7 @@ export default function App() {
         displayName: resolvedName,
         photoUrl: user.photoUrl,
       });
+      setGoogleRegistrationPrefill(null);
 
       if (res.agent) {
         setAgents((prev) => [res.agent!, ...prev.filter((a) => a.affiliateCode !== res.agent!.affiliateCode)]);
@@ -860,6 +905,8 @@ export default function App() {
         onLogin={handleLogin}
         onGoogleLogin={handleGoogleLogin}
         onGoogleFallbackLogin={handleGoogleFallbackLogin}
+        googlePrefill={googleRegistrationPrefill}
+        onClearGooglePrefill={() => setGoogleRegistrationPrefill(null)}
         onRegister={handleRegister}
         isLoading={isLoadingAuth}
       />
@@ -884,9 +931,8 @@ export default function App() {
           <div className="flex items-center justify-between h-16">
             {/* Logo & Portal Identity */}
             <div className="flex items-center gap-3">
-              <div className="p-1.5 bg-blue-900 text-white rounded-xl shadow-xs flex items-center justify-center">
-                <MegaworldLogo variant="emblem-only" theme="dark" size="sm" />
-              </div>
+              <MegaworldLogo theme="light" size="md" className="shrink-0" />
+              <div className="h-8 w-px bg-slate-200 hidden sm:block" />
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-slate-900 tracking-tight">
@@ -1317,6 +1363,7 @@ export default function App() {
             {activeTab === 'agentsDatabase' && (
               <AgentsDatabaseView
                 agents={agents}
+                applications={applications}
                 settings={settings}
                 onSyncGoogleSheets={handleSyncGoogleSheets}
                 isSyncingSheets={isSyncingSheets}

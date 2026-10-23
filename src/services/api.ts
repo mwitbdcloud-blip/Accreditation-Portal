@@ -54,6 +54,7 @@ import {
   filterNonSampleAgents,
   filterNonSampleApplications,
 } from '../utils/sampleDataFilter';
+import { createApplicationFromAgent, syncAgentsAndApplications } from '../utils/applicationSync';
 
 const BASE_URL = '/api';
 
@@ -98,7 +99,7 @@ export const api = {
     position?: Position | string;
     accreditationStartDate?: string;
     accreditationExpiryDate?: string;
-  }): Promise<{ success: boolean; affiliateCode: string; agent: AgentProfile; message?: string }> {
+  }): Promise<{ success: boolean; affiliateCode: string; agent: AgentProfile; application?: AccreditationApplication; message?: string }> {
     const initialPosition = (data.position && data.position !== 'Pending Accreditation')
       ? (data.position as Position)
       : 'Pending Accreditation';
@@ -108,7 +109,7 @@ export const api = {
       position: initialPosition,
     };
 
-    const res = await safeFetch<{ success: boolean; affiliateCode: string; agent: AgentProfile; message?: string }>(
+    const res = await safeFetch<{ success: boolean; affiliateCode: string; agent: AgentProfile; application?: AccreditationApplication; message?: string }>(
       `${BASE_URL}/auth/register`,
       {
         method: 'POST',
@@ -123,7 +124,16 @@ export const api = {
       local.unshift(res.data.agent);
       clientStorage.saveAgents(local);
       saveAgentToFirestore(res.data.agent).catch(() => {});
-      return res.data;
+
+      // Ensure application is saved & synced
+      const applicationToSave = res.data.application || createApplicationFromAgent(res.data.agent);
+      clientStorage.saveApplication(applicationToSave);
+      saveApplicationToFirestore(applicationToSave).catch(() => {});
+
+      return {
+        ...res.data,
+        application: applicationToSave,
+      };
     }
 
     // Client-side fallback registration for Netlify & static hosts
@@ -174,19 +184,26 @@ export const api = {
     clientStorage.saveAgents(localAgents);
     saveAgentToFirestore(newAgent).catch(() => {});
 
+    // Create and save matching application so Application Review is 100% synced
+    const newApp = createApplicationFromAgent(newAgent);
+    newApp.status = 'Submitted';
+    clientStorage.saveApplication(newApp);
+    saveApplicationToFirestore(newApp).catch(() => {});
+
     clientStorage.addAuditLog({
       user: data.fullName,
       role: 'agent',
       action: 'New Agent Registration',
       recordAffected: affiliateCode,
-      details: `Registered for ${data.region}. Permanent code ${affiliateCode} generated. Position pending application submission.`,
+      details: `Registered for ${data.region}. Permanent code ${affiliateCode} generated. Application synced for BD Review.`,
     });
 
     return {
       success: true,
       affiliateCode,
       agent: newAgent,
-      message: 'Registration successful! Your permanent Affiliate Code has been provisioned.',
+      application: newApp,
+      message: 'Registration successful! Your permanent Affiliate Code and application have been provisioned.',
     };
   },
 
@@ -197,9 +214,18 @@ export const api = {
     photoURL?: string | null;
   }): Promise<{
     success: boolean;
-    role: 'Admin' | 'Staff' | 'Agent';
-    user: any;
+    role?: 'Admin' | 'Staff' | 'Agent';
+    user?: any;
     agent?: AgentProfile;
+    hasAccount?: boolean;
+    requiresRegistration?: boolean;
+    googleUser?: {
+      uid: string;
+      email: string;
+      displayName?: string;
+      photoURL?: string | null;
+    };
+    message?: string;
   }> {
     const cleanEmail = (fbUser.email || '').trim().toLowerCase();
     const cleanName = fbUser.displayName || cleanEmail.split('@')[0] || 'Affiliate';
@@ -209,9 +235,18 @@ export const api = {
     if (!isLiveEnvironment()) {
       const res = await safeFetch<{
         success: boolean;
-        role: 'Admin' | 'Staff' | 'Agent';
-        user: any;
+        role?: 'Admin' | 'Staff' | 'Agent';
+        user?: any;
         agent?: AgentProfile;
+        hasAccount?: boolean;
+        requiresRegistration?: boolean;
+        googleUser?: {
+          uid: string;
+          email: string;
+          displayName?: string;
+          photoURL?: string | null;
+        };
+        message?: string;
       }>(`${BASE_URL}/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -357,87 +392,21 @@ export const api = {
       };
     }
 
-    // 4. Brand New Unique Agent Entity!
-    // Dynamically calculate the highest sequence number in Firestore & local storage for AP2
-    const allAgents = await fetchAgentsFromFirestore().catch(() => []);
-    let maxNum = 21; // Baseline for default sample seed accounts (IPA-AP2-000001 - 000021)
-    allAgents.forEach((a) => {
-      const match = a.affiliateCode.match(/^IPA-AP2-(\d+)/i);
-      if (match) {
-        const n = parseInt(match[1], 10);
-        if (n > maxNum) maxNum = n;
-      }
-    });
-    clientStorage.getAgents().forEach((a) => {
-      const match = a.affiliateCode.match(/^IPA-AP2-(\d+)/i);
-      if (match) {
-        const n = parseInt(match[1], 10);
-        if (n > maxNum) maxNum = n;
-      }
-    });
-
-    const nextCodeNum = String(maxNum + 1).padStart(6, '0');
-    const newAffiliateCode = `IPA-AP2-${nextCodeNum}`;
-    const today = new Date().toISOString().split('T')[0];
-
-    const newAgent: AgentProfile = {
-      affiliateCode: newAffiliateCode,
-      firebaseUserId: fbUser.uid,
-      fullName: cleanName,
-      nickname: cleanName.split(' ')[0] || 'Affiliate',
-      email: cleanEmail,
-      photoUrl,
-      region: 'Asia Pacific 2',
-      position: 'Marketing Associate',
-      positions: ['Marketing Associate'],
-      role: 'agent',
-      registrationDate: today,
-      accountStatus: 'Active',
-      profileCompletion: 25,
-      currentAccreditationId: undefined, // Pristine, brand new!
-      accreditationStatus: 'Not Started', // Clean, unique brand new agent entity!
-      renewalEligibility: false,
-      unlockedPositions: ['Marketing Associate'],
-      assignedStaff: 'Elena Ramos (BD Staff)',
-      isRegistered: true,
-      isSample: false,
-      registrationOrigin: 'google_signin',
-    };
-
-    // Save directly to Firestore collection 'agents'
-    await saveAgentToFirestore(newAgent).catch((err) => {
-      console.error('Failed to save new Google agent to Firestore:', err);
-    });
-
-    // Save to clientStorage
-    const currentList = clientStorage.getAgents();
-    currentList.unshift(newAgent);
-    clientStorage.saveAgents(currentList);
-
-    // Add Audit Log
-    clientStorage.addAuditLog({
-      user: cleanName,
-      role: 'agent',
-      action: 'Google Sign-In Account Provisioned',
-      recordAffected: newAffiliateCode,
-      details: `Unique agent entity created for ${cleanEmail} via Google Sign-In. Permanent code: ${newAffiliateCode}. Status: Not Started.`,
-    });
-
+    // 4. Agent has no record yet:
+    // When clicking sign in with google, if the agent has no record yet it will proceed to answer the new affiliate registration.
     return {
       success: true,
-      role: 'Agent',
-      user: {
+      hasAccount: false,
+      requiresRegistration: true,
+      message: 'No affiliate account record found for this Google email yet. Please proceed to complete New Affiliate Registration.',
+      googleUser: {
         uid: fbUser.uid,
-        email: newAgent.email,
-        role: 'Agent',
-        affiliateCode: newAgent.affiliateCode,
-        displayName: newAgent.fullName,
-        region: newAgent.region,
-        position: newAgent.position,
-        positions: newAgent.positions || [newAgent.position],
-        photoUrl: newAgent.photoUrl,
+        email: cleanEmail,
+        displayName: cleanName,
+        photoURL: photoUrl,
       },
-      agent: newAgent,
+      role: 'Agent',
+      user: null,
     };
   },
 
@@ -459,12 +428,20 @@ export const api = {
     const trimmedId = (identifier || '').trim().toLowerCase();
 
     // Super Admin Account
-    if (trimmedId === 'admin@megaworld.com' || trimmedId === 'admin' || trimmedId === 'adm-001') {
+    if (
+      trimmedId === 'admin@megaworld.com' ||
+      trimmedId === 'admin' ||
+      trimmedId === 'adm-001' ||
+      trimmedId === 'mwi.tbdcloud@gmail.com' ||
+      trimmedId === 'alexander.vance@megaworld.com' ||
+      trimmedId === 'admin@megaworldinternational.com' ||
+      trimmedId === 'bd.admin@megaworld.com'
+    ) {
       return {
         success: true,
         user: {
           uid: 'usr_admin_001',
-          email: 'admin@megaworld.com',
+          email: trimmedId.includes('@') ? trimmedId : 'admin@megaworld.com',
           role: 'Admin',
           displayName: 'Business Development Admin',
           photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
@@ -486,6 +463,7 @@ export const api = {
       trimmedId === 'staff@megaworld.com' ||
       trimmedId === 'staff' ||
       trimmedId === 'stf-001' ||
+      trimmedId === 'staff@megaworldinternational.com' ||
       trimmedId === 'elena.ramos@megaworld.com'
     ) {
       return {
@@ -550,7 +528,17 @@ export const api = {
         (a.fullName && a.fullName.toLowerCase() === trimmedId)
     );
 
-    // 2. If not found in local cache (new device, mobile, different country, cleared cookies),
+    // 2. Check pre-seeded initial agents (e.g. IPA-AP2-000001, Maria Santos, etc.)
+    if (!matchedAgent) {
+      matchedAgent = INITIAL_AGENTS.find(
+        (a) =>
+          a.affiliateCode.toLowerCase() === trimmedId ||
+          a.email.toLowerCase() === trimmedId ||
+          (a.fullName && a.fullName.toLowerCase() === trimmedId)
+      );
+    }
+
+    // 3. If not found in local cache (new device, mobile, different country, cleared cookies),
     // query Firestore database directly!
     if (!matchedAgent) {
       try {
@@ -586,8 +574,13 @@ export const api = {
       };
     }
 
-    // Default demo agent fallback if 'agent' is entered (only in non-published development preview)
-    if (!isPublishedMode() && (trimmedId === 'agent@megaworld.com' || trimmedId === 'agent')) {
+    // Demo agent fallback: 'agent' or 'agent@megaworld.com' or 'elena.cruz@megaworld.com'
+    if (
+      trimmedId === 'agent@megaworld.com' ||
+      trimmedId === 'agent' ||
+      trimmedId === 'agent@megaworldinternational.com' ||
+      trimmedId === 'elena.cruz@megaworld.com'
+    ) {
       const defaultAgent = localAgents[0] || INITIAL_AGENTS[0];
       if (defaultAgent) {
         return {
@@ -605,6 +598,12 @@ export const api = {
           },
         };
       }
+    }
+
+    if (trimmedId.includes('@')) {
+      throw new Error(
+        `No affiliate account record found for "${identifier}". Please switch to "New Affiliate Registration" above to register your account.`
+      );
     }
 
     throw new Error(
@@ -858,25 +857,35 @@ export const api = {
 
   // Applications
   async getApplications(): Promise<AccreditationApplication[]> {
+    let apps: AccreditationApplication[] = [];
+
     if (!isLiveEnvironment()) {
       const res = await safeFetch<AccreditationApplication[]>(`${BASE_URL}/applications`);
       if (res.ok && Array.isArray(res.data)) {
-        clientStorage.saveApplications(res.data);
-        return res.data;
+        apps = res.data;
       }
     }
 
-    try {
-      const cloudApps = await fetchApplicationsFromFirestore();
-      if (cloudApps && cloudApps.length > 0) {
-        clientStorage.saveApplications(cloudApps);
-        return cloudApps;
+    if (apps.length === 0) {
+      try {
+        const cloudApps = await fetchApplicationsFromFirestore();
+        if (cloudApps && cloudApps.length > 0) {
+          apps = cloudApps;
+        }
+      } catch (err: any) {
+        console.warn('Firestore fetchApplications error:', err?.message || err);
       }
-    } catch (err: any) {
-      console.warn('Firestore fetchApplications error:', err?.message || err);
     }
 
-    return clientStorage.getApplications();
+    if (apps.length === 0) {
+      apps = clientStorage.getApplications();
+    }
+
+    // Always ensure applications are 100% synchronized with current agents in database / sheet
+    const currentAgents = clientStorage.getAgents();
+    const syncedApps = syncAgentsAndApplications(currentAgents, apps);
+    clientStorage.saveApplications(syncedApps);
+    return syncedApps;
   },
 
   async getApplication(id: string): Promise<AccreditationApplication> {

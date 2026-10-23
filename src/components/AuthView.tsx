@@ -1,12 +1,19 @@
-import React, { useState } from 'react';
-import { UserPlus, LogIn, Sparkles, CheckCircle, ArrowRight, Globe, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { UserPlus, LogIn, Sparkles, CheckCircle, ArrowRight, Globe, X, Calendar } from 'lucide-react';
 import { REGIONS, Region, REGION_CODE_MAP, Position } from '../types';
 import { MegaworldLogo } from './MegaworldLogo';
+import { computeExpiryDate, formatDate } from '../utils/dateFormatter';
 
 interface AuthViewProps {
   onLogin: (email: string, password?: string) => Promise<void>;
   onGoogleLogin?: () => Promise<void>;
   onGoogleFallbackLogin?: (email: string, displayName?: string) => Promise<void>;
+  googlePrefill?: {
+    email: string;
+    fullName: string;
+    photoUrl?: string;
+  } | null;
+  onClearGooglePrefill?: () => void;
   onRegister: (data: {
     fullName: string;
     email: string;
@@ -24,6 +31,8 @@ export const AuthView: React.FC<AuthViewProps> = ({
   onLogin,
   onGoogleLogin,
   onGoogleFallbackLogin,
+  googlePrefill,
+  onClearGooglePrefill,
   onRegister,
   isLoading,
 }) => {
@@ -43,8 +52,20 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [regMobile, setRegMobile] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regRegion, setRegRegion] = useState<Region>('Asia Pacific 2');
+  const [regAccreditationDate, setRegAccreditationDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [regAcceptedTerms, setRegAcceptedTerms] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // When Google Sign-In detects agent has no record yet, prefill registration form and switch tab
+  useEffect(() => {
+    if (googlePrefill) {
+      setMode('register');
+      if (googlePrefill.fullName) setRegFullName(googlePrefill.fullName);
+      if (googlePrefill.email) setRegEmail(googlePrefill.email);
+      setRegPassword((prev) => prev || `Mega@${Math.floor(100000 + Math.random() * 900000)}`);
+      setErrorMessage('');
+    }
+  }, [googlePrefill]);
 
   const regRegionCode = REGION_CODE_MAP[regRegion] || 'AP2';
   const previewAffiliateCode = `IPA-${regRegionCode}-XXXXXX`;
@@ -90,12 +111,17 @@ export const AuthView: React.FC<AuthViewProps> = ({
     }
 
     try {
+      const startDate = regAccreditationDate || new Date().toISOString().split('T')[0];
+      const expiryDate = computeExpiryDate(startDate, 4);
+
       await onRegister({
         fullName: regFullName,
         email: regEmail,
         mobileNumber: regMobile,
         password: regPassword,
         region: regRegion,
+        accreditationStartDate: startDate,
+        accreditationExpiryDate: expiryDate,
       });
     } catch (err: any) {
       setErrorMessage(err.message || 'Registration failed.');
@@ -194,7 +220,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                         value={fallbackGoogleEmail}
                         onChange={(e) => setFallbackGoogleEmail(e.target.value)}
                         placeholder="e.g. mwi.tbdcloud@gmail.com"
-                        className="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                        className="flex-1 px-3 py-1.5 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
                       />
                       <button
                         type="submit"
@@ -215,16 +241,37 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-start justify-between gap-2 animate-in fade-in">
-                <span>{errorMessage}</span>
-                <button
-                  type="button"
-                  onClick={() => setErrorMessage('')}
-                  className="text-rose-400 hover:text-rose-700 p-0.5 rounded transition"
-                  title="Dismiss"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex flex-col gap-2 animate-in fade-in">
+                <div className="flex items-start justify-between gap-2">
+                  <span>{errorMessage}</span>
+                  <button
+                    type="button"
+                    onClick={() => setErrorMessage('')}
+                    className="text-rose-400 hover:text-rose-700 p-0.5 rounded transition shrink-0"
+                    title="Dismiss"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {(errorMessage.includes('New Affiliate Registration') ||
+                  errorMessage.includes('No affiliate account') ||
+                  errorMessage.includes('Invalid credentials')) && (
+                  <div className="flex items-center gap-2 pt-1 border-t border-rose-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('register');
+                        if (loginEmail && loginEmail.includes('@')) {
+                          setRegEmail(loginEmail);
+                        }
+                        setErrorMessage('');
+                      }}
+                      className="text-[11px] font-bold text-blue-900 bg-white border border-blue-200 hover:bg-blue-50 px-2.5 py-1 rounded-lg transition shadow-2xs"
+                    >
+                      Create Affiliate Account Now →
+                    </button>
+                  </div>
+                )}
               </div>
             )
           )}
@@ -249,7 +296,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     setLoginEmail(e.target.value);
                     if (errorMessage) setErrorMessage('');
                   }}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none font-mono"
+                  className="w-full px-3 py-2 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none font-mono placeholder:text-slate-400"
                   placeholder="e.g. IPA-AP2-000001 or name@example.com"
                 />
                 <p className="text-[11px] text-slate-500 mt-1">
@@ -269,7 +316,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     setLoginPassword(e.target.value);
                     if (errorMessage) setErrorMessage('');
                   }}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none placeholder:text-slate-400"
                   placeholder="Enter your password or temporary password"
                 />
               </div>
@@ -347,6 +394,33 @@ export const AuthView: React.FC<AuthViewProps> = ({
           ) : (
             /* Registration Form */
             <form onSubmit={handleRegisterSubmit} className="space-y-4">
+              {/* Google Verified User Banner if arriving from Google login without existing account */}
+              {googlePrefill && (
+                <div className="p-3.5 bg-blue-50/90 border border-blue-200 rounded-xl text-xs space-y-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-blue-900 font-bold text-xs shrink-0">
+                        G
+                      </div>
+                      <span className="font-bold text-blue-950">Google Sign-In: No Account Record Yet</span>
+                    </div>
+                    {onClearGooglePrefill && (
+                      <button
+                        type="button"
+                        onClick={onClearGooglePrefill}
+                        className="text-slate-400 hover:text-slate-600 p-0.5"
+                        title="Clear prefill"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    No affiliate account was found for <strong>{googlePrefill.email}</strong>. Please complete the registration form below to generate your permanent Affiliate Code.
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Full Legal Name (as on Government ID)
@@ -356,7 +430,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   required
                   value={regFullName}
                   onChange={(e) => setRegFullName(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none placeholder:text-slate-400"
                   placeholder="Maria Santos Dela Cruz"
                 />
               </div>
@@ -370,7 +444,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   required
                   value={regEmail}
                   onChange={(e) => setRegEmail(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none placeholder:text-slate-400"
                   placeholder="maria.delacruz@example.com"
                 />
               </div>
@@ -384,7 +458,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   type="tel"
                   value={regMobile}
                   onChange={(e) => setRegMobile(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none placeholder:text-slate-400"
                   placeholder="+63 917 123 4567"
                 />
               </div>
@@ -398,7 +472,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   required
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  className="w-full px-3 py-2 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none placeholder:text-slate-400"
                   placeholder="Create secure password"
                 />
               </div>
@@ -410,7 +484,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 <select
                   value={regRegion}
                   onChange={(e) => setRegRegion(e.target.value as Region)}
-                  className="w-full px-2.5 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none text-slate-800"
+                  className="w-full px-2.5 py-2 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
                 >
                   {REGIONS.map((r) => (
                     <option key={r} value={r}>
@@ -418,6 +492,29 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Accreditation Date (Start of Accreditation) */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-blue-900" />
+                    <span>Accreditation Date (Start of Accreditation) *</span>
+                  </label>
+                </div>
+                <input
+                  type="date"
+                  required
+                  value={regAccreditationDate}
+                  onChange={(e) => setRegAccreditationDate(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none font-mono"
+                />
+                <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
+                  <span>Start of agent accreditation</span>
+                  <span className="font-medium text-slate-700">
+                    4-Month Expiry: <strong>{computeExpiryDate(regAccreditationDate, 4) ? formatDate(computeExpiryDate(regAccreditationDate, 4)) : '—'}</strong>
+                  </span>
+                </div>
               </div>
 
               {/* Permanent Affiliate Code Preview & Portal Access Information Callout */}

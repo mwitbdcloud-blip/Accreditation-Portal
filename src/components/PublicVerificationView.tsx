@@ -137,9 +137,8 @@ export const PublicVerificationView: React.FC<PublicVerificationViewProps> = ({
       <header className="bg-slate-900/90 border-b border-slate-800 sticky top-0 z-30 backdrop-blur-md">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-1.5 bg-blue-900 text-white rounded-xl shadow-xs">
-              <MegaworldLogo variant="emblem-only" theme="dark" size="sm" />
-            </div>
+            <MegaworldLogo theme="dark" size="sm" className="shrink-0" />
+            <div className="h-7 w-px bg-slate-800 hidden sm:block" />
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs sm:text-sm font-bold tracking-tight text-white uppercase font-sans">

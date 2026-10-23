@@ -101,15 +101,31 @@ export function isSampleAgent(agent: Partial<AgentProfile> | null | undefined): 
  */
 export function isSampleApplication(app: Partial<AccreditationApplication> | null | undefined): boolean {
   if (!app) return false;
-  if ((app as any).isUploaded === true || (app as any).isRegistered === true) return false;
 
-  const code = (app.affiliateCode || '').trim().toUpperCase();
-  if (SAMPLE_AFFILIATE_CODES.has(code)) return true;
+  // Real or registered records are NEVER sample
+  if (
+    (app as any).isUploaded === true ||
+    (app as any).isRegistered === true ||
+    (app as any).isSample === false ||
+    (app as any).registrationOrigin === 'self_registration'
+  ) {
+    return false;
+  }
 
+  // Explicit sample flag
+  if (app.isSample === true) return true;
+
+  // Mock seed application ID check
   if (app.id && /^app_00[1-9]$|^app_01[0-9]$|^app_02[0-1]$/.test(app.id)) return true;
 
   const email = (app.personalDetails?.emailAddress || '').trim().toLowerCase();
   if (email.includes('.example') || email.includes('sample@') || SAMPLE_DEMO_EMAILS.has(email)) {
+    return true;
+  }
+
+  // Only consider SAMPLE_AFFILIATE_CODES if it also matches seed application IDs or demo emails
+  const code = (app.affiliateCode || '').trim().toUpperCase();
+  if (SAMPLE_AFFILIATE_CODES.has(code) && (!app.id || /^app_00[1-9]$|^app_01[0-9]$|^app_02[0-1]$/.test(app.id))) {
     return true;
   }
 
