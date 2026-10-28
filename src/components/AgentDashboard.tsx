@@ -158,7 +158,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
 
             <div className="space-y-1">
               <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-amber-400/20 border border-amber-400/30 text-amber-300 text-[11px] font-semibold tracking-wide">
-                <span>Affiliate Portal</span>
+                <span>International Property Affiliate Portal</span>
                 <span>•</span>
                 <span>Megaworld International</span>
               </div>

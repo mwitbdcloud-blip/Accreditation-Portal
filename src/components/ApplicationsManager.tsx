@@ -511,7 +511,7 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
           <div>
             <h2 className="text-lg font-bold text-slate-900">Application Management</h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Review, verify government documents, approve accreditations, and trigger official Sales Agreement contract generation.
+              Review, verify government documents, approve accreditations, and trigger official Sales Agency Agreement contract generation.
             </p>
           </div>
 
@@ -1305,7 +1305,7 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                       <Users className="w-4 h-4 text-blue-900" /> Team & Leadership Complete Hierarchy Structure
                     </h4>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Official reporting hierarchy, witnessing signatories, and unit structure for sales agreement contract generation.
+                      Official reporting hierarchy, witnessing signatories, and unit structure for sales agency agreement contract generation.
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1327,17 +1327,17 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                   </div>
                 </div>
 
-                {/* Team Affiliation & Unit Reporting */}
+                {/* Territory Head or Team Lead */}
                 <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                      Team Affiliation & Unit Leadership
+                      Territory Head or Team Lead
                     </span>
                     <span className="text-[10px] font-medium text-slate-400">Position: {selectedApp.position}</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div>
-                      <span className="text-slate-400 block text-[10px] font-medium">Team Name</span>
+                      <span className="text-slate-400 block text-[10px] font-medium"></span>
                       {isEditingHierarchy ? (
                         <input
                           type="text"
@@ -1347,45 +1347,6 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                         />
                       ) : (
                         <strong className="text-slate-900 text-xs block">{editableTeamDetails?.teamName || 'Team Apex Horizon'}</strong>
-                      )}
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px] font-medium">Broker Group / Hub</span>
-                      {isEditingHierarchy ? (
-                        <input
-                          type="text"
-                          value={editableTeamDetails?.brokerGroup || ''}
-                          onChange={(e) => handleTeamFieldChange('brokerGroup', e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
-                        />
-                      ) : (
-                        <strong className="text-slate-900 text-xs block">{editableTeamDetails?.brokerGroup || 'Megaworld International AP2 Hub'}</strong>
-                      )}
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px] font-medium">Direct Upline / Recruiter</span>
-                      {isEditingHierarchy ? (
-                        <input
-                          type="text"
-                          value={editableTeamDetails?.upline || ''}
-                          onChange={(e) => handleTeamFieldChange('upline', e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
-                        />
-                      ) : (
-                        <strong className="text-slate-900 text-xs block">{editableTeamDetails?.upline || 'Ricardo Gomez'}</strong>
-                      )}
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px] font-medium">Team Leader / Unit Manager</span>
-                      {isEditingHierarchy ? (
-                        <input
-                          type="text"
-                          value={editableTeamDetails?.teamLeader || ''}
-                          onChange={(e) => handleTeamFieldChange('teamLeader', e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-900"
-                        />
-                      ) : (
-                        <strong className="text-slate-900 text-xs block">{editableTeamDetails?.teamLeader || 'Victoria Del Rosario'}</strong>
                       )}
                     </div>
                   </div>
@@ -1400,15 +1361,15 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                     </span>
                   </div>
 
-                  {/* Level 1: Executive Directorate */}
+                  {/* Level 1: Core Group Members (CGMs) */}
                   <div className="p-3 bg-indigo-50/40 rounded-xl border border-indigo-100 space-y-2">
                     <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-indigo-950">
                       <span className="flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
-                        Level 1: Executive Directorate
+                        Level 1: Core Group Members (CGMs)
                       </span>
                       <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded text-[9px] font-semibold">
-                        Top Executive Management
+                        
                       </span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -1465,15 +1426,15 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                     </div>
                   </div>
 
-                  {/* Level 2: Regional & Country Directorate */}
+                  {/* Level 2: Core Group Members (CGMs) */}
                   <div className="p-3 bg-blue-50/40 rounded-xl border border-blue-100 space-y-2">
                     <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-blue-950">
                       <span className="flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
-                        Level 2: Regional & Country Directorate
+                        Level 2: Core Group Members (CGMs)
                       </span>
                       <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[9px] font-semibold">
-                        Regional Country Heads
+                        
                       </span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -1530,14 +1491,14 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                     </div>
                   </div>
 
-                  {/* Level 3 & Level 4: Division Directorate & Field Supervision */}
+                  {/* Level 3 & Level 4: IPA Uplines & Referral */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Level 3: Division Directorate */}
+                    {/* Level 3: IPA Leader */}
                     <div className="p-3 bg-amber-50/40 rounded-xl border border-amber-100 space-y-2">
                       <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-amber-950">
                         <span className="flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-600"></span>
-                          Level 3: Division Directorate
+                          Level 3: IPA Uplines
                         </span>
                         <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[9px] font-semibold">
                           Branch Heads
@@ -1580,12 +1541,12 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                       </div>
                     </div>
 
-                    {/* Level 4: Field Supervision & Referral Witnessing */}
+                    {/* Level 4: Referral */}
                     <div className="p-3 bg-emerald-50/40 rounded-xl border border-emerald-100 space-y-2">
                       <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-emerald-950">
                         <span className="flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-                          Level 4: Field Unit & Witnessing
+                          Level 4: Referral
                         </span>
                         <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[9px] font-semibold">
                           Unit & Witness

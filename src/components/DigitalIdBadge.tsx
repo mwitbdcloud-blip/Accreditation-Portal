@@ -214,15 +214,10 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
           <div>
             <div className="flex items-center justify-between border-b border-slate-700/80 pb-3">
               <div className="flex items-center gap-2.5">
-                <MegaworldLogo size="sm" theme="dark" variant="emblem-only" />
-                <div>
-                  <h4 className="font-bold text-xs uppercase tracking-wider text-white">
-                    Megaworld International
-                  </h4>
-                  <p className="text-[10px] text-amber-300 font-mono">
-                    Global Marketing & Sales Division
-                  </p>
-                </div>
+                <MegaworldLogo size="sm" theme="dark" />
+                <p className="text-[10px] text-amber-300 font-mono">
+                  International Property Affiliate
+                </p>
               </div>
               <span className="text-[10px] font-mono text-slate-400">
                 Official Credential
@@ -243,10 +238,10 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
               {/* Authorized Townships Portfolio */}
               <div className="p-2.5 bg-slate-900/80 rounded-xl border border-slate-800 text-[10px] space-y-1">
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Authorized Megaworld Townships & Developments:
+                  Authorized Megaworld Projects & Subsidiaries:
                 </span>
                 <p className="text-slate-300 leading-normal font-sans">
-                  Uptown Bonifacio · McKinley Hill · Newport City · Eastwood City · Westside City · ArcoVia City · Iloilo Business Park · The Mactan Newtown · Boracay Newcoast
+                  Megaworld Corporation · Global-Estate Resorts, Inc. · Global-Estate Properties, Inc. · Suntrust Properties, Inc. · Empire East Land Holdings, Inc. · Stateland, Inc. · Megaworld Global Estate, Inc. (MGEI) · Fil-Estate Golf and Development, Inc (FEGDI)
                 </p>
               </div>
             </div>
@@ -305,14 +300,14 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
           <div className="border-t border-slate-800 pt-3 text-[10px] text-slate-400 space-y-1">
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-1 text-slate-300">
-                <Building2 className="w-3 h-3 text-amber-400" /> Alliance Global Tower, Taguig, Philippines
+                <Building2 className="w-3 h-3 text-amber-400" /> 30th Floor, Alliance Global Tower, Taguig, Philippines
               </span>
               <span className="font-mono text-emerald-400 font-semibold">
-                SEC / DTI Verified
+                MWI Verified
               </span>
             </div>
             <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono">
-              <span>Security Stamp: MW-IPA-{agent.affiliateCode.replace(/[^0-9]/g, '')}-2026</span>
+              <span>Security Stamp: MWI-IPA-{agent.affiliateCode.replace(/[^0-9]/g, '')}-2026</span>
               <span>Tap to flip to front</span>
             </div>
           </div>
@@ -338,15 +333,12 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
         </div>
 
         {/* Official Header */}
-        <div className="text-center space-y-1 border-b border-slate-700/60 pb-3">
-          <div className="flex items-center justify-center gap-2">
-            <MegaworldLogo size="sm" theme="dark" variant="emblem-only" />
-            <span className="font-black tracking-widest text-xs uppercase text-white font-sans">
-              MEGAWORLD INTERNATIONAL
-            </span>
+        <div className="text-center space-y-1.5 border-b border-slate-700/60 pb-3">
+          <div className="flex items-center justify-center">
+            <MegaworldLogo size="sm" theme="dark" />
           </div>
           <div className="text-[9px] tracking-widest font-semibold uppercase text-amber-300/90">
-            Property Affiliate Digital Identification
+            IPA Digital ID
           </div>
         </div>
 
@@ -375,7 +367,7 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
                       .join('')}
                   </span>
                   <span className="text-[9px] text-slate-400 uppercase tracking-wider mt-1">
-                    Affiliate Photo
+                    IPA Photo
                   </span>
                 </div>
               )}
@@ -399,7 +391,7 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
               {positionTitle}
             </p>
             <p className="text-[11px] text-slate-400">
-              {agent.region || 'Asia Pacific 2'} Division
+              {agent.region || 'Asia Pacific 2'} 
             </p>
           </div>
 
@@ -626,7 +618,7 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-emerald-600" />
                 <h3 className="font-bold text-sm text-slate-900">
-                  Verified Agent Identification Record
+                  Verified IPA Identification Record
                 </h3>
               </div>
               <span className="text-[11px] font-mono font-bold text-blue-900">
@@ -643,7 +635,7 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
                   {agent.fullName}
                 </strong>
                 <span className="text-[11px] text-slate-500 font-sans">
-                  Registered Property Affiliate
+                  Registered International Property Affiliate
                 </span>
               </div>
 
@@ -655,7 +647,7 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
                   {positionTitle}
                 </strong>
                 <span className="text-[11px] text-slate-500">
-                  {agent.region || 'Asia Pacific 2'} Region
+                  {agent.region || 'Asia Pacific 2'} Territory
                 </span>
               </div>
 
@@ -743,7 +735,7 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
             {/* Top Close & Flip Bar */}
             <div className="w-full flex items-center justify-between text-white text-xs mb-3 px-2">
               <span className="font-mono text-amber-300 font-bold flex items-center gap-1.5">
-                <MegaworldLogo size="sm" theme="dark" variant="emblem-only" />
+                <MegaworldLogo size="sm" theme="dark" className="h-6 w-auto" />
                 Client Presentation Mode
               </span>
 
@@ -834,7 +826,7 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
             {/* Modal Header */}
             <div className="w-full flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <MegaworldLogo size="sm" theme="dark" variant="emblem-only" />
+                <MegaworldLogo size="sm" theme="dark" className="h-6 w-auto" />
                 <span className="font-bold text-xs uppercase text-white font-sans">
                   Official Verification QR
                 </span>

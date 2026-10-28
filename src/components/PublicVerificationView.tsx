@@ -150,7 +150,7 @@ export const PublicVerificationView: React.FC<PublicVerificationViewProps> = ({
                 </span>
               </div>
               <p className="text-[10px] text-slate-400">
-                Global Property Affiliate Credential Verification
+                International Property Affiliate Credential Verification
               </p>
             </div>
           </div>
@@ -175,7 +175,7 @@ export const PublicVerificationView: React.FC<PublicVerificationViewProps> = ({
             Official Security Verification Service
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white font-serif">
-            Affiliate Accreditation Verification
+            IPA Accreditation Verification
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 max-w-xl mx-auto">
             Scan results from the Megaworld International Digital ID Badge. This confirms the legal authorization and active standing of our International Property Affiliates.
@@ -226,12 +226,12 @@ export const PublicVerificationView: React.FC<PublicVerificationViewProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-mono font-bold text-emerald-400 uppercase tracking-widest">
-                      SEC / DTI Verified Record
+                      MWI Verified Record
                     </span>
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   </div>
                   <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
-                    Officially Accredited Megaworld Affiliate
+                    Officially Accredited IPA
                   </h2>
                 </div>
               </div>
@@ -303,7 +303,7 @@ export const PublicVerificationView: React.FC<PublicVerificationViewProps> = ({
 
                   <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
                     <span className="text-[10px] text-slate-400 uppercase font-mono block">
-                      Assigned Division
+                      Assigned Territory
                     </span>
                     <strong className="text-slate-200 text-xs font-semibold">
                       {matchedAgent.region || 'Asia Pacific 2'}
@@ -343,16 +343,16 @@ export const PublicVerificationView: React.FC<PublicVerificationViewProps> = ({
               </div>
             </div>
 
-            {/* Scope of Authority & Authorized Townships */}
+            {/* Scope of Authority & Authorized Developer */}
             <div className="p-4 bg-slate-900/90 rounded-2xl border border-slate-800 space-y-2 text-xs">
               <span className="text-[10px] uppercase font-bold text-amber-300 tracking-wider block">
                 Official Scope of Representation & Authority
               </span>
               <p className="text-slate-300 text-[11px] leading-relaxed text-justify">
-                Megaworld International confirms that the affiliate listed above is authorized to market, represent standard company inventory price lists, present marketing collateral, and assist prospective purchasers in executing reservation documents for the following premier township developments:
+                Megaworld International confirms that the affiliate listed above is authorized to market, represent standard company inventory price lists, present marketing collateral, and assist prospective purchasers in executing reservation documents for the following developers below:
               </p>
               <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-amber-200/90 font-medium leading-relaxed">
-                Uptown Bonifacio · McKinley Hill · Newport City · Eastwood City · Westside City · ArcoVia City · Iloilo Business Park · The Mactan Newtown · Boracay Newcoast
+                Megaworld Corporation · Global-Estate Resorts, Inc. · Global-Estate Properties, Inc. · Suntrust Properties, Inc. · Empire East Land Holdings, Inc. · Stateland, Inc. · Megaworld Global Estate, Inc. (MGEI) · Fil-Estate Golf and Development, Inc (FEGDI)
               </div>
             </div>
 
@@ -360,7 +360,7 @@ export const PublicVerificationView: React.FC<PublicVerificationViewProps> = ({
             <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-slate-800 text-xs">
               <div className="space-y-0.5 text-[10px] font-mono text-slate-500">
                 <p>Security Stamp: MW-IPA-{matchedAgent.affiliateCode.replace(/[^0-9]/g, '')}-2026</p>
-                <p>Megaworld International • Alliance Global Tower, 36th Street, Taguig, Philippines</p>
+                <p>Megaworld International • 30th Floor, Alliance Global Tower, 36th Street, Taguig, Philippines</p>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
