@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Search,
   Filter,
@@ -24,6 +24,12 @@ import {
   Square,
   AlertTriangle,
   X,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+  RefreshCw,
+  Mail,
+  UploadCloud,
 } from 'lucide-react';
 import {
   AccreditationApplication,
@@ -34,8 +40,11 @@ import {
   POSITIONS,
   TeamDetails,
   TeamLeadershipDetails,
+  WelcomeLetterTemplate,
 } from '../types';
 import { formatDate, calculateAgeFromDob, computeExpiryDate } from '../utils/dateFormatter';
+import { WelcomeLetterModal } from './WelcomeLetterModal';
+import { WelcomeLetterTemplateModal } from './WelcomeLetterTemplateModal';
 
 const DEFAULT_LEADERSHIP: TeamLeadershipDetails = {
   seniorMarketingAssociate: 'Ricardo Gomez',
@@ -86,6 +95,13 @@ interface ApplicationsManagerProps {
   onDeleteMultipleApplications?: (ids: string[]) => Promise<void> | void;
   onDeleteAllApplications?: () => Promise<void> | void;
   currentUserRole: string;
+  currentUser?: {
+    role: string;
+    fullName?: string;
+    displayName?: string;
+    email?: string;
+  };
+  showToast?: (msg: string) => void;
 }
 
 export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
@@ -98,12 +114,18 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
   onDeleteMultipleApplications,
   onDeleteAllApplications,
   currentUserRole,
+  currentUser = { role: currentUserRole, fullName: 'BD Staff', email: 'staff@megaworld.com' },
+  showToast = (msg: string) => {},
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [regionFilter, setRegionFilter] = useState<string>('All');
   const [positionFilter, setPositionFilter] = useState<string>('All');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [typeFilter, setTypeFilter] = useState<string>('All');
+
+  // Welcome Letter modal states
+  const [welcomeLetterApp, setWelcomeLetterApp] = useState<AccreditationApplication | null>(null);
+  const [showWelcomeTemplateModal, setShowWelcomeTemplateModal] = useState(false);
 
   // Selected applications for batch selection & operations
   const [selectedAppIds, setSelectedAppIds] = useState<Set<string>>(new Set());
@@ -140,6 +162,53 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
 
   const [reviewNotes, setReviewNotes] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Document Lightbox & Zoom Inspection State
+  const [inspectDoc, setInspectDoc] = useState<{
+    url: string;
+    title: string;
+    docType: 'governmentId' | 'idPhoto' | 'eSignature';
+    status?: string;
+  } | null>(null);
+  const [zoomScale, setZoomScale] = useState<number>(1);
+  const [rotation, setRotation] = useState<number>(0);
+  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const handleOpenInspectDoc = (
+    url: string,
+    title: string,
+    docType: 'governmentId' | 'idPhoto' | 'eSignature',
+    status?: string
+  ) => {
+    setInspectDoc({ url, title, docType, status });
+    setZoomScale(1);
+    setRotation(0);
+    setPanOffset({ x: 0, y: 0 });
+  };
+
+  useEffect(() => {
+    if (!inspectDoc) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setInspectDoc(null);
+      } else if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        setZoomScale((prev) => Math.min(Number((prev + 0.25).toFixed(2)), 4));
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        setZoomScale((prev) => Math.max(Number((prev - 0.25).toFixed(2)), 0.25));
+      } else if (e.key === '0') {
+        e.preventDefault();
+        setZoomScale(1);
+        setPanOffset({ x: 0, y: 0 });
+        setRotation(0);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [inspectDoc]);
 
   const handleOpenReviewModal = (app: AccreditationApplication) => {
     setSelectedApp(app);
@@ -548,6 +617,18 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
               </button>
             )}
 
+            {/* Welcome Letter Template Upload Button */}
+            <button
+              type="button"
+              id="btn-open-welcome-template-modal"
+              onClick={() => setShowWelcomeTemplateModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-2xs transition cursor-pointer"
+              title="Upload and configure Welcome Letter template file"
+            >
+              <UploadCloud className="w-3.5 h-3.5 text-blue-900" />
+              <span>Welcome Letter Template</span>
+            </button>
+
             <div className="text-xs font-semibold px-3 py-1.5 bg-blue-50 text-blue-900 rounded-lg border border-blue-200">
               Showing {filteredApps.length} of {applications.length} Applications
             </div>
@@ -807,14 +888,27 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                           </button>
 
                           {app.status === 'Approved' && (
-                            <button
-                              type="button"
-                              onClick={() => onViewContractForApp(app)}
-                              className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg transition"
-                              title="View Generated Sales Agency Agreement (SAA)"
-                            >
-                              <FileText className="w-4 h-4" />
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                id={`btn-send-welcome-letter-${app.id}`}
+                                onClick={() => setWelcomeLetterApp(app)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition shadow-2xs cursor-pointer whitespace-nowrap"
+                                title="Send Welcome Letter"
+                              >
+                                <Mail className="w-3.5 h-3.5 text-blue-900" />
+                                <span>Send Welcome Letter</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => onViewContractForApp(app)}
+                                className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg transition"
+                                title="View Generated Sales Agency Agreement (SAA)"
+                              >
+                                <FileText className="w-4 h-4" />
+                              </button>
+                            </>
                           )}
 
                           {(currentUserRole === 'Admin' || currentUserRole === 'Staff') && (onDeleteApplication || onDeleteMultipleApplications) && (
@@ -928,6 +1022,32 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                   <strong className="text-slate-900">{formatDate(selectedApp.dateSubmitted)}</strong>
                 </div>
               </div>
+
+              {/* Welcome Letter Banner if Approved */}
+              {selectedApp.status === 'Approved' && (
+                <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-lg bg-blue-900 text-white shrink-0">
+                      <Mail className="w-4 h-4 text-amber-300" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-blue-950 block">Official Welcome Letter Ready</span>
+                      <span className="text-[11px] text-slate-600">
+                        Accreditation is approved. Staff and admin can view, examine, print, or dispatch the official Welcome Letter to {selectedApp.personalDetails?.emailAddress || selectedApp.email}.
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    id="btn-view-welcome-letter-banner"
+                    onClick={() => setWelcomeLetterApp(selectedApp)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-xl shadow-xs transition shrink-0 cursor-pointer"
+                  >
+                    <Mail className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Send Welcome Letter</span>
+                  </button>
+                </div>
+              )}
 
               {/* Personal Details */}
               <div className="space-y-2">
@@ -1654,12 +1774,45 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                         </span>
                       </div>
                       {(editableDocPhotoUrl || selectedApp.idPhotoUrl) ? (
-                        <div className="w-24 h-24 mx-auto rounded-lg overflow-hidden border border-slate-300 relative shadow-2xs">
-                          <img
-                            src={editableDocPhotoUrl || selectedApp.idPhotoUrl}
-                            alt="1x1"
-                            className="w-full h-full object-cover"
-                          />
+                        <div>
+                          <div
+                            onClick={() =>
+                              handleOpenInspectDoc(
+                                editableDocPhotoUrl || selectedApp.idPhotoUrl!,
+                                '1x1 ID Photo (Formal Attire)',
+                                'idPhoto',
+                                'Formal Attire'
+                              )
+                            }
+                            className="w-24 h-24 mx-auto rounded-lg overflow-hidden border-2 border-slate-300 hover:border-blue-600 relative shadow-2xs cursor-pointer group transition"
+                            title="Click to enlarge and inspect 1x1 Photo"
+                          >
+                            <img
+                              src={editableDocPhotoUrl || selectedApp.idPhotoUrl}
+                              alt="1x1"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
+                            />
+                            <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 backdrop-blur-[1px]">
+                              <div className="p-1 rounded-full bg-blue-900/90 text-white shadow-sm">
+                                <ZoomIn className="w-3.5 h-3.5" />
+                              </div>
+                              <span className="text-[9px] font-bold">Enlarge</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleOpenInspectDoc(
+                                editableDocPhotoUrl || selectedApp.idPhotoUrl!,
+                                '1x1 ID Photo (Formal Attire)',
+                                'idPhoto',
+                                'Formal Attire'
+                              )
+                            }
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-900 hover:text-blue-700 hover:underline mt-1.5 transition cursor-pointer"
+                          >
+                            <ZoomIn className="w-3.5 h-3.5" /> Enlarge Photo
+                          </button>
                         </div>
                       ) : (
                         <div className="w-24 h-24 mx-auto rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 text-xs">
@@ -1711,12 +1864,48 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                         </span>
                       </div>
                       {(editableGovernmentIdUrl || selectedApp.governmentIdUrl) ? (
-                        <div className="w-36 h-24 mx-auto rounded-lg overflow-hidden border border-slate-300 relative shadow-2xs">
-                          <img
-                            src={editableGovernmentIdUrl || selectedApp.governmentIdUrl}
-                            alt="ID Document"
-                            className="w-full h-full object-cover"
-                          />
+                        <div>
+                          <div
+                            onClick={() =>
+                              handleOpenInspectDoc(
+                                editableGovernmentIdUrl || selectedApp.governmentIdUrl!,
+                                'Valid Government ID / Passport',
+                                'governmentId',
+                                editableDocStatus
+                              )
+                            }
+                            className="w-44 sm:w-52 h-28 sm:h-32 mx-auto rounded-xl overflow-hidden border-2 border-slate-300 hover:border-blue-600 relative shadow-2xs cursor-pointer group transition-all"
+                            title="Click to enlarge and examine ID / Passport details"
+                          >
+                            <img
+                              src={editableGovernmentIdUrl || selectedApp.governmentIdUrl}
+                              alt="ID Document"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
+                            />
+                            <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 backdrop-blur-[1px]">
+                              <div className="p-1.5 rounded-full bg-blue-900/90 text-white shadow-md">
+                                <ZoomIn className="w-4 h-4" />
+                              </div>
+                              <span className="text-[11px] font-bold tracking-wide drop-shadow-sm">
+                                Click to Enlarge & Examine
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            id="btn-enlarge-gov-id"
+                            onClick={() =>
+                              handleOpenInspectDoc(
+                                editableGovernmentIdUrl || selectedApp.governmentIdUrl!,
+                                'Valid Government ID / Passport',
+                                'governmentId',
+                                editableDocStatus
+                              )
+                            }
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-900 hover:text-blue-700 hover:underline mt-2 transition cursor-pointer"
+                          >
+                            <ZoomIn className="w-3.5 h-3.5" /> Enlarge & Examine ID
+                          </button>
                         </div>
                       ) : (
                         <div className="w-36 h-24 mx-auto rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 text-xs">
@@ -1762,12 +1951,45 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                         </span>
                       </div>
                       {(editableESignatureUrl || selectedApp.eSignatureUrl) ? (
-                        <div className="w-36 h-24 mx-auto rounded-lg overflow-hidden border border-slate-300 flex items-center justify-center bg-slate-50 relative shadow-2xs">
-                          <img
-                            src={editableESignatureUrl || selectedApp.eSignatureUrl}
-                            alt="Signature"
-                            className="max-h-20 object-contain"
-                          />
+                        <div>
+                          <div
+                            onClick={() =>
+                              handleOpenInspectDoc(
+                                editableESignatureUrl || selectedApp.eSignatureUrl!,
+                                'Electronic Signature',
+                                'eSignature',
+                                'Contract Signer'
+                              )
+                            }
+                            className="w-40 sm:w-44 h-24 sm:h-28 mx-auto rounded-xl overflow-hidden border-2 border-slate-300 hover:border-blue-600 flex items-center justify-center bg-slate-50 relative shadow-2xs cursor-pointer group transition-all"
+                            title="Click to enlarge and inspect signature"
+                          >
+                            <img
+                              src={editableESignatureUrl || selectedApp.eSignatureUrl}
+                              alt="Signature"
+                              className="max-h-20 object-contain group-hover:scale-105 transition-transform duration-150"
+                            />
+                            <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 backdrop-blur-[1px]">
+                              <div className="p-1 rounded-full bg-blue-900/90 text-white shadow-sm">
+                                <ZoomIn className="w-3.5 h-3.5" />
+                              </div>
+                              <span className="text-[9px] font-bold">Enlarge</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleOpenInspectDoc(
+                                editableESignatureUrl || selectedApp.eSignatureUrl!,
+                                'Electronic Signature',
+                                'eSignature',
+                                'Contract Signer'
+                              )
+                            }
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-900 hover:text-blue-700 hover:underline mt-1.5 transition cursor-pointer"
+                          >
+                            <ZoomIn className="w-3.5 h-3.5" /> Enlarge Signature
+                          </button>
                         </div>
                       ) : (
                         <div className="w-36 h-24 mx-auto rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 text-xs">
@@ -1831,6 +2053,19 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
               </button>
 
               <div className="flex items-center gap-2">
+                {selectedApp.status === 'Approved' && (
+                  <button
+                    type="button"
+                    id="btn-modal-footer-send-welcome"
+                    onClick={() => setWelcomeLetterApp(selectedApp)}
+                    className="px-3.5 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                    title="View & Send Official Welcome Letter"
+                  >
+                    <Mail className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Send Welcome Letter</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => handleExecuteReview('Revision Required')}
@@ -1967,6 +2202,237 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* DOCUMENT ZOOM & INSPECTION LIGHTBOX MODAL */}
+      {inspectDoc && (
+        <div
+          id="document-inspection-lightbox"
+          className="fixed inset-0 z-50 flex flex-col bg-slate-950/95 backdrop-blur-md text-white select-none animate-in fade-in duration-150"
+          tabIndex={0}
+        >
+          {/* Top Bar: Title, Details & Controls */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/90 backdrop-blur-sm shrink-0 z-20">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-blue-900/60 border border-blue-700/60 text-blue-300">
+                <Camera className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h3 className="text-base font-bold text-white tracking-tight">
+                    {inspectDoc.title}
+                  </h3>
+                  {inspectDoc.status && (
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                        inspectDoc.status === 'Verified'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : inspectDoc.status === 'Invalid'
+                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      }`}
+                    >
+                      {inspectDoc.status}
+                    </span>
+                  )}
+                </div>
+                {selectedApp && (
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Applicant: <strong className="text-slate-200">{selectedApp.agentName}</strong>
+                    {selectedApp.affiliateCode && (
+                      <span className="font-mono text-amber-300 ml-2">[{selectedApp.affiliateCode}]</span>
+                    )}
+                    {selectedApp.position && (
+                      <span className="text-slate-400 ml-2">• {selectedApp.position}</span>
+                    )}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="flex items-center gap-3">
+              <a
+                href={inspectDoc.url}
+                download={`${selectedApp?.agentName || 'Document'}_${inspectDoc.title.replace(/\s+/g, '_')}`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1.5 transition cursor-pointer"
+                title="Download original document file"
+              >
+                <Download className="w-3.5 h-3.5 text-blue-400" />
+                <span className="hidden sm:inline">Download File</span>
+              </a>
+
+              <button
+                type="button"
+                id="close-doc-inspection-btn"
+                onClick={() => setInspectDoc(null)}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-rose-900/80 hover:text-rose-200 text-slate-400 transition cursor-pointer border border-slate-700"
+                title="Close Lightbox (Esc)"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Center Stage: Viewport with Canvas drag & zoom */}
+          <div
+            className={`relative flex-1 overflow-hidden flex items-center justify-center p-4 ${
+              zoomScale > 1
+                ? isDragging
+                  ? 'cursor-grabbing'
+                  : 'cursor-grab'
+                : 'cursor-default'
+            }`}
+            onMouseDown={(e) => {
+              if (e.button !== 0) return;
+              setIsDragging(true);
+              setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+            }}
+            onMouseMove={(e) => {
+              if (!isDragging) return;
+              setPanOffset({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+            }}
+            onMouseUp={() => setIsDragging(false)}
+            onMouseLeave={() => setIsDragging(false)}
+            onWheel={(e) => {
+              e.preventDefault();
+              const delta = e.deltaY < 0 ? 0.2 : -0.2;
+              setZoomScale((prev) => Math.max(0.25, Math.min(Number((prev + delta).toFixed(2)), 4)));
+            }}
+          >
+            {/* Subtle grid background for visual reference */}
+            <div
+              className="absolute inset-0 opacity-10 pointer-events-none"
+              style={{
+                backgroundImage: 'radial-gradient(circle at 20px 20px, #ffffff 1.5px, transparent 0)',
+                backgroundSize: '40px 40px',
+              }}
+            />
+
+            {/* The Document Image */}
+            <div
+              className="transition-transform duration-75 ease-out select-none"
+              style={{
+                transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale}) rotate(${rotation}deg)`,
+                transformOrigin: 'center center',
+              }}
+            >
+              <img
+                src={inspectDoc.url}
+                alt={inspectDoc.title}
+                className="max-w-[88vw] max-h-[72vh] object-contain rounded-xl shadow-2xl border border-slate-700/80 bg-slate-900/60 pointer-events-none select-none"
+                draggable={false}
+              />
+            </div>
+          </div>
+
+          {/* Floating Bottom Control Bar */}
+          <div className="p-4 flex items-center justify-center shrink-0 z-20">
+            <div className="bg-slate-900/90 border border-slate-700/80 backdrop-blur-md px-5 py-2.5 rounded-2xl shadow-2xl flex items-center gap-3 sm:gap-4 text-xs">
+              {/* Zoom Out Button */}
+              <button
+                type="button"
+                id="btn-doc-zoom-out"
+                onClick={() => setZoomScale((prev) => Math.max(Number((prev - 0.25).toFixed(2)), 0.25))}
+                disabled={zoomScale <= 0.25}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1 cursor-pointer"
+                title="Zoom Out (-)"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+
+              {/* Zoom Percentage */}
+              <button
+                type="button"
+                onClick={() => {
+                  setZoomScale(1);
+                  setPanOffset({ x: 0, y: 0 });
+                }}
+                className="font-mono font-bold text-amber-300 min-w-16 text-center hover:text-amber-200 cursor-pointer text-xs"
+                title="Click to reset zoom to 100%"
+              >
+                {Math.round(zoomScale * 100)}%
+              </button>
+
+              {/* Zoom In Button */}
+              <button
+                type="button"
+                id="btn-doc-zoom-in"
+                onClick={() => setZoomScale((prev) => Math.min(Number((prev + 0.25).toFixed(2)), 4))}
+                disabled={zoomScale >= 4}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1 cursor-pointer"
+                title="Zoom In (+)"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+
+              <div className="h-4 w-px bg-slate-700" />
+
+              {/* Reset to Fit */}
+              <button
+                type="button"
+                id="btn-doc-reset-fit"
+                onClick={() => {
+                  setZoomScale(1);
+                  setPanOffset({ x: 0, y: 0 });
+                  setRotation(0);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center gap-1.5 cursor-pointer font-medium"
+                title="Reset zoom & position"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Fit Screen</span>
+              </button>
+
+              {/* Rotate 90 deg */}
+              <button
+                type="button"
+                id="btn-doc-rotate"
+                onClick={() => setRotation((prev) => (prev + 90) % 360)}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center gap-1.5 cursor-pointer font-medium"
+                title="Rotate 90° Clockwise"
+              >
+                <RotateCw className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Rotate</span>
+              </button>
+
+              <div className="h-4 w-px bg-slate-700 hidden md:block" />
+
+              {/* Hint */}
+              <span className="text-[11px] text-slate-400 hidden md:inline">
+                Scroll to zoom • Drag to pan • Esc to exit
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WELCOME LETTER MODAL */}
+      {welcomeLetterApp && (
+        <WelcomeLetterModal
+          application={welcomeLetterApp}
+          agent={agents.find((a) => a.affiliateCode.toLowerCase() === welcomeLetterApp.affiliateCode.toLowerCase())}
+          currentUser={currentUser}
+          onClose={() => setWelcomeLetterApp(null)}
+          onOpenTemplateManager={() => {
+            setShowWelcomeTemplateModal(true);
+          }}
+          showToast={showToast}
+        />
+      )}
+
+      {/* WELCOME LETTER TEMPLATE MODAL */}
+      {showWelcomeTemplateModal && (
+        <WelcomeLetterTemplateModal
+          currentUser={currentUser}
+          onClose={() => setShowWelcomeTemplateModal(false)}
+          onTemplateUpdated={(updatedTpl) => {
+            showToast('Welcome letter template saved!');
+          }}
+          showToast={showToast}
+        />
       )}
     </div>
   );

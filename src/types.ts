@@ -358,3 +358,19 @@ export interface PositionContractTemplate {
   lastUpdatedAt: string;
   notes?: string;
 }
+
+export interface WelcomeLetterTemplate {
+  title: string;
+  fileName: string;
+  fileType: string;
+  fileSize: string;
+  fileData?: string;
+  templateUrl?: string;
+  detectedTags?: string[];
+  rawText?: string;
+  lastUpdatedBy: string;
+  lastUpdatedAt: string;
+  notes?: string;
+  customBody?: string;
+}
+

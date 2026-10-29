@@ -290,11 +290,11 @@ function renderInfoSheet(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(30, 58, 138);
-  doc.text('III. TEAM HIERARCHY & LEADERSHIP NETWORK', 14, curY);
+  doc.text('III. SELLERS ROLE HIERARCHY', 14, curY);
   doc.line(14, curY + 1.5, 196, curY + 1.5);
 
   const teamFields = [
-    { label: 'Territory / Regional Hub:', value: contractData.brokerGroup || 'Asia Pacific 2 Hub' },
+    { label: 'Territory / Team Lead:', value: contractData.brokerGroup || 'Asia Pacific 2' },
     { label: 'Team / Unit Name:', value: contractData.teamName || 'Premier Sales Team' },
     { label: 'Upline Marketing Manager:', value: contractData.leadership?.marketingManager || 'Jonathan Cruz' },
     { label: 'Upline Marketing Director:', value: contractData.leadership?.marketingDirector || 'Victoria Del Rosario' },

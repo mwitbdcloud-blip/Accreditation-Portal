@@ -8,6 +8,7 @@ import {
   Region,
   Position,
   PositionContractTemplate,
+  WelcomeLetterTemplate,
   StaffAccount,
   StaffInvitation,
   PersonalDetails,
@@ -45,6 +46,7 @@ const STORAGE_KEYS = {
   STAFF: 'mwi_staff_cache',
   INVITATIONS: 'mwi_invitations_cache',
   POSITION_REQUESTS: 'mwi_pos_requests_cache',
+  WELCOME_LETTER_TEMPLATE: 'mwi_welcome_letter_template_cache',
 };
 
 const DEFAULT_SETTINGS: SystemSettings = {
@@ -361,6 +363,40 @@ export const clientStorage = {
     list.push(newTpl);
     writeStorage(STORAGE_KEYS.CONTRACTS, list);
     return newTpl;
+  },
+
+  getWelcomeLetterTemplate(): WelcomeLetterTemplate {
+    const cached = readStorage<WelcomeLetterTemplate | null>(STORAGE_KEYS.WELCOME_LETTER_TEMPLATE, null);
+    if (cached) return cached;
+
+    const defaultTpl: WelcomeLetterTemplate = {
+      title: 'Megaworld International Official Welcome Letter Template',
+      fileName: 'Megaworld_International_Official_Welcome_Letter.docx',
+      fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      fileSize: '48 KB',
+      templateUrl: '/templates/Welcome_Letter_Template.docx',
+      detectedTags: [
+        '{{fullName}}',
+        '{{affiliateCode}}',
+        '{{position}}',
+        '{{region}}',
+        '{{approvalDate}}',
+        '{{expiryDate}}',
+        '{{teamLead}}',
+        '{{portalUrl}}',
+        '{{email}}',
+      ],
+      lastUpdatedBy: 'Rolly Manaog (BD Staff)',
+      lastUpdatedAt: new Date().toISOString(),
+      notes: 'Standard official Megaworld International welcome letter template issued upon accreditation approval.',
+      customBody: '',
+    };
+    writeStorage(STORAGE_KEYS.WELCOME_LETTER_TEMPLATE, defaultTpl);
+    return defaultTpl;
+  },
+
+  saveWelcomeLetterTemplate(tpl: WelcomeLetterTemplate): void {
+    writeStorage(STORAGE_KEYS.WELCOME_LETTER_TEMPLATE, tpl);
   },
 
   getPositionRequests(): PositionAccessRequest[] {

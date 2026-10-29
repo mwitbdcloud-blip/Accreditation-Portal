@@ -1357,6 +1357,8 @@ export default function App() {
                 onDeleteMultipleApplications={handleDeleteMultipleApplications}
                 onDeleteAllApplications={handleDeleteAllApplications}
                 currentUserRole={currentUser.role}
+                currentUser={currentUser}
+                showToast={showToast}
               />
             )}
 

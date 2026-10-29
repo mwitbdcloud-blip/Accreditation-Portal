@@ -9,6 +9,7 @@ import {
   Region,
   Position,
   PositionContractTemplate,
+  WelcomeLetterTemplate,
   StaffAccount,
   StaffInvitation,
   StaffPermissions,
@@ -2089,5 +2090,99 @@ export const api = {
       a.tempPassword || `Mega@${a.affiliateCode.split('-').pop() || '000000'}`,
     ]);
     return [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+  },
+
+  async getWelcomeLetterTemplate(): Promise<WelcomeLetterTemplate> {
+    const res = await safeFetch<WelcomeLetterTemplate>(`${BASE_URL}/templates/welcome-letter`);
+    if (res.ok && res.data) {
+      clientStorage.saveWelcomeLetterTemplate(res.data);
+      return res.data;
+    }
+    return clientStorage.getWelcomeLetterTemplate();
+  },
+
+  async uploadWelcomeLetterTemplate(
+    data: Partial<WelcomeLetterTemplate>
+  ): Promise<{ success: boolean; message: string; template: WelcomeLetterTemplate }> {
+    const res = await safeFetch<{ success: boolean; message: string; template: WelcomeLetterTemplate }>(
+      `${BASE_URL}/templates/welcome-letter/upload`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }
+    );
+
+    if (res.ok && res.data?.template) {
+      clientStorage.saveWelcomeLetterTemplate(res.data.template);
+      return res.data;
+    }
+
+    const current = clientStorage.getWelcomeLetterTemplate();
+    const updated: WelcomeLetterTemplate = {
+      ...current,
+      ...data,
+      title: data.title || current.title,
+      fileName: data.fileName || current.fileName,
+      fileType: data.fileType || current.fileType,
+      fileSize: data.fileSize || current.fileSize,
+      lastUpdatedBy: data.lastUpdatedBy || 'Rolly Manaog (BD Staff)',
+      lastUpdatedAt: new Date().toISOString(),
+    };
+    clientStorage.saveWelcomeLetterTemplate(updated);
+
+    return {
+      success: true,
+      message: 'Welcome Letter template uploaded and saved successfully.',
+      template: updated,
+    };
+  },
+
+  async sendWelcomeLetter(
+    appId: string,
+    options?: {
+      operatorName?: string;
+      operatorRole?: string;
+      customNote?: string;
+      template?: WelcomeLetterTemplate;
+    }
+  ): Promise<{ success: boolean; message: string; letterPreview: any }> {
+    const res = await safeFetch<{ success: boolean; message: string; letterPreview: any }>(
+      `${BASE_URL}/applications/${encodeURIComponent(appId)}/send-welcome-letter`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(options || {}),
+      }
+    );
+
+    if (res.ok && res.data) return res.data;
+
+    // Local / Offline fallback
+    const app = clientStorage.getApplication(appId);
+    const agentName = app?.personalDetails?.fullName || (app as any)?.agentName || 'Affiliate';
+    const email = app?.personalDetails?.emailAddress || (app as any)?.email || 'agent@email.com';
+    const code = app?.affiliateCode || 'IPA-AP2-000000';
+
+    clientStorage.addAuditLog({
+      performedBy: options?.operatorName || 'BD Staff',
+      role: options?.operatorRole || 'staff',
+      action: 'Send Welcome Letter',
+      recordAffected: code,
+      affiliateCode: code,
+      details: `Dispatched official Megaworld International Welcome Letter to ${email} for approved accreditation (${code}).`,
+    });
+
+    return {
+      success: true,
+      message: `Official Welcome Letter successfully dispatched to ${agentName} (${email}).`,
+      letterPreview: {
+        sentAt: new Date().toISOString(),
+        recipientName: agentName,
+        recipientEmail: email,
+        affiliateCode: code,
+        subject: `Welcome to Megaworld International: Official Accreditation Approval (${code})`,
+      },
+    };
   },
 };

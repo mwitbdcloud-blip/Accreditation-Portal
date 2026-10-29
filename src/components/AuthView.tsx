@@ -141,7 +141,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
           International Property Affiliates
         </h1>
         <p className="mt-1 text-xs sm:text-sm text-slate-400">
-          Global Operations & Accreditation Management Portal
+          Accreditation Management Portal
         </p>
       </div>
 

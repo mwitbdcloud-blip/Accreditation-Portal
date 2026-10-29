@@ -13,6 +13,7 @@ import {
   Region,
   Position,
   PositionContractTemplate,
+  WelcomeLetterTemplate,
   StaffAccount,
   StaffInvitation,
   StaffPermissions,
@@ -65,6 +66,28 @@ class DatabaseStore {
   auditLogs: AuditLog[] = [];
   settings: SystemSettings = { ...INITIAL_SETTINGS };
   positionContracts: PositionContractTemplate[] = [...INITIAL_POSITION_CONTRACTS];
+  welcomeLetterTemplate: WelcomeLetterTemplate = {
+    title: 'Megaworld International Official Welcome Letter Template',
+    fileName: 'Megaworld_International_Official_Welcome_Letter.docx',
+    fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    fileSize: '48 KB',
+    templateUrl: '/templates/Welcome_Letter_Template.docx',
+    detectedTags: [
+      '{{fullName}}',
+      '{{affiliateCode}}',
+      '{{position}}',
+      '{{region}}',
+      '{{approvalDate}}',
+      '{{expiryDate}}',
+      '{{teamLead}}',
+      '{{portalUrl}}',
+      '{{email}}',
+    ],
+    lastUpdatedBy: 'Rolly Manaog (BD Staff)',
+    lastUpdatedAt: new Date().toISOString(),
+    notes: 'Standard official Megaworld International welcome letter template issued upon accreditation approval.',
+    customBody: '',
+  };
 
   staffAccounts: StaffAccount[] = [
     {
@@ -88,7 +111,7 @@ class DatabaseStore {
     },
     {
       id: 'STF-001',
-      fullName: 'Elena Ramos',
+      fullName: 'Rolly Manaog',
       email: 'staff@megaworld.com',
       role: 'Staff',
       positionTitle: 'BD Operations Coordinator',
@@ -562,8 +585,8 @@ async function startServer() {
     }
 
     // 2. Staff Accounts
-    if (cleanEmail === 'staff@megaworld.com' || cleanEmail === 'elena.ramos@megaworld.com') {
-      db.log('Elena Ramos', 'staff', 'Google Login', 'STF-001', 'Logged in as BD Staff via Google.');
+    if (cleanEmail === 'staff@megaworld.com' || cleanEmail === 'rolly.manaog@megaworld.com') {
+      db.log('Rolly Manaog', 'staff', 'Google Login', 'STF-001', 'Logged in as BD Staff via Google.');
       return res.json({
         success: true,
         role: 'Staff',
@@ -571,7 +594,7 @@ async function startServer() {
           uid,
           email: cleanEmail,
           role: 'Staff',
-          displayName: cleanName || 'Elena Ramos (BD Staff)',
+          displayName: cleanName || 'Rolly Manaog (BD Staff)',
           photoUrl: photoUrl || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
           permissions: {
             canReviewApplications: true,
@@ -695,16 +718,16 @@ async function startServer() {
       trimmedId === 'staff' ||
       trimmedId === 'staff@megaworld.com' ||
       trimmedId === 'staff@megaworldinternational.com' ||
-      trimmedId === 'elena.ramos@megaworld.com' ||
+      trimmedId === 'rolly.manaog@megaworld.com' ||
       trimmedId === 'stf-001'
     ) {
-      db.log('Elena Ramos', 'staff', 'User Login', 'STF-001', 'Logged in as BD Staff.');
+      db.log('Rolly Manaog', 'staff', 'User Login', 'STF-001', 'Logged in as BD Staff.');
       return res.json({
         success: true,
         user: {
           firebaseUserId: 'usr_staff',
-          fullName: 'Elena Ramos',
-          displayName: 'Elena Ramos',
+          fullName: 'Rolly Manaog',
+          displayName: 'Rolly Manaog',
           email: 'staff@megaworld.com',
           role: 'Staff',
           position: 'Marketing Manager',
@@ -809,7 +832,7 @@ async function startServer() {
         accreditationStatus: 'Not Started',
         renewalEligibility: false,
         unlockedPositions: ['Marketing Associate'],
-        assignedStaff: 'Elena Ramos (BD Staff)',
+        assignedStaff: 'Rolly Manaog (BD Staff)',
       };
 
       db.agents.unshift(newAgent);
@@ -1329,7 +1352,7 @@ async function startServer() {
         renewalEligibility: false,
         unlockedPositions: [agentPosition],
         tempPassword,
-        assignedStaff: 'Elena Ramos (BD Staff)',
+        assignedStaff: 'Rolly Manaog (BD Staff)',
         personalDetails,
         bankDetails,
         teamDetails,
@@ -3029,7 +3052,7 @@ async function startServer() {
       (c) => c.position.toLowerCase() === pos.toLowerCase()
     );
 
-    const updatedBy = uploadedBy || 'Elena Ramos (BD Staff)';
+    const updatedBy = uploadedBy || 'Rolly Manaog (BD Staff)';
     const timestamp = new Date().toISOString();
 
     if (template) {
@@ -3110,6 +3133,96 @@ async function startServer() {
     );
 
     res.json({ success: true, template });
+  });
+
+  // Welcome Letter Template & Email Dispatch
+  app.get('/api/templates/welcome-letter', (req, res) => {
+    res.json(db.welcomeLetterTemplate);
+  });
+
+  app.post('/api/templates/welcome-letter/upload', (req, res) => {
+    const { fileName, fileType, fileSize, fileData, rawText, uploadedBy, notes, title, customBody } = req.body;
+    if (!fileName) {
+      return res.status(400).json({ error: 'File name is required.' });
+    }
+    const updatedBy = uploadedBy || 'Rolly Manaog (BD Staff)';
+    const timestamp = new Date().toISOString();
+
+    db.welcomeLetterTemplate = {
+      title: title || db.welcomeLetterTemplate.title,
+      fileName,
+      fileType: fileType || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      fileSize: fileSize || '48 KB',
+      fileData: fileData !== undefined ? fileData : db.welcomeLetterTemplate.fileData,
+      rawText: rawText !== undefined ? rawText : db.welcomeLetterTemplate.rawText,
+      templateUrl: db.welcomeLetterTemplate.templateUrl,
+      lastUpdatedBy: updatedBy,
+      lastUpdatedAt: timestamp,
+      notes: notes || db.welcomeLetterTemplate.notes,
+      customBody: customBody !== undefined ? customBody : db.welcomeLetterTemplate.customBody,
+    };
+
+    db.log(
+      updatedBy,
+      'staff',
+      'Welcome Letter Template Uploaded',
+      fileName,
+      `Uploaded updated Welcome Letter template file: ${fileName} (${fileSize || 'N/A'}).`
+    );
+
+    res.json({
+      success: true,
+      message: 'Welcome Letter template uploaded successfully.',
+      template: db.welcomeLetterTemplate,
+    });
+  });
+
+  app.post('/api/applications/:id/send-welcome-letter', async (req, res) => {
+    const appId = req.params.id;
+    const { operatorName = 'Rolly Manaog (BD Staff)', operatorRole = 'staff', customNote = '' } = req.body || {};
+
+    const application = db.applications.find((a) => a.id === appId);
+    if (!application) {
+      return res.status(404).json({ error: `Application with ID ${appId} was not found.` });
+    }
+
+    const agentName = application.personalDetails?.fullName || (application as any).agentName || 'Affiliate';
+    const email = application.personalDetails?.emailAddress || (application as any).email || 'agent@megaworld.com';
+    const code = application.affiliateCode;
+    const position = application.position || 'Marketing Associate';
+    const region = application.region || 'Asia Pacific 2';
+
+    db.log(
+      operatorName,
+      operatorRole,
+      'Send Welcome Letter',
+      code,
+      `Dispatched official Megaworld International Welcome Letter to ${agentName} (${email}) for approved accreditation (${code}).`
+    );
+
+    db.addNotification(
+      undefined,
+      code,
+      'agent',
+      'Welcome to Megaworld International',
+      `Your accreditation has been officially approved. Official Welcome Letter has been dispatched to your email (${email}).`,
+      'Accreditation',
+      'dashboard'
+    );
+
+    res.json({
+      success: true,
+      message: `Official Welcome Letter successfully dispatched to ${agentName} (${email}).`,
+      letterPreview: {
+        sentAt: new Date().toISOString(),
+        recipientName: agentName,
+        recipientEmail: email,
+        affiliateCode: code,
+        position,
+        region,
+        subject: `Welcome to Megaworld International: Official Accreditation Approval (${code})`,
+      },
+    });
   });
 
   // Helper for server-side contract generation
