@@ -20,11 +20,15 @@ import {
   Calendar,
   X,
   Share2,
+  FileText,
+  Lock,
+  Clock,
 } from 'lucide-react';
 import { AgentProfile, AccreditationApplication } from '../types';
 import { formatDate } from '../utils/dateFormatter';
 import { MegaworldLogo } from './MegaworldLogo';
 import { safeHtml2Canvas } from '../utils/colorSanitizer';
+import { WelcomeLetterModal } from './WelcomeLetterModal';
 import QRCode from 'qrcode';
 
 interface DigitalIdBadgeProps {
@@ -46,6 +50,7 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [showWelcomeLetterModal, setShowWelcomeLetterModal] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
 
   const cardRef = useRef<HTMLDivElement>(null);
@@ -88,6 +93,15 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
     agent.position && agent.position !== 'Pending Accreditation'
       ? agent.position
       : latestApplication?.position || 'International Property Affiliate';
+
+  // Strict check: The Welcome Letter is only accessible if the application has been approved by staff or admin.
+  const isApplicationApproved =
+    latestApplication?.status === 'Approved' ||
+    (agent.accreditationStatus === 'Active' &&
+      latestApplication?.status !== 'Submitted' &&
+      latestApplication?.status !== 'Under Review' &&
+      latestApplication?.status !== 'Revision Required' &&
+      latestApplication?.status !== 'Rejected');
 
   const startDateFormatted = agent.accreditationStartDate
     ? formatDate(agent.accreditationStartDate)
@@ -194,6 +208,83 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
 
   const handlePrintBadge = () => {
     window.print();
+  };
+
+  const welcomeLetter = agent.welcomeLetter || latestApplication?.welcomeLetter;
+
+  const handleDownloadWelcomeLetter = () => {
+    if (!isApplicationApproved) {
+      return;
+    }
+    const raw = welcomeLetter?.sentAt || agent.accreditationStartDate;
+    const dateObj = raw ? new Date(raw) : new Date();
+    const formattedDate = !isNaN(dateObj.getTime())
+      ? dateObj.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
+      : 'January 01, 2026';
+
+    const expiryRaw = welcomeLetter?.termEndDate || agent.accreditationExpiryDate;
+    const expiryObj = expiryRaw ? new Date(expiryRaw) : new Date();
+    const formattedExpiry = !isNaN(expiryObj.getTime())
+      ? expiryObj.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
+      : 'May 30, 2026';
+
+    const rawName = agent.fullName.trim();
+    const salutationPrefix =
+      (agent.personalDetails as any)?.gender === 'female' || (agent.personalDetails as any)?.civilStatus === 'Married'
+        ? 'Ms.'
+        : 'Mr.';
+    const salutation = /^(mr\.|ms\.|mrs\.|dr\.|engr\.|atty\.)/i.test(rawName)
+      ? rawName
+      : `${salutationPrefix} ${rawName}`;
+
+    const content = `
+${formattedDate}
+
+Dear ${salutation},
+
+Thank you very much for joining our growing Megaworld Corporation - International Marketing Division family!
+
+It is my distinct privilege to welcome you to our group of dynamic and driven real estate sales professionals operating in key territories all over the world. Just like them, you were accepted because of your knowledge, attitudes, skills and integrity that form the core of our business. It is our fervent hope that you will champion, observe, and respect the corporate values we espouse toward the achievement of our corporate vision and dreams. In the process, we hope you achieve yours too.
+
+As a new member, you are entitled to the following benefits:
+
+  o Career Development
+  o Rewarding Commission
+  o Exciting Promos and Incentives
+  o Acquaintances and Conferences
+  o Training and Self-Development
+  o Enriching Experience
+
+Please check this guide and sign up at our 1.) Agent’s Hub - the one-stop, web-based sales management tool to access latest inventory, computations, updates and promotions; 2.) TBD Cloud - access and download presentation materials of Megaworld and its subsidiaries; and 3.) Sales and Commission Portal – for monitoring commission and generating sales reports.
+
+You are signed up as a ${positionTitle} under ${agent.region || 'Asia Pacific 1'} region. Your sales contract expires on ${formattedExpiry} and is renewable upon further evaluation of your sales performance. You may also refer to your Sales Agency Agreement for the details of your sales targets & commission structure.
+
+We wish you all the best. Welcome to our world! Welcome to Megaworld!
+${welcomeLetter?.customNote ? `\nManagement Remarks:\n"${welcomeLetter.customNote}"\n` : ''}
+Sincerely,
+
+MR. JAVIER ROMEO K. ABUSTAN
+Managing Director
+
+------------------------------------------------------------------------
+Megaworld International Contacts & Portals:
+Website: www.megaworldinternational.com
+Phone: (632) 894-6300
+Facebook: MegaworldInternationalOfficial | MegaworldInternationalRecruitment
+Twitter: @megaworld_intl
+Instagram: @megaworld_intl
+------------------------------------------------------------------------
+`.trim();
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Megaworld_International_Welcome_Letter_${agent.affiliateCode}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   // Reusable card face renderer
@@ -699,6 +790,133 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
             </div>
           </div>
 
+          {/* Official Welcome Letter Card - Accessible only if application has been approved */}
+          {isApplicationApproved ? (
+            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-amber-50 rounded-xl border border-amber-200/60">
+                    <FileText className="w-4 h-4 text-amber-700" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900">
+                      Official Welcome Letter
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Accreditation authorization & welcome confirmation
+                    </p>
+                  </div>
+                </div>
+
+                {welcomeLetter?.sentAt ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    Dispatched to Account
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-900 border border-blue-200">
+                    <Award className="w-3.5 h-3.5 text-blue-700" />
+                    Accreditation Certificate
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-0.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Document Reference
+                  </span>
+                  <strong className="text-slate-900 font-mono text-xs block">
+                    {welcomeLetter?.refNumber || `MWI-WL-2026-${(agent.affiliateCode || '').replace(/[^0-9]/g, '').slice(-6) || '000001'}`}
+                  </strong>
+                  <span className="text-[10px] text-slate-500 block">
+                    Megaworld International Global Operations
+                  </span>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-0.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Delivery Status
+                  </span>
+                  <strong className="text-slate-900 text-xs block">
+                    {welcomeLetter?.sentAt ? `Dispatched ${formatDate(welcomeLetter.sentAt)}` : 'Available on Account'}
+                  </strong>
+                  <span className="text-[10px] text-slate-500 block">
+                    {welcomeLetter?.sentBy ? `Sent by ${welcomeLetter.sentBy}` : 'Approved Standing'}
+                  </span>
+                </div>
+              </div>
+
+              {welcomeLetter?.customNote && (
+                <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-950 block">
+                    Operations Remarks:
+                  </span>
+                  <p className="text-slate-800 text-xs leading-relaxed italic">
+                    "{welcomeLetter.customNote}"
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  id="btn-view-welcome-letter-badge"
+                  onClick={() => setShowWelcomeLetterModal(true)}
+                  className="flex-1 min-w-[150px] py-2.5 px-4 rounded-xl font-bold text-xs bg-blue-900 hover:bg-blue-800 text-white transition flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5 text-amber-300" />
+                  <span>View Welcome Letter</span>
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-download-welcome-letter-badge"
+                  onClick={handleDownloadWelcomeLetter}
+                  className="py-2.5 px-4 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition flex items-center justify-center gap-2 cursor-pointer"
+                  title="Download official Welcome Letter text"
+                >
+                  <Download className="w-3.5 h-3.5 text-blue-900" />
+                  <span>Download (.txt)</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-50/90 rounded-2xl p-5 border border-dashed border-slate-300 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-slate-200/80 rounded-xl text-slate-600">
+                    <Lock className="w-4 h-4 text-slate-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-800">
+                      Official Welcome Letter
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Locked until application is approved
+                    </p>
+                  </div>
+                </div>
+
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                  Application Pending Approval
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed">
+                The official Megaworld International Welcome Letter will become accessible and downloadable once your accreditation application has been reviewed and approved by authorized Staff or Admin.
+              </p>
+
+              <div className="p-3 bg-white rounded-xl border border-slate-200 text-xs flex items-center justify-between">
+                <span className="text-slate-500 text-[11px]">Application Standing:</span>
+                <span className="font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-xs">
+                  {latestApplication?.status || agent.accreditationStatus || 'Not Processed'}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Direct Actions Card */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
             <div>
@@ -911,6 +1129,16 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Welcome Letter Modal for Agent View - only mounted if application is approved */}
+      {showWelcomeLetterModal && isApplicationApproved && (
+        <WelcomeLetterModal
+          application={latestApplication || undefined}
+          agent={agent}
+          isAgentView={true}
+          onClose={() => setShowWelcomeLetterModal(false)}
+        />
       )}
     </div>
   );

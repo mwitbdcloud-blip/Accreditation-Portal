@@ -1,9 +1,12 @@
+import React from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderAsync } from 'docx-preview';
 import { jsPDF } from 'jspdf';
 import JSZip from 'jszip';
 import { safeHtml2Canvas } from './colorSanitizer';
 import { ContractData } from '../components/ContractDocument';
 import { Position } from '../types';
+import { OfficialSaaDocument } from '../components/OfficialSaaDocument';
 import {
   generateContractDocx,
   getDefaultTemplateUrlForPosition,
@@ -214,7 +217,9 @@ export async function exportDocxContainerToPdf(
   onProgress?: (current: number, total: number) => void
 ): Promise<GeneratedPdfResult> {
   const sections = Array.from(
-    container.querySelectorAll<HTMLElement>('.docx-wrapper > section.docx, section.docx')
+    container.querySelectorAll<HTMLElement>(
+      '.saa-page-sheet, .docx-wrapper > section.docx, section.docx'
+    )
   );
 
   const totalPages = sections.length || 1;
@@ -238,7 +243,8 @@ export async function exportDocxContainerToPdf(
     const prevBoxShadow = section.style.boxShadow;
     const prevOpacity = section.style.opacity;
 
-    section.style.display = 'block';
+    // Ensure page is laid out as flex container matching screen view
+    section.style.display = 'flex';
     section.style.visibility = 'visible';
     section.style.opacity = '1';
     section.style.boxShadow = 'none';
@@ -283,8 +289,6 @@ export async function exportDocxContainerToPdf(
   };
 }
 
-import { generateContractPdf as generateContractPdfFallback } from './contractPdfGenerator';
-
 /**
  * Generates an official Sales Agency Agreement (SAA) PDF matching the EXACT template
  * and content that is viewed in "View Sales Agency Agreement".
@@ -292,10 +296,9 @@ import { generateContractPdf as generateContractPdfFallback } from './contractPd
  * If an existing rendered container is provided (e.g. from ContractModal where the template
  * is already displayed on screen), it directly captures those exact rendered pages.
  *
- * If no container is provided (e.g. from direct download on AgentDashboard), it dynamically
- * populates the exact Word DOCX template with the agent's data via generateContractDocx,
- * renders all pages using renderDocxToContainer in an off-screen DOM host, and converts
- * each page into the official PDF document.
+ * If no container is provided or container pages are incomplete, it renders the authentic
+ * OfficialSaaDocument directly off-screen in continuous mode, completely eliminating any
+ * extra/blank pages, and exports every page into the official PDF document.
  */
 export async function generateContractPdfFromTemplate(
   templateSource: ArrayBuffer | Uint8Array | string | undefined,
@@ -304,44 +307,51 @@ export async function generateContractPdfFromTemplate(
   existingContainer?: HTMLElement | null,
   onProgress?: (current: number, total: number) => void
 ): Promise<GeneratedPdfResult> {
-  const p = position || 'Marketing Associate';
+  const p = (position || 'Marketing Associate') as Position;
   const outFileName = `Megaworld_${p.replace(/\s+/g, '_')}_Official_SAA_${contractData.affiliateCode || 'Agreement'}.pdf`;
 
-  // 1. If an existing rendered container is provided and already has rendered docx sections, export directly!
+  // 1. If an existing rendered container is provided and contains all official SAA page sections, export directly!
   if (existingContainer) {
-    const sections = existingContainer.querySelectorAll<HTMLElement>('.docx-wrapper > section.docx, section.docx');
-    if (sections.length > 0) {
+    const sections = existingContainer.querySelectorAll<HTMLElement>(
+      '.saa-page-sheet, .docx-wrapper > section.docx, section.docx'
+    );
+    if (sections.length >= 9) {
       return await exportDocxContainerToPdf(existingContainer, outFileName, onProgress);
     }
   }
 
-  // 2. Otherwise, load and render the exact template off-screen
+  // 2. Off-screen pristine rendering of OfficialSaaDocument (guarantees exactly 9 authentic pages with no extra/empty pages)
+  const tempHost = document.createElement('div');
+  tempHost.id = `saa-export-temp-${Date.now()}`;
+  tempHost.style.cssText =
+    'position: fixed; left: 0; top: 0; width: 850px; opacity: 0; pointer-events: none; z-index: -99999; background: #ffffff;';
+  document.body.appendChild(tempHost);
+
+  const root = createRoot(tempHost);
   try {
-    const source = templateSource || getDefaultTemplateUrlForPosition(p);
-    const filledDocx = await generateContractDocx(source, contractData, p);
+    await new Promise<void>((resolve) => {
+      root.render(
+        React.createElement(OfficialSaaDocument, {
+          contractData,
+          position: p,
+          viewMode: 'continuous',
+          onTotalPagesCalculated: () => resolve(),
+        })
+      );
+      // Give browser time to complete layout paint
+      setTimeout(resolve, 400);
+    });
 
-    const tempHost = document.createElement('div');
-    tempHost.id = `docx-export-temp-${Date.now()}`;
-    tempHost.style.cssText =
-      'position: fixed; left: 0; top: 0; width: 900px; opacity: 1; pointer-events: none; z-index: -99999; background: #ffffff;';
-    document.body.appendChild(tempHost);
-
+    const result = await exportDocxContainerToPdf(tempHost, outFileName, onProgress);
+    return result;
+  } finally {
     try {
-      await renderDocxToContainer(filledDocx.blob, tempHost);
-      const result = await exportDocxContainerToPdf(tempHost, outFileName, onProgress);
-      return result;
-    } finally {
-      if (document.body.contains(tempHost)) {
-        document.body.removeChild(tempHost);
-      }
+      root.unmount();
+    } catch (e) {
+      // ignore
     }
-  } catch (err) {
-    console.warn('Docx to PDF template export encountered an issue; falling back gracefully:', err);
-    const fallbackResult = await generateContractPdfFallback(templateSource, contractData, p);
-    return {
-      blob: fallbackResult.blob,
-      fileName: fallbackResult.fileName,
-      totalPages: fallbackResult.totalPages,
-    };
+    if (document.body.contains(tempHost)) {
+      document.body.removeChild(tempHost);
+    }
   }
 }

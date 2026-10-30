@@ -14,6 +14,7 @@ import {
   Position,
   PositionContractTemplate,
   WelcomeLetterTemplate,
+  WelcomeLetterRecord,
   StaffAccount,
   StaffInvitation,
   StaffPermissions,
@@ -3186,35 +3187,72 @@ async function startServer() {
       return res.status(404).json({ error: `Application with ID ${appId} was not found.` });
     }
 
+    if (application.status !== 'Approved') {
+      return res.status(400).json({
+        error: 'Cannot send Welcome Letter. The application has not been approved by staff or admin yet.',
+      });
+    }
+
     const agentName = application.personalDetails?.fullName || (application as any).agentName || 'Affiliate';
     const email = application.personalDetails?.emailAddress || (application as any).email || 'agent@megaworld.com';
     const code = application.affiliateCode;
     const position = application.position || 'Marketing Associate';
     const region = application.region || 'Asia Pacific 2';
 
+    const nowIso = new Date().toISOString();
+    const refNumber = `MWI-WL-2026-${code.replace(/[^0-9]/g, '').slice(-6) || '000001'}`;
+    const termStart = application.dateSubmitted || nowIso;
+    const termEnd = application.accreditationExpiryDate || new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString();
+
+    const welcomeLetterRecord: WelcomeLetterRecord = {
+      id: `WL-${Date.now()}`,
+      sentAt: nowIso,
+      sentBy: operatorName,
+      sentByRole: operatorRole,
+      recipientEmail: email,
+      recipientName: agentName,
+      affiliateCode: code,
+      position,
+      region,
+      termStartDate: termStart,
+      termEndDate: termEnd,
+      refNumber,
+      customNote: customNote || undefined,
+      templateFileName: db.welcomeLetterTemplate.fileName,
+      isViewedByAgent: false,
+    };
+
+    application.welcomeLetter = welcomeLetterRecord;
+
+    const agent = db.agents.find((a) => a.affiliateCode.toLowerCase() === code.toLowerCase());
+    if (agent) {
+      agent.welcomeLetter = welcomeLetterRecord;
+    }
+
     db.log(
       operatorName,
       operatorRole,
       'Send Welcome Letter',
       code,
-      `Dispatched official Megaworld International Welcome Letter to ${agentName} (${email}) for approved accreditation (${code}).`
+      `Dispatched official Megaworld International Welcome Letter to ${agentName} (${email}) for approved accreditation (${code}). Available in agent Digital ID Badge.`
     );
 
     db.addNotification(
       undefined,
       code,
       'agent',
-      'Welcome to Megaworld International',
-      `Your accreditation has been officially approved. Official Welcome Letter has been dispatched to your email (${email}).`,
+      'Official Welcome Letter Delivered',
+      `Your official Welcome Letter and Accreditation Credentials are now available in your Digital ID Badge tab.`,
       'Accreditation',
-      'dashboard'
+      'digitalIdBadge'
     );
 
     res.json({
       success: true,
-      message: `Official Welcome Letter successfully dispatched to ${agentName} (${email}).`,
+      message: `Official Welcome Letter successfully dispatched to ${agentName} (${email}). The agent can view and download it inside their Digital ID Badge tab.`,
+      welcomeLetter: welcomeLetterRecord,
       letterPreview: {
-        sentAt: new Date().toISOString(),
+        sentAt: nowIso,
         recipientName: agentName,
         recipientEmail: email,
         affiliateCode: code,

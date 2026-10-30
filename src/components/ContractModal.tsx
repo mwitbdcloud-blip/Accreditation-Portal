@@ -103,7 +103,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
   const [viewMode, setViewMode] = useState<'continuous' | 'paginated'>('continuous');
   const [currentPageIndex, setCurrentPageIndex] = useState<number>(0);
   const [zoomScale, setZoomScale] = useState<number>(1);
-  const [renderedTotalPages, setRenderedTotalPages] = useState<number>(11);
+  const [renderedTotalPages, setRenderedTotalPages] = useState<number>(9);
   const renderedContainerRef = useRef<HTMLElement | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
   const [showMappingDrawer, setShowMappingDrawer] = useState<boolean>(false);
@@ -159,27 +159,27 @@ export const ContractModal: React.FC<ContractModalProps> = ({
     if (!isCurrentActiveUnlocked) return;
     document.body.classList.add('printing-contract');
 
-    // Ensure all rendered docx sections are unhidden for the print engine
+    // Ensure all rendered SAA page sections are unhidden for the print engine
     if (renderedContainerRef.current) {
       const sections = renderedContainerRef.current.querySelectorAll<HTMLElement>(
-        '.docx-wrapper > section.docx, section.docx'
+        '.saa-page-sheet, .docx-wrapper > section.docx, section.docx'
       );
       sections.forEach((sec) => {
-        sec.style.setProperty('display', 'block', 'important');
+        sec.style.setProperty('display', 'flex', 'important');
       });
     }
 
     window.print();
 
-    // Clean up printing state and restore pagination if in paginated view
+    // Clean up printing state and restore pagination cleanly
     setTimeout(() => {
       document.body.classList.remove('printing-contract');
-      if (renderedContainerRef.current && viewMode === 'paginated') {
+      if (renderedContainerRef.current) {
         const sections = renderedContainerRef.current.querySelectorAll<HTMLElement>(
-          '.docx-wrapper > section.docx, section.docx'
+          '.saa-page-sheet, .docx-wrapper > section.docx, section.docx'
         );
-        sections.forEach((sec, idx) => {
-          sec.style.display = idx === currentPageIndex ? 'block' : 'none';
+        sections.forEach((sec) => {
+          sec.style.removeProperty('display');
         });
       }
     }, 1500);
@@ -247,7 +247,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
             {POSITIONS.map((pos) => {
               const isActive = activePosition === pos;
               const isUnlocked = isPositionUnlocked(pos);
-              const pageCount = pos === 'Marketing Associate' || pos === 'Senior Marketing Associate' ? 12 : pos === 'Marketing Manager' ? 10 : 13;
+              const pageCount = 9;
               return (
                 <button
                   key={pos}

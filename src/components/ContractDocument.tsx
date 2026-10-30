@@ -94,8 +94,16 @@ export function extractContractData(
   }
 
   const sigUrl = application?.eSignatureUrl || (agent as any)?.eSignatureUrl || '';
-  const photoUrl = application?.idPhotoUrl || agent?.photoUrl || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&auto=format&fit=crop&q=80';
-  const govIdUrl = application?.governmentIdUrl || (agent as any)?.governmentIdUrl || '';
+  const photoUrl =
+    application?.idPhotoUrl ||
+    agent?.photoUrl ||
+    (agent as any)?.idPhotoUrl ||
+    (application?.personalDetails as any)?.idPhotoUrl ||
+    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop&crop=face';
+  const govIdUrl =
+    application?.governmentIdUrl ||
+    (agent as any)?.governmentIdUrl ||
+    'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&h=400&fit=crop';
 
   return {
     affiliateCode: application?.affiliateCode || agent?.affiliateCode || 'IPA-AP2-000003',

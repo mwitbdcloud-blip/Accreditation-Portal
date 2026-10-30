@@ -1095,7 +1095,7 @@ export default function App() {
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <Award className="w-3.5 h-3.5 text-amber-500" /> Digital ID Badge
+                  <Award className="w-3.5 h-3.5 text-amber-500" /> Digital ID Badge & Welcome Letter
                 </button>
 
                 <button

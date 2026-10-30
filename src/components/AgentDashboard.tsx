@@ -12,7 +12,6 @@ import {
   Calendar,
   Layers,
   ChevronRight,
-  Download,
   Lock,
   FileCheck,
   CreditCard,
@@ -25,13 +24,6 @@ import {
   PositionContractTemplate,
 } from '../types';
 import { formatDate } from '../utils/dateFormatter';
-import {
-  generateContractPdfFromTemplate,
-} from '../utils/templateDocumentEngine';
-import {
-  downloadPdfBlob,
-  getDefaultTemplateUrlForPosition,
-} from '../utils/contractGenerator';
 import { extractContractData } from './ContractDocument';
 import { DigitalIdBadge } from './DigitalIdBadge';
 
@@ -73,7 +65,6 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
     (agent.accreditationStatus === 'Not Started' || !latestApp || latestApp?.status === 'Draft' || agent.accreditationStatus === 'Pending');
 
   const [activeSubView, setActiveSubView] = useState<'overview' | 'badge'>(initialSubView);
-  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   useEffect(() => {
     if (initialSubView) {
@@ -86,27 +77,6 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
     agent.idPhotoUrl ||
     latestApp?.idPhotoUrl ||
     latestApp?.personalDetails?.idPhotoUrl;
-
-  const handleDirectContractDownload = async () => {
-    if (!isActive) return;
-    setIsDownloadingPdf(true);
-    try {
-      const contractData = extractContractData(latestApp, agent, (agent.position as any) || 'Marketing Associate');
-      const templateSource =
-        positionContract?.fileData ||
-        positionContract?.templateUrl ||
-        getDefaultTemplateUrlForPosition(agent.position);
-
-      const genResult = await generateContractPdfFromTemplate(templateSource, contractData, agent.position);
-      downloadPdfBlob(genResult.blob, genResult.fileName);
-    } catch (err) {
-      console.error('Error generating contract PDF for agent:', err);
-      // Fallback to opening modal
-      onViewContract();
-    } finally {
-      setIsDownloadingPdf(false);
-    }
-  };
 
   // Next action advice logic
   let nextActionTitle = 'Complete your Accreditation Application';
@@ -211,10 +181,10 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
               id="btn-hero-digital-badge"
               onClick={() => (onNavigateToDigitalIdBadge ? onNavigateToDigitalIdBadge() : setActiveSubView('badge'))}
               className="px-4 py-3 rounded-xl text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 shadow-md transition flex items-center gap-2 cursor-pointer shrink-0"
-              title="Show Client Digital ID Badge"
+              title="Show Client Digital ID Badge & Welcome Letter"
             >
               <Award className="w-4 h-4 text-slate-950" />
-              Digital ID Badge
+              Digital ID Badge & Welcome Letter
             </button>
           </div>
         </div>
@@ -305,28 +275,8 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
-                  onClick={handleDirectContractDownload}
-                  disabled={isDownloadingPdf}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-slate-900 bg-amber-400 hover:bg-amber-300 rounded-xl transition shadow-xs disabled:opacity-50"
-                  title="Download filled official Sales Agency Agreement (PDF)"
-                >
-                  {isDownloadingPdf ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" /> Generating SAA (PDF)...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4" /> Download Official SAA Agreement (PDF)
-                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-950/20 text-slate-950">
-                        PDF
-                      </span>
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
                   onClick={onViewContract}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-emerald-950 bg-emerald-200/80 hover:bg-emerald-300 rounded-xl transition"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-emerald-950 bg-emerald-200/80 hover:bg-emerald-300 rounded-xl transition cursor-pointer shadow-xs"
                 >
                   <FileText className="w-4 h-4" /> View Sales Agency Agreement (SAA)
                 </button>

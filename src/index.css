@@ -185,10 +185,13 @@ select:autofill {
     box-shadow: none !important;
   }
 
-  /* All pages must be displayed in print and properly page-broken */
+  /* All SAA pages must be displayed in print and properly page-broken */
+  .saa-page-sheet,
   section.docx,
   .docx-wrapper > section.docx {
-    display: block !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
     visibility: visible !important;
     opacity: 1 !important;
     background: #ffffff !important;
@@ -197,10 +200,10 @@ select:autofill {
     border: none !important;
     border-radius: 0 !important;
     margin: 0 auto !important;
-    padding: 20pt 28pt !important;
+    padding: 24pt 30pt !important;
     width: 100% !important;
     max-width: 100% !important;
-    min-height: auto !important;
+    min-height: 1020px !important;
     box-sizing: border-box !important;
     page-break-before: auto !important;
     page-break-after: always !important;
@@ -209,6 +212,7 @@ select:autofill {
     break-inside: avoid !important;
   }
 
+  .saa-page-sheet:last-child,
   section.docx:last-child,
   .docx-wrapper > section.docx:last-child {
     page-break-after: auto !important;

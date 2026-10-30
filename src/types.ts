@@ -155,10 +155,29 @@ export interface AccreditationApplication {
   contractGeneratedAt?: string;
   isUploaded?: boolean;
   isRegistered?: boolean;
-  isSample?: boolean;
   accreditationDate?: string;
   accreditationStartDate?: string;
   accreditationExpiryDate?: string;
+  isSample?: boolean;
+  welcomeLetter?: WelcomeLetterRecord;
+}
+
+export interface WelcomeLetterRecord {
+  id?: string;
+  sentAt: string;
+  sentBy: string;
+  sentByRole: string;
+  recipientEmail: string;
+  recipientName: string;
+  affiliateCode: string;
+  position: string;
+  region: string;
+  termStartDate: string;
+  termEndDate: string;
+  refNumber: string;
+  customNote?: string;
+  templateFileName?: string;
+  isViewedByAgent?: boolean;
 }
 
 export interface AccreditationRecord {
@@ -221,6 +240,7 @@ export interface AgentProfile {
   registrationOrigin?: string;
   importedBy?: string;
   importedAt?: string;
+  welcomeLetter?: WelcomeLetterRecord;
 }
 
 export interface StaffPermissions {

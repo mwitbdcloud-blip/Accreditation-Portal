@@ -10,6 +10,7 @@ import {
   Position,
   PositionContractTemplate,
   WelcomeLetterTemplate,
+  WelcomeLetterRecord,
   StaffAccount,
   StaffInvitation,
   StaffPermissions,
@@ -2146,8 +2147,8 @@ export const api = {
       customNote?: string;
       template?: WelcomeLetterTemplate;
     }
-  ): Promise<{ success: boolean; message: string; letterPreview: any }> {
-    const res = await safeFetch<{ success: boolean; message: string; letterPreview: any }>(
+  ): Promise<{ success: boolean; message: string; welcomeLetter?: WelcomeLetterRecord; letterPreview: any }> {
+    const res = await safeFetch<{ success: boolean; message: string; welcomeLetter?: WelcomeLetterRecord; letterPreview: any }>(
       `${BASE_URL}/applications/${encodeURIComponent(appId)}/send-welcome-letter`,
       {
         method: 'POST',
@@ -2156,13 +2157,59 @@ export const api = {
       }
     );
 
-    if (res.ok && res.data) return res.data;
+    if (res.ok && res.data) {
+      if (res.data.welcomeLetter) {
+        const app = clientStorage.getApplication(appId);
+        if (app) {
+          app.welcomeLetter = res.data.welcomeLetter;
+          clientStorage.saveApplication(app);
+        }
+        const code = app?.affiliateCode || res.data.welcomeLetter.affiliateCode;
+        if (code) clientStorage.updateAgent(code, { welcomeLetter: res.data.welcomeLetter });
+      }
+      return res.data;
+    }
 
     // Local / Offline fallback
     const app = clientStorage.getApplication(appId);
+    if (app && app.status !== 'Approved') {
+      return {
+        success: false,
+        message: 'Cannot send Welcome Letter. Application has not been approved by staff or admin yet.',
+        letterPreview: null as any,
+      };
+    }
     const agentName = app?.personalDetails?.fullName || (app as any)?.agentName || 'Affiliate';
     const email = app?.personalDetails?.emailAddress || (app as any)?.email || 'agent@email.com';
     const code = app?.affiliateCode || 'IPA-AP2-000000';
+    const nowIso = new Date().toISOString();
+
+    const welcomeLetterRecord: WelcomeLetterRecord = {
+      id: `WL-${Date.now()}`,
+      sentAt: nowIso,
+      sentBy: options?.operatorName || 'BD Staff',
+      sentByRole: options?.operatorRole || 'staff',
+      recipientEmail: email,
+      recipientName: agentName,
+      affiliateCode: code,
+      position: app?.position || 'Marketing Associate',
+      region: app?.region || 'Asia Pacific 2',
+      termStartDate: app?.dateSubmitted || nowIso,
+      termEndDate: app?.accreditationExpiryDate || computeExpiryDate(app?.dateSubmitted || nowIso, 4),
+      refNumber: `MWI-WL-2026-${code.replace(/[^0-9]/g, '').slice(-6) || '000001'}`,
+      customNote: options?.customNote,
+      templateFileName: options?.template?.fileName || 'Megaworld_International_Official_Welcome_Letter.docx',
+      isViewedByAgent: false,
+    };
+
+    if (app) {
+      app.welcomeLetter = welcomeLetterRecord;
+      clientStorage.saveApplication(app);
+    }
+    const agent = clientStorage.getAgent(code);
+    if (agent) {
+      clientStorage.updateAgent(code, { welcomeLetter: welcomeLetterRecord });
+    }
 
     clientStorage.addAuditLog({
       performedBy: options?.operatorName || 'BD Staff',
@@ -2170,14 +2217,24 @@ export const api = {
       action: 'Send Welcome Letter',
       recordAffected: code,
       affiliateCode: code,
-      details: `Dispatched official Megaworld International Welcome Letter to ${email} for approved accreditation (${code}).`,
+      details: `Dispatched official Megaworld International Welcome Letter to ${email} for approved accreditation (${code}). Available in agent Digital ID Badge tab.`,
+    });
+
+    clientStorage.addNotification({
+      affiliateCode: code,
+      targetRole: 'agent',
+      title: 'Official Welcome Letter Delivered',
+      message: 'Your official Welcome Letter and Accreditation Credentials are now available in your Digital ID Badge tab.',
+      category: 'Accreditation',
+      actionLink: 'digitalIdBadge',
     });
 
     return {
       success: true,
-      message: `Official Welcome Letter successfully dispatched to ${agentName} (${email}).`,
+      message: `Official Welcome Letter successfully dispatched to ${agentName} (${email}). The agent can view and download it inside their Digital ID Badge tab.`,
+      welcomeLetter: welcomeLetterRecord,
       letterPreview: {
-        sentAt: new Date().toISOString(),
+        sentAt: nowIso,
         recipientName: agentName,
         recipientEmail: email,
         affiliateCode: code,
