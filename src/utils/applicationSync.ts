@@ -30,21 +30,22 @@ export function createApplicationFromAgent(
   const position = (agent.position as Position) || existingApp?.position || 'Marketing Associate';
   const region = agent.region || existingApp?.region || 'Asia Pacific 2';
 
-  // Determine application status based on agent's status
-  let status: AccreditationApplication['status'] = 'Submitted';
+  // Determine application status based on agent's accreditation status
+  let status: AccreditationApplication['status'] = 'Draft';
   const aStatus = (agent.accreditationStatus || '') as string;
-  if (existingApp?.status && existingApp.status !== 'Draft') {
+  if (existingApp?.status) {
     status = existingApp.status;
-  } else if (aStatus === 'Active' || agent.accountStatus === 'Active') {
+  } else if (aStatus === 'Active' || aStatus === 'Expiring Soon') {
     status = 'Approved';
   } else if (aStatus === 'Revision Required') {
     status = 'Revision Required';
   } else if (aStatus === 'Rejected') {
     status = 'Rejected';
-  } else if (aStatus === 'Under Review') {
-    status = 'Under Review';
-  } else {
+  } else if (aStatus === 'Under Review' || aStatus === 'Pending Review' || aStatus === 'Renewal Pending') {
     status = 'Submitted';
+  } else {
+    // Newly registered or Not Started
+    status = 'Draft';
   }
 
   const dateSubmitted =
@@ -137,6 +138,12 @@ export function createApplicationFromAgent(
     isUploaded: agent.isUploaded || existingApp?.isUploaded,
     isRegistered: agent.isRegistered ?? true,
     isSample: agent.isSample ?? false,
+    isEditingEnabled: existingApp?.isEditingEnabled ?? agent.isEditingEnabled ?? false,
+    editingGrantedBy: existingApp?.editingGrantedBy,
+    editingGrantedAt: existingApp?.editingGrantedAt,
+    editingRevokedBy: existingApp?.editingRevokedBy,
+    editingRevokedAt: existingApp?.editingRevokedAt,
+    editingReason: existingApp?.editingReason,
   };
 }
 

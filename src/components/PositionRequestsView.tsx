@@ -16,7 +16,7 @@ export const PositionRequestsView: React.FC<PositionRequestsViewProps> = ({
 }) => {
   return (
     <div id="position-requests-view" className="space-y-6">
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
         <div className="flex items-center gap-2 mb-1">
           <span className="p-1.5 bg-blue-100 text-blue-900 rounded-lg">
             <Award className="w-4 h-4" />
@@ -24,8 +24,16 @@ export const PositionRequestsView: React.FC<PositionRequestsViewProps> = ({
           <h2 className="text-lg font-bold text-slate-900">Position Access Requests</h2>
         </div>
         <p className="text-xs text-slate-500">
-          Marketing Manager and Marketing Director positions require authorization by BD Staff or Admin. Approved applicants gain access to the respective accreditation forms.
+          Marketing Manager, Marketing Director, Senior Marketing Associate, and Marketing Partner positions require authorization by BD Staff or Admin. Approved applicants gain access to the respective accreditation form.
         </p>
+
+        <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 flex items-start gap-2.5">
+          <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+          <div>
+            <strong className="block font-bold text-amber-950 mb-0.5">Two Separate Processes Policy:</strong>
+            Approving a position eligibility request grants the applicant access to enter and submit their accreditation application for that position. It does <em>not</em> grant automatic accreditation approval or generate the SAA contract. The applicant must complete all required fields, upload required documents, and submit their accreditation application for formal BD evaluation.
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">

@@ -154,6 +154,13 @@ export const api = {
     const startDate = data.accreditationStartDate || new Date().toISOString().split('T')[0];
     const expiryDate = data.accreditationExpiryDate || computeExpiryDate(startDate, 4);
 
+    const registeredPosition = (data.position && data.position !== 'Pending Accreditation')
+      ? (data.position as Position)
+      : 'Marketing Associate';
+    const isAssociate = registeredPosition === 'Marketing Associate';
+    const isApproved = isAssociate;
+    const unlockedPositions: (Position | string)[] = isAssociate ? ['Marketing Associate'] : [];
+
     const newAgent: AgentProfile = {
       affiliateCode,
       firebaseUserId: `usr_reg_${Date.now()}`,
@@ -162,19 +169,21 @@ export const api = {
       email: data.email,
       password: data.password || 'password123',
       region: data.region,
-      position: initialPosition,
-      positions: initialPosition !== 'Pending Accreditation' ? [initialPosition] : [],
+      position: registeredPosition,
+      positions: [registeredPosition],
       role: 'agent',
       registrationDate: startDate,
       accountStatus: 'Active',
       profileCompletion: 25,
       currentAccreditationId: `acc_${Date.now()}`,
-      accreditationStatus: 'Pending',
+      accreditationStatus: 'Not Started',
       accreditationStartDate: startDate,
       accreditationExpiryDate: expiryDate,
       lastAccreditationDate: startDate,
       renewalEligibility: false,
-      unlockedPositions: initialPosition !== 'Pending Accreditation' ? [initialPosition] : [],
+      unlockedPositions,
+      positionEligibilityApproved: isApproved,
+      isEditingEnabled: false,
       tempPassword: `Mega@${nextCodeNum}`,
       assignedStaff: 'Elena Ramos (BD Staff)',
       isRegistered: true,
@@ -186,9 +195,30 @@ export const api = {
     clientStorage.saveAgents(localAgents);
     saveAgentToFirestore(newAgent).catch(() => {});
 
-    // Create and save matching application so Application Review is 100% synced
+    // If position requires approval, create a pending PositionAccessRequest
+    if (!isAssociate) {
+      const posReq: PositionAccessRequest = {
+        id: `pos_req_${Date.now()}`,
+        affiliateCode,
+        fullName: data.fullName,
+        currentPosition: 'Marketing Associate',
+        requestedPosition: registeredPosition,
+        region: data.region,
+        requestDate: startDate,
+        reason: `New registration position eligibility request for ${registeredPosition}`,
+        status: 'Pending',
+      };
+      const reqs = clientStorage.getPositionRequests();
+      reqs.unshift(posReq);
+      clientStorage.savePositionRequests(reqs);
+      savePositionRequestToFirestore(posReq).catch(() => {});
+    }
+
+    // Initial Draft application - applicant is in data entry phase
     const newApp = createApplicationFromAgent(newAgent);
-    newApp.status = 'Submitted';
+    newApp.status = 'Draft';
+    newApp.isEditingEnabled = false;
+    newApp.dateSubmitted = '';
     clientStorage.saveApplication(newApp);
     saveApplicationToFirestore(newApp).catch(() => {});
 
@@ -197,7 +227,7 @@ export const api = {
       role: 'agent',
       action: 'New Agent Registration',
       recordAffected: affiliateCode,
-      details: `Registered for ${data.region}. Permanent code ${affiliateCode} generated. Application synced for BD Review.`,
+      details: `Registered for ${data.region} as ${registeredPosition}. Permanent code ${affiliateCode} generated. Application initialized in Draft state.`,
     });
 
     return {
@@ -205,7 +235,7 @@ export const api = {
       affiliateCode,
       agent: newAgent,
       application: newApp,
-      message: 'Registration successful! Your permanent Affiliate Code and application have been provisioned.',
+      message: 'Registration successful! Your permanent Affiliate Code has been provisioned.',
     };
   },
 
@@ -1081,6 +1111,146 @@ export const api = {
     };
   },
 
+  async grantEditingPermission(
+    id: string,
+    operatorName = 'BD Staff',
+    operatorRole = 'Staff',
+    reason = 'Revision required'
+  ): Promise<{ success: boolean; message: string; application: AccreditationApplication; agent?: AgentProfile }> {
+    const res = await safeFetch<{ success: boolean; message: string; application: AccreditationApplication; agent?: AgentProfile }>(
+      `${BASE_URL}/applications/${encodeURIComponent(id)}/grant-editing`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operatorName, operatorRole, reason }),
+      }
+    );
+
+    if (res.ok && res.data) {
+      clientStorage.saveApplication(res.data.application);
+      saveApplicationToFirestore(res.data.application).catch(() => {});
+      if (res.data.agent) {
+        clientStorage.updateAgent(res.data.agent.affiliateCode, res.data.agent);
+        saveAgentToFirestore(res.data.agent).catch(() => {});
+      }
+      return res.data;
+    }
+
+    // Client-side fallback
+    const targetApp = clientStorage.getApplication(id);
+    if (!targetApp) throw new Error('Application not found.');
+    const nowIso = new Date().toISOString();
+    targetApp.isEditingEnabled = true;
+    targetApp.status = 'Revision Required';
+    targetApp.editingGrantedBy = operatorName;
+    targetApp.editingGrantedAt = nowIso;
+    targetApp.editingReason = reason;
+    clientStorage.saveApplication(targetApp);
+    saveApplicationToFirestore(targetApp).catch(() => {});
+
+    let updatedAgent: AgentProfile | undefined;
+    if (targetApp.affiliateCode) {
+      updatedAgent = clientStorage.updateAgent(targetApp.affiliateCode, {
+        isEditingEnabled: true,
+        accreditationStatus: 'Not Started',
+      });
+      if (updatedAgent) saveAgentToFirestore(updatedAgent).catch(() => {});
+    }
+
+    clientStorage.addAuditLog({
+      user: operatorName,
+      role: operatorRole,
+      action: 'Grant Editing Permission',
+      recordAffected: targetApp.affiliateCode,
+      details: `Granted editing permission for application. Status updated to Revision Required – Editing Enabled. Reason: ${reason}`,
+    });
+
+    clientStorage.addNotification({
+      targetRole: 'agent',
+      affiliateCode: targetApp.affiliateCode,
+      title: 'Revision Required – Editing Enabled',
+      message: `Staff/Admin (${operatorName}) has granted you editing permission. Reason: ${reason}. You may now revise and resubmit your accreditation application.`,
+      category: 'Application',
+      actionLink: 'accreditation',
+    });
+
+    return {
+      success: true,
+      message: `Editing permission granted. Status: 'Revision Required – Editing Enabled'.`,
+      application: targetApp,
+      agent: updatedAgent,
+    };
+  },
+
+  async revokeEditingPermission(
+    id: string,
+    operatorName = 'BD Staff',
+    operatorRole = 'Staff'
+  ): Promise<{ success: boolean; message: string; application: AccreditationApplication; agent?: AgentProfile }> {
+    const res = await safeFetch<{ success: boolean; message: string; application: AccreditationApplication; agent?: AgentProfile }>(
+      `${BASE_URL}/applications/${encodeURIComponent(id)}/revoke-editing`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operatorName, operatorRole }),
+      }
+    );
+
+    if (res.ok && res.data) {
+      clientStorage.saveApplication(res.data.application);
+      saveApplicationToFirestore(res.data.application).catch(() => {});
+      if (res.data.agent) {
+        clientStorage.updateAgent(res.data.agent.affiliateCode, res.data.agent);
+        saveAgentToFirestore(res.data.agent).catch(() => {});
+      }
+      return res.data;
+    }
+
+    // Client-side fallback
+    const targetApp = clientStorage.getApplication(id);
+    if (!targetApp) throw new Error('Application not found.');
+    const nowIso = new Date().toISOString();
+    targetApp.isEditingEnabled = false;
+    targetApp.status = 'Submitted';
+    targetApp.editingRevokedBy = operatorName;
+    targetApp.editingRevokedAt = nowIso;
+    clientStorage.saveApplication(targetApp);
+    saveApplicationToFirestore(targetApp).catch(() => {});
+
+    let updatedAgent: AgentProfile | undefined;
+    if (targetApp.affiliateCode) {
+      updatedAgent = clientStorage.updateAgent(targetApp.affiliateCode, {
+        isEditingEnabled: false,
+        accreditationStatus: 'Pending Review',
+      });
+      if (updatedAgent) saveAgentToFirestore(updatedAgent).catch(() => {});
+    }
+
+    clientStorage.addAuditLog({
+      user: operatorName,
+      role: operatorRole,
+      action: 'Revoke Editing Permission',
+      recordAffected: targetApp.affiliateCode,
+      details: `Revoked editing permission for application. Application returned to Read-Only mode.`,
+    });
+
+    clientStorage.addNotification({
+      targetRole: 'agent',
+      affiliateCode: targetApp.affiliateCode,
+      title: 'Editing Permission Revoked',
+      message: `Staff/Admin (${operatorName}) has revoked editing permission. Your application has returned to Read-Only mode.`,
+      category: 'Application',
+      actionLink: 'accreditation',
+    });
+
+    return {
+      success: true,
+      message: `Editing permission revoked. Application returned to Read-Only mode.`,
+      application: targetApp,
+      agent: updatedAgent,
+    };
+  },
+
   async updateApplication(
     id: string,
     updatedData: Partial<AccreditationApplication>,
@@ -1333,8 +1503,20 @@ export const api = {
         const unlocked = Array.from(new Set([...(agent.unlockedPositions || []), req.requestedPosition]));
         const updatedAgent = clientStorage.updateAgent(req.affiliateCode, {
           unlockedPositions: unlocked as Position[],
+          positionEligibilityApproved: true,
+          positionApprovedBy: reviewerName,
+          positionApprovedAt: new Date().toISOString(),
+          position: req.requestedPosition,
         });
         if (updatedAgent) saveAgentToFirestore(updatedAgent).catch(() => {});
+
+        const allApps = clientStorage.getApplications();
+        const draftApp = allApps.find((a) => a.affiliateCode === req.affiliateCode && a.status === 'Draft');
+        if (draftApp) {
+          draftApp.position = req.requestedPosition;
+          clientStorage.saveApplication(draftApp);
+          saveApplicationToFirestore(draftApp).catch(() => {});
+        }
       }
     }
 

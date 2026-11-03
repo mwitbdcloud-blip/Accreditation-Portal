@@ -20,6 +20,7 @@ import {
   Network,
   Save,
   Lock,
+  Unlock,
   CheckSquare,
   Square,
   AlertTriangle,
@@ -45,6 +46,7 @@ import {
 import { formatDate, calculateAgeFromDob, computeExpiryDate } from '../utils/dateFormatter';
 import { WelcomeLetterModal } from './WelcomeLetterModal';
 import { WelcomeLetterTemplateModal } from './WelcomeLetterTemplateModal';
+import { api } from '../services/api';
 
 const DEFAULT_LEADERSHIP: TeamLeadershipDetails = {
   seniorMarketingAssociate: 'Ricardo Gomez',
@@ -91,6 +93,8 @@ interface ApplicationsManagerProps {
     updatedData: Partial<AccreditationApplication>
   ) => Promise<void> | void;
   onViewContractForApp: (app: AccreditationApplication) => void;
+  onGrantEditing?: (appId: string, reason?: string) => Promise<void> | void;
+  onRevokeEditing?: (appId: string) => Promise<void> | void;
   onDeleteApplication?: (id: string) => void;
   onDeleteMultipleApplications?: (ids: string[]) => Promise<void> | void;
   onDeleteAllApplications?: () => Promise<void> | void;
@@ -110,11 +114,13 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
   onReviewApplication,
   onUpdateApplicationDetails,
   onViewContractForApp,
+  onGrantEditing,
+  onRevokeEditing,
   onDeleteApplication,
   onDeleteMultipleApplications,
   onDeleteAllApplications,
   currentUserRole,
-  currentUser = { role: currentUserRole, fullName: 'BD Staff', email: 'staff@megaworld.com' },
+  currentUser = { role: currentUserRole, fullName: 'BD Staff', displayName: 'BD Staff', email: 'staff@megaworld.com' },
   showToast = (msg: string) => {},
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -162,6 +168,74 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
 
   const [reviewNotes, setReviewNotes] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Staff/Admin-controlled editing permission modal state
+  const [editingModal, setEditingModal] = useState<{
+    isOpen: boolean;
+    app: AccreditationApplication;
+    action: 'grant' | 'revoke';
+    reason: string;
+  } | null>(null);
+  const [isUpdatingEditingPermission, setIsUpdatingEditingPermission] = useState(false);
+
+  const handleOpenGrantEditing = (app: AccreditationApplication) => {
+    setEditingModal({
+      isOpen: true,
+      app,
+      action: 'grant',
+      reason: app.reviewNotes || 'Please revise the required accreditation details and supporting documents.',
+    });
+  };
+
+  const handleOpenRevokeEditing = (app: AccreditationApplication) => {
+    setEditingModal({
+      isOpen: true,
+      app,
+      action: 'revoke',
+      reason: '',
+    });
+  };
+
+  const handleConfirmEditingPermission = async () => {
+    if (!editingModal) return;
+    setIsUpdatingEditingPermission(true);
+    try {
+      const operatorName = currentUser?.displayName || currentUser?.fullName || 'BD Staff';
+      const operatorRole = currentUser?.role || 'Staff';
+
+      if (editingModal.action === 'grant') {
+        if (onGrantEditing) {
+          await onGrantEditing(editingModal.app.id, editingModal.reason);
+        } else {
+          await api.grantEditingPermission(editingModal.app.id, operatorName, operatorRole, editingModal.reason);
+        }
+        showToast?.(`Editing permission granted for ${editingModal.app.personalDetails?.fullName || editingModal.app.affiliateCode}. Application status updated to Revision Required – Editing Enabled.`);
+      } else {
+        if (onRevokeEditing) {
+          await onRevokeEditing(editingModal.app.id);
+        } else {
+          await api.revokeEditingPermission(editingModal.app.id, operatorName, operatorRole);
+        }
+        showToast?.(`Editing permission revoked. Application returned to Read-Only mode.`);
+      }
+
+      // If review modal is also open with selectedApp, update selectedApp
+      if (selectedApp && selectedApp.id === editingModal.app.id) {
+        setSelectedApp({
+          ...selectedApp,
+          isEditingEnabled: editingModal.action === 'grant',
+          status: editingModal.action === 'grant' ? 'Revision Required' : 'Submitted',
+          editingReason: editingModal.action === 'grant' ? editingModal.reason : undefined,
+        });
+      }
+
+      setEditingModal(null);
+    } catch (err: any) {
+      showToast?.(err.message || 'Failed to update editing permission.');
+    } finally {
+      setIsUpdatingEditingPermission(false);
+    }
+  };
 
   // Document Lightbox & Zoom Inspection State
   const [inspectDoc, setInspectDoc] = useState<{
@@ -849,21 +923,32 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                       </td>
                       <td className="py-3.5 px-4 text-slate-500">{formatDate(app.dateSubmitted)}</td>
                       <td className="py-3.5 px-4">
-                        <span
-                          className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            app.status === 'Approved'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : app.status === 'Under Review' || app.status === 'Submitted'
-                              ? 'bg-amber-100 text-amber-800'
-                              : app.status === 'Revision Required'
-                              ? 'bg-purple-100 text-purple-800'
-                              : app.status === 'Draft'
-                              ? 'bg-slate-100 text-slate-700 border border-slate-300'
-                              : 'bg-rose-100 text-rose-800'
-                          }`}
-                        >
-                          {app.status}
-                        </span>
+                        {app.isEditingEnabled ? (
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-100 text-purple-900 border border-purple-300">
+                              Revision Required – Editing Enabled
+                            </span>
+                            <span className="text-[10px] text-purple-700 font-semibold flex items-center gap-1">
+                              <Unlock className="w-2.5 h-2.5" /> Agent Editing Active
+                            </span>
+                          </div>
+                        ) : (
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              app.status === 'Approved'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : app.status === 'Under Review' || app.status === 'Submitted'
+                                ? 'bg-amber-100 text-amber-800'
+                                : app.status === 'Revision Required'
+                                ? 'bg-purple-100 text-purple-800'
+                                : app.status === 'Draft'
+                                ? 'bg-slate-100 text-slate-700 border border-slate-300'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}
+                          >
+                            {app.status === 'Submitted' ? 'Submitted – Under Review' : app.status}
+                          </span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4">
                         <span
@@ -886,6 +971,29 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                           >
                             <Eye className="w-4 h-4" />
                           </button>
+
+                          {/* Quick Enable / Revoke Editing Permission Buttons */}
+                          {app.isEditingEnabled ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenRevokeEditing(app)}
+                              className="p-1.5 text-amber-700 hover:bg-amber-50 rounded-lg transition"
+                              title="Revoke Editing Permission & Lock Application"
+                            >
+                              <Lock className="w-4 h-4 text-amber-600" />
+                            </button>
+                          ) : (
+                            app.status !== 'Draft' && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenGrantEditing(app)}
+                                className="p-1.5 text-purple-700 hover:bg-purple-50 rounded-lg transition"
+                                title="Enable Editing / Grant Revision Permission"
+                              >
+                                <Unlock className="w-4 h-4 text-purple-600" />
+                              </button>
+                            )
+                          )}
 
                           {app.status === 'Approved' && (
                             <>
@@ -2027,6 +2135,70 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
                 </div>
               </div>
 
+              {/* Staff/Admin-Controlled Editing Permission Control Section */}
+              <div
+                className={`p-4 rounded-xl border transition-all ${
+                  selectedApp.isEditingEnabled
+                    ? 'bg-purple-50/80 border-purple-300'
+                    : 'bg-slate-50 border-slate-200'
+                } space-y-3`}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-blue-900" />
+                      Applicant Editing Permission & Revision Workflow
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Granting editing permission unlocks the application for the agent. Once the agent resubmits, it automatically reverts to Read-Only mode.
+                    </p>
+                  </div>
+                  <div>
+                    {selectedApp.isEditingEnabled ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-900 border border-purple-300">
+                        <Unlock className="w-3.5 h-3.5 text-purple-700" /> Editing Permission Active
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                        <Lock className="w-3.5 h-3.5 text-amber-700" /> Read-Only Mode (Locked)
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200/80">
+                  <div className="text-[11px] text-slate-600">
+                    {selectedApp.isEditingEnabled ? (
+                      <span>
+                        Permission granted by <strong>{selectedApp.editingGrantedBy || 'BD Staff'}</strong>
+                        {selectedApp.editingGrantedAt ? ` on ${formatDate(selectedApp.editingGrantedAt)}` : ''}
+                        {selectedApp.editingReason ? `: "${selectedApp.editingReason}"` : ''}
+                      </span>
+                    ) : (
+                      <span>The agent currently has read-only access and cannot edit or modify submitted records.</span>
+                    )}
+                  </div>
+
+                  {selectedApp.isEditingEnabled ? (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenRevokeEditing(selectedApp)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg transition cursor-pointer"
+                    >
+                      <Lock className="w-3.5 h-3.5 text-amber-800" /> Revoke Editing Permission (Lock)
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenGrantEditing(selectedApp)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-purple-900 bg-purple-100 hover:bg-purple-200 border border-purple-300 rounded-lg transition cursor-pointer"
+                    >
+                      <Unlock className="w-3.5 h-3.5 text-purple-700" /> Enable Editing / Grant Permission
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* Review Notes Input */}
               <div className="space-y-1.5 pt-2">
                 <label className="block font-semibold text-slate-800">
@@ -2433,6 +2605,131 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
           }}
           showToast={showToast}
         />
+      )}
+
+      {/* GRANT / REVOKE EDITING PERMISSION MODAL */}
+      {editingModal && editingModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+            <div
+              className={`px-6 py-4 text-white flex items-center justify-between ${
+                editingModal.action === 'grant' ? 'bg-purple-700' : 'bg-amber-700'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {editingModal.action === 'grant' ? (
+                  <Unlock className="w-5 h-5 text-purple-200" />
+                ) : (
+                  <Lock className="w-5 h-5 text-amber-200" />
+                )}
+                <h3 className="font-bold text-base">
+                  {editingModal.action === 'grant'
+                    ? 'Grant Editing Permission to Applicant'
+                    : 'Revoke Editing Permission & Lock Application'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingModal(null)}
+                className="text-white/80 hover:text-white"
+                disabled={isUpdatingEditingPermission}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Applicant:</span>
+                  <strong className="text-slate-900 text-sm">
+                    {editingModal.app.personalDetails?.fullName || editingModal.app.affiliateCode}
+                  </strong>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Affiliate Code:</span>
+                  <span className="font-mono font-bold text-blue-900">{editingModal.app.affiliateCode}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Position / Region:</span>
+                  <span className="text-slate-700 font-medium">
+                    {editingModal.app.position} • {editingModal.app.region}
+                  </span>
+                </div>
+              </div>
+
+              {editingModal.action === 'grant' ? (
+                <>
+                  <p className="text-slate-700 leading-relaxed">
+                    Granting editing access will unlock the application on the agent&apos;s portal, updating their status to <strong>&quot;Revision Required – Editing Enabled&quot;</strong>. The agent will be able to edit personal, banking, and team details, replace documents, and resubmit.
+                  </p>
+                  <p className="text-slate-600 leading-relaxed font-semibold">
+                    Once the agent completes revisions and resubmits, the system will automatically re-lock the application back to READ-ONLY MODE.
+                  </p>
+
+                  <div className="space-y-1.5 pt-2">
+                    <label className="block font-bold text-slate-800">
+                      Revision Instructions / Notes for Applicant:
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={editingModal.reason}
+                      onChange={(e) =>
+                        setEditingModal({ ...editingModal, reason: e.target.value })
+                      }
+                      placeholder="e.g. Please update your residential address and upload a higher resolution copy of your Government ID."
+                      className="w-full p-2.5 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-700 focus:outline-none"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-slate-700 leading-relaxed">
+                    Are you sure you want to revoke editing permission for this applicant?
+                  </p>
+                  <p className="text-amber-800 bg-amber-50 p-3 rounded-xl border border-amber-200 leading-relaxed">
+                    The application will immediately lock in <strong>READ-ONLY MODE</strong>. The agent will no longer be able to modify, delete, or replace submitted details or uploaded documents.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setEditingModal(null)}
+                disabled={isUpdatingEditingPermission}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmEditingPermission}
+                disabled={isUpdatingEditingPermission}
+                className={`inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold uppercase tracking-wider text-white rounded-lg shadow-sm transition disabled:opacity-50 cursor-pointer ${
+                  editingModal.action === 'grant'
+                    ? 'bg-purple-700 hover:bg-purple-800'
+                    : 'bg-amber-700 hover:bg-amber-800'
+                }`}
+              >
+                {isUpdatingEditingPermission ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Processing...
+                  </>
+                ) : editingModal.action === 'grant' ? (
+                  <>
+                    <Unlock className="w-3.5 h-3.5" /> Confirm & Enable Editing
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-3.5 h-3.5" /> Confirm & Lock Application
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

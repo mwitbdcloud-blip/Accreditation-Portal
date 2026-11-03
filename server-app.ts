@@ -426,7 +426,10 @@ async function startServer() {
     const startDate = accreditationStartDate ? String(accreditationStartDate).trim() : today;
     const expiryDate = computeServerExpiryDate(startDate, 4);
 
-    const initialPosition = position && position !== 'Pending Accreditation' ? position : 'Pending Accreditation';
+    const registeredPos = position && position !== 'Pending Accreditation' ? position : 'Marketing Associate';
+    const isMarketingAssociate = registeredPos === 'Marketing Associate';
+    const isPositionEligibilityApproved = isMarketingAssociate;
+    const unlockedPositions: (Position | string)[] = isMarketingAssociate ? ['Marketing Associate'] : [];
 
     const newAgent: AgentProfile = {
       affiliateCode,
@@ -436,31 +439,62 @@ async function startServer() {
       mobileNumber: mobileNumber ? mobileNumber.trim() : '',
       password,
       region,
-      position: initialPosition,
+      position: registeredPos,
+      positions: [registeredPos],
       role: 'agent',
       registrationDate: today,
       accountStatus: 'Active',
       profileCompletion: 25, // Initial basic details provided
-      accreditationStatus: 'Pending', // Pending until they complete accreditation inside
+      accreditationStatus: 'Not Started', // Not started until applicant completes and submits accreditation application
       accreditationStartDate: startDate,
       accreditationExpiryDate: expiryDate,
       lastAccreditationDate: startDate,
       renewalEligibility: false,
-      unlockedPositions: initialPosition !== 'Pending Accreditation' ? [initialPosition] : [],
+      unlockedPositions,
+      positionEligibilityApproved: isPositionEligibilityApproved,
+      isEditingEnabled: false,
+      isRegistered: true,
+      isSample: false,
     };
 
     db.agents.push(newAgent);
 
-    // Initial draft application - details provided during registration are generated to their account,
-    // and all unprovided information is left blank so they can complete the accreditation process inside
+    // If registered position requires Staff/Admin approval, create a pending PositionAccessRequest
+    if (!isMarketingAssociate) {
+      const posReq: PositionAccessRequest = {
+        id: `pos_req_${Date.now()}`,
+        affiliateCode,
+        fullName: fullName.trim(),
+        currentPosition: 'Marketing Associate',
+        requestedPosition: registeredPos as Position,
+        region,
+        requestDate: today,
+        reason: `New agent registration: Requested position eligibility for ${registeredPos}`,
+        status: 'Pending',
+      };
+      db.positionRequests.unshift(posReq);
+
+      db.addNotification(
+        undefined,
+        affiliateCode,
+        'staff',
+        `New Position Eligibility Request — ${affiliateCode}`,
+        `New agent ${fullName.trim()} registered with position ${registeredPos} which requires Staff/Admin approval.`,
+        'Approval',
+        'positionRequests'
+      );
+    }
+
+    // Initial Draft application - applicant is in data entry phase and can fill out all details
     const newApp: AccreditationApplication = {
       id: `app_${Date.now()}`,
       affiliateCode,
       applicationType: 'New',
-      position,
+      position: registeredPos as Position,
       region,
-      status: 'Submitted',
-      dateSubmitted: today,
+      status: 'Draft', // Draft status allows newly registered agent with access to fill out, edit, and upload
+      dateSubmitted: '',
+      isEditingEnabled: false,
       accreditationDate: startDate,
       accreditationStartDate: startDate,
       accreditationExpiryDate: expiryDate,
@@ -481,7 +515,7 @@ async function startServer() {
         mobileNumber: mobileNumber ? mobileNumber.trim() : '',
         emailAddress: normalizedEmail,
         tin: '',
-        idMatchConfirmed: true,
+        idMatchConfirmed: false,
         accreditationDate: startDate,
         accreditationStartDate: startDate,
         accreditationExpiryDate: expiryDate,
@@ -494,14 +528,14 @@ async function startServer() {
         swiftCode: '',
       },
       teamDetails: {
-        teamName: 'Team Apex Horizon',
-        upline: 'Ricardo Gomez',
-        teamLeader: 'Victoria Del Rosario',
+        teamName: '',
+        upline: '',
+        teamLeader: '',
         brokerGroup: `Megaworld International ${region} Hub`,
       },
       idVerificationStatus: 'Pending',
-      eSignatureConfirmed: true,
-      declarationAccepted: true,
+      eSignatureConfirmed: false,
+      declarationAccepted: false,
       isRegistered: true,
       isSample: false,
     };
@@ -2453,10 +2487,90 @@ async function startServer() {
       return res.status(404).json({ error: 'Agent profile not found for Affiliate Code.' });
     }
 
-    // Duplicate detection based on Full Legal Name + Date of Birth
+    const appliedPosition = (position as Position) || (agent.position as Position) || 'Marketing Associate';
+
+    // 1. Position Access Enforcement:
+    // Marketing Associate has automatic access.
+    // Higher positions require prior Staff/Admin position eligibility approval.
+    if (appliedPosition !== 'Marketing Associate') {
+      const isPositionApproved =
+        agent.positionEligibilityApproved === true ||
+        (agent.unlockedPositions && agent.unlockedPositions.includes(appliedPosition));
+      if (!isPositionApproved) {
+        return res.status(403).json({
+          error: 'Position Eligibility Approval Required',
+          message: `Applications for ${appliedPosition} require prior Staff/Admin position eligibility approval. Your access to submit an accreditation application for this position remains restricted until reviewed by BD Staff or Admin.`,
+        });
+      }
+    }
+
+    // 2. Read-Only Lock Enforcement:
+    // If an application has already been submitted and is locked, prevent modification unless editing was granted.
+    const existingSubmitted = db.applications.find(
+      (a) => a.affiliateCode === affiliateCode && a.status !== 'Draft'
+    );
+    if (existingSubmitted && !existingSubmitted.isEditingEnabled && !agent.isEditingEnabled) {
+      return res.status(403).json({
+        error: 'Application Locked in Read-Only Mode',
+        message: 'This accreditation application has already been submitted and is locked in read-only mode. Only authorized Staff/Admin can grant editing permission.',
+      });
+    }
+
+    // 3. Field & Document Validation:
+    if (
+      !personalDetails?.firstName?.trim() ||
+      !personalDetails?.lastName?.trim() ||
+      !personalDetails?.dateOfBirth?.trim() ||
+      !personalDetails?.residentialAddress?.trim() ||
+      !personalDetails?.mobileNumber?.trim() ||
+      !personalDetails?.emailAddress?.trim() ||
+      !personalDetails?.idMatchConfirmed
+    ) {
+      return res.status(400).json({
+        error: 'Mandatory Information Missing',
+        message: 'All mandatory Personal Details (First Name, Last Name, Date of Birth, Residential Address, Mobile, Email, and ID Match confirmation) must be provided.',
+      });
+    }
+
+    if (!teamDetails?.teamName?.trim()) {
+      return res.status(400).json({
+        error: 'Mandatory Team Name Missing',
+        message: 'Assigned Team Name is required before submitting.',
+      });
+    }
+
+    if (!data.idPhotoUrl) {
+      return res.status(400).json({
+        error: 'Mandatory 1x1 Photo Missing',
+        message: 'A 1x1 ID Photo must be uploaded before submitting.',
+      });
+    }
+
+    if (!data.governmentIdUrl) {
+      return res.status(400).json({
+        error: 'Mandatory Government ID Missing',
+        message: 'A valid Government ID / Passport must be uploaded before submitting.',
+      });
+    }
+
+    if (!data.eSignatureUrl || !data.eSignatureConfirmed) {
+      return res.status(400).json({
+        error: 'Mandatory Electronic Signature Missing',
+        message: 'An Electronic Signature must be drawn and confirmed before submitting.',
+      });
+    }
+
+    if (!data.declarationAccepted) {
+      return res.status(400).json({
+        error: 'Declaration Unaccepted',
+        message: 'The official Declaration of Authenticity and Truthfulness must be accepted before submitting.',
+      });
+    }
+
+    // Duplicate detection based on Full Legal Name + Email
     if (personalDetails && db.settings.preventDuplicateIdentities) {
       const duplicateAgent = db.agents.find((a) => {
-        if (a.affiliateCode === affiliateCode) return false; // same person across renewals is valid!
+        if (a.affiliateCode === affiliateCode) return false;
         return (
           a.fullName.toLowerCase() === personalDetails.fullName.toLowerCase() &&
           a.email.toLowerCase() === personalDetails.emailAddress.toLowerCase()
@@ -2496,20 +2610,19 @@ async function startServer() {
       new Date().toISOString().split('T')[0];
     const expiryDate = computeServerExpiryDate(submittedAccredDate, 4);
 
-    // Check if updating existing draft or creating new application record
-    let targetApp = db.applications.find(
-      (a) => a.affiliateCode === affiliateCode && (a.status === 'Draft' || a.status === 'Revision Required')
-    );
+    // Locate existing application record
+    let targetApp = db.applications.find((a) => a.affiliateCode === affiliateCode);
 
     if (!targetApp) {
       targetApp = {
         id: `app_${Date.now()}`,
         affiliateCode,
         applicationType: applicationType || 'New',
-        position: (position as Position) || (agent.position as Position) || 'Marketing Associate',
+        position: appliedPosition,
         region: agent.region,
-        status: 'Submitted',
+        status: 'Submitted', // Automatically locked in Read-Only mode after submission
         dateSubmitted: new Date().toISOString(),
+        isEditingEnabled: false,
         accreditationDate: submittedAccredDate,
         accreditationStartDate: submittedAccredDate,
         accreditationExpiryDate: expiryDate,
@@ -2533,7 +2646,9 @@ async function startServer() {
       db.applications.unshift(targetApp);
     } else {
       targetApp.applicationType = applicationType || targetApp.applicationType;
-      targetApp.status = 'Submitted';
+      targetApp.position = appliedPosition;
+      targetApp.status = 'Submitted'; // Automatically switches back to READ-ONLY MODE
+      targetApp.isEditingEnabled = false; // Revoke editing upon resubmission
       targetApp.dateSubmitted = new Date().toISOString();
       targetApp.accreditationDate = submittedAccredDate;
       targetApp.accreditationStartDate = submittedAccredDate;
@@ -2555,12 +2670,13 @@ async function startServer() {
       targetApp.declarationAccepted = !!data.declarationAccepted;
     }
 
-    // Update Agent profile completion & reflect submitted position and all target fields
+    // Update Agent profile completion & reflect submitted position and target fields
     agent.profileCompletion = 100;
     agent.accreditationStatus = applicationType === 'Renewal' ? 'Renewal Pending' : 'Pending Review';
     agent.accreditationStartDate = submittedAccredDate;
     agent.accreditationExpiryDate = expiryDate;
     agent.lastAccreditationDate = submittedAccredDate;
+    agent.isEditingEnabled = false; // Revoke agent editing on profile level too
 
     if (targetApp.position) {
       agent.position = targetApp.position;
@@ -2570,7 +2686,7 @@ async function startServer() {
       }
     }
 
-    // Reflect and generate all Target Fields in Agent Profile based on submitted application
+    // Reflect all target fields into Agent Profile
     if (personalDetails) {
       agent.personalDetails = {
         ...agent.personalDetails,
@@ -2609,7 +2725,7 @@ async function startServer() {
       'agent',
       applicationType === 'Renewal' ? 'Renewal Application Submitted' : 'New Accreditation Submitted',
       affiliateCode,
-      `Submitted ${applicationType} application for ${targetApp.position}. Affiliate Code permanent identity maintained.`
+      `Submitted ${applicationType} application for ${targetApp.position}. Switched to Read-Only Mode (Submitted – Under Review).`
     );
 
     db.addNotification(
@@ -2617,15 +2733,104 @@ async function startServer() {
       affiliateCode,
       'staff',
       `${applicationType} Accreditation Submitted — ${affiliateCode}`,
-      `${agent.fullName} submitted their ${applicationType} application for review.`,
+      `${agent.fullName} submitted their ${applicationType} application for review. Application locked in Read-Only mode.`,
       'Application',
       'applications'
     );
 
     res.json({
       success: true,
-      message: 'Application successfully submitted for review!',
+      message: 'Application successfully submitted and locked in Read-Only mode for review!',
       application: targetApp,
+    });
+  });
+
+  // Staff/Admin: Enable Editing / Grant Editing Permission
+  app.post('/api/applications/:id/grant-editing', (req, res) => {
+    const { operatorName = 'BD Staff', operatorRole = 'Staff', reason = 'Revision requested by Staff/Admin' } = req.body || {};
+    const targetApp = db.applications.find((a) => a.id === req.params.id);
+    if (!targetApp) return res.status(404).json({ error: 'Application not found.' });
+
+    const agent = db.agents.find((a) => a.affiliateCode === targetApp.affiliateCode);
+    const nowIso = new Date().toISOString();
+
+    targetApp.isEditingEnabled = true;
+    targetApp.status = 'Revision Required';
+    targetApp.editingGrantedBy = operatorName;
+    targetApp.editingGrantedAt = nowIso;
+    targetApp.editingReason = reason;
+
+    if (agent) {
+      agent.isEditingEnabled = true;
+      agent.accreditationStatus = 'Not Started';
+      db.addNotification(
+        agent.firebaseUserId,
+        agent.affiliateCode,
+        'agent',
+        'Revision Required – Editing Enabled',
+        `Staff/Admin (${operatorName}) has granted you editing permission. Reason: ${reason}. You may now revise and resubmit your accreditation application.`,
+        'Application',
+        'accreditation'
+      );
+    }
+
+    db.log(
+      operatorName,
+      operatorRole as any,
+      'Grant Editing Permission',
+      targetApp.affiliateCode,
+      `Granted editing permission to applicant ${targetApp.personalDetails?.fullName || targetApp.affiliateCode}. Status: Revision Required – Editing Enabled. Reason: ${reason}`
+    );
+
+    res.json({
+      success: true,
+      message: `Editing permission granted to ${targetApp.personalDetails?.fullName || targetApp.affiliateCode}. Status is now 'Revision Required – Editing Enabled'.`,
+      application: targetApp,
+      agent,
+    });
+  });
+
+  // Staff/Admin: Revoke Editing Permission
+  app.post('/api/applications/:id/revoke-editing', (req, res) => {
+    const { operatorName = 'BD Staff', operatorRole = 'Staff' } = req.body || {};
+    const targetApp = db.applications.find((a) => a.id === req.params.id);
+    if (!targetApp) return res.status(404).json({ error: 'Application not found.' });
+
+    const agent = db.agents.find((a) => a.affiliateCode === targetApp.affiliateCode);
+    const nowIso = new Date().toISOString();
+
+    targetApp.isEditingEnabled = false;
+    targetApp.status = 'Submitted';
+    targetApp.editingRevokedBy = operatorName;
+    targetApp.editingRevokedAt = nowIso;
+
+    if (agent) {
+      agent.isEditingEnabled = false;
+      agent.accreditationStatus = 'Pending Review';
+      db.addNotification(
+        agent.firebaseUserId,
+        agent.affiliateCode,
+        'agent',
+        'Editing Permission Revoked',
+        `Staff/Admin (${operatorName}) has revoked editing permission. Your application has been returned to Read-Only mode.`,
+        'Application',
+        'accreditation'
+      );
+    }
+
+    db.log(
+      operatorName,
+      operatorRole as any,
+      'Revoke Editing Permission',
+      targetApp.affiliateCode,
+      `Revoked editing permission for applicant ${targetApp.personalDetails?.fullName || targetApp.affiliateCode}. Application locked in Read-Only mode.`
+    );
+
+    res.json({
+      success: true,
+      message: `Editing permission revoked for ${targetApp.personalDetails?.fullName || targetApp.affiliateCode}. Application locked in Read-Only mode.`,
+      application: targetApp,
+      agent,
     });
   });
 
@@ -2882,16 +3087,26 @@ async function startServer() {
 
     const agent = db.agents.find((a) => a.affiliateCode === target.affiliateCode);
     if (agent && action === 'Approve') {
+      agent.positionEligibilityApproved = true;
+      agent.positionApprovedBy = reviewerName;
+      agent.positionApprovedAt = new Date().toISOString();
+      agent.position = target.requestedPosition;
       if (!agent.unlockedPositions.includes(target.requestedPosition)) {
         agent.unlockedPositions.push(target.requestedPosition);
+      }
+
+      // Update draft application position if one exists
+      const draftApp = db.applications.find((a) => a.affiliateCode === target.affiliateCode && a.status === 'Draft');
+      if (draftApp) {
+        draftApp.position = target.requestedPosition;
       }
 
       db.addNotification(
         agent.firebaseUserId,
         agent.affiliateCode,
         'agent',
-        'Position Access Approved!',
-        `Your request for ${target.requestedPosition} has been approved by ${reviewerName}. You can now submit an accreditation application for this position.`,
+        'Position Eligibility Approved!',
+        `Your position eligibility for ${target.requestedPosition} has been approved by ${reviewerName}. You now have access to complete and submit your accreditation application. (Note: Position approval is separate from accreditation approval).`,
         'Approval',
         'accreditation'
       );

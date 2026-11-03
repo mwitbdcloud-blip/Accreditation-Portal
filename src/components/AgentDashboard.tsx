@@ -16,6 +16,7 @@ import {
   FileCheck,
   CreditCard,
   User,
+  Sparkles,
 } from 'lucide-react';
 import {
   AgentProfile,
@@ -49,11 +50,22 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
   initialSubView = 'overview',
 }) => {
   const latestApp = applications[0];
+  const isEditingGranted = Boolean(
+    latestApp?.editingGranted === true ||
+    latestApp?.status === 'Revision Required – Editing Enabled'
+  );
+
+  const isPositionRestricted =
+    agent.position !== 'Marketing Associate' &&
+    agent.positionEligibilityStatus !== 'Approved' &&
+    !agent.unlockedPositions?.includes(agent.position as any);
+
   const isActive = agent.accreditationStatus === 'Active' || latestApp?.status === 'Approved';
   const isExpired = !isActive && agent.accreditationStatus === 'Expired';
   const isExpiringSoon = isActive && agent.accreditationStatus === 'Expiring Soon';
   const isUnderReview =
     !isActive &&
+    !isEditingGranted &&
     (agent.accreditationStatus === 'Pending Review' ||
       latestApp?.status === 'Submitted' ||
       latestApp?.status === 'Under Review' ||
@@ -62,6 +74,8 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
     !isActive &&
     !isUnderReview &&
     !isExpired &&
+    !isEditingGranted &&
+    !isPositionRestricted &&
     (agent.accreditationStatus === 'Not Started' || !latestApp || latestApp?.status === 'Draft' || agent.accreditationStatus === 'Pending');
 
   const [activeSubView, setActiveSubView] = useState<'overview' | 'badge'>(initialSubView);
@@ -83,7 +97,15 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
   let nextActionDesc = 'Submit your personal details, banking info, 1x1 photo, and e-signature to activate your 4-month accreditation.';
   let nextActionType: 'action' | 'review' | 'active' | 'expired' = 'action';
 
-  if (isUnderReview) {
+  if (isPositionRestricted) {
+    nextActionTitle = 'Position Eligibility Review Required';
+    nextActionDesc = `Your account was registered for ${agent.position}. Staff/Admin position eligibility approval is required before the accreditation application can be accessed.`;
+    nextActionType = 'review';
+  } else if (isEditingGranted) {
+    nextActionTitle = 'Revision Required – Editing Permission Granted';
+    nextActionDesc = 'BD Staff or Admin has unlocked your application for revisions. Please update the necessary information and resubmit.';
+    nextActionType = 'action';
+  } else if (isUnderReview) {
     nextActionTitle = 'Your application is currently under review & for approval';
     nextActionDesc = 'Our BD Staff operations team is verifying your submitted valid ID, 1x1 photo, and accreditation details. The official Sales Agency Agreement (SAA) and Certificate can only be viewed or accessed once confirmed and approved by staff or admin.';
     nextActionType = 'review';
@@ -240,7 +262,23 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
           </div>
 
           <div className="shrink-0">
-            {isExpired || isExpiringSoon ? (
+            {isPositionRestricted ? (
+              <button
+                type="button"
+                onClick={onNavigateToAccreditation}
+                className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-amber-950 bg-amber-200 hover:bg-amber-300 rounded-xl shadow-sm transition"
+              >
+                <Clock className="w-4 h-4" /> Position Eligibility Review Required
+              </button>
+            ) : isEditingGranted ? (
+              <button
+                type="button"
+                onClick={onNavigateToAccreditation}
+                className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white bg-purple-700 hover:bg-purple-800 rounded-xl shadow-sm transition"
+              >
+                <Sparkles className="w-4 h-4" /> Revise & Resubmit Application <ArrowRight className="w-4 h-4" />
+              </button>
+            ) : isExpired || isExpiringSoon ? (
               <button
                 type="button"
                 onClick={onNavigateToAccreditation}

@@ -160,6 +160,12 @@ export interface AccreditationApplication {
   accreditationExpiryDate?: string;
   isSample?: boolean;
   welcomeLetter?: WelcomeLetterRecord;
+  isEditingEnabled?: boolean;
+  editingGrantedBy?: string;
+  editingGrantedAt?: string;
+  editingRevokedBy?: string;
+  editingRevokedAt?: string;
+  editingReason?: string;
 }
 
 export interface WelcomeLetterRecord {
@@ -241,6 +247,10 @@ export interface AgentProfile {
   importedBy?: string;
   importedAt?: string;
   welcomeLetter?: WelcomeLetterRecord;
+  isEditingEnabled?: boolean;
+  positionEligibilityApproved?: boolean;
+  positionApprovedBy?: string;
+  positionApprovedAt?: string;
 }
 
 export interface StaffPermissions {

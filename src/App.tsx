@@ -590,6 +590,7 @@ export default function App() {
               governmentIdUrl: formData.governmentIdUrl || a.governmentIdUrl,
               position: formData.position || a.position,
               profileCompletion: 100,
+              isEditingEnabled: false,
               accreditationStatus: formData.applicationType === 'Renewal' ? 'Renewal Pending' : 'Pending Review',
             };
             syncAgentToFirestore(updatedAgent).catch(() => {});
@@ -647,6 +648,32 @@ export default function App() {
       await loadPortalData();
     } catch (err: any) {
       showToast(err.message || 'Failed to update application');
+    }
+  };
+
+  // Staff and Admin: Grant Editing Permission for Revisions
+  const handleGrantEditing = async (appId: string, reason?: string) => {
+    try {
+      const operatorName = currentUser?.displayName || currentUser?.fullName || 'BD Staff';
+      const operatorRole = currentUser?.role || 'Staff';
+      await api.grantEditingPermission(appId, operatorName, operatorRole, reason);
+      showToast('Applicant editing permission granted. Status set to Revision Required – Editing Enabled.');
+      await loadPortalData();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to grant editing permission');
+    }
+  };
+
+  // Staff and Admin: Revoke Editing Permission
+  const handleRevokeEditing = async (appId: string) => {
+    try {
+      const operatorName = currentUser?.displayName || currentUser?.fullName || 'BD Staff';
+      const operatorRole = currentUser?.role || 'Staff';
+      await api.revokeEditingPermission(appId, operatorName, operatorRole);
+      showToast('Applicant editing permission revoked. Application returned to Read-Only mode.');
+      await loadPortalData();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to revoke editing permission');
     }
   };
 
@@ -1353,6 +1380,8 @@ export default function App() {
                 onReviewApplication={handleReviewApplication}
                 onUpdateApplicationDetails={handleUpdateApplicationDetails}
                 onViewContractForApp={handleOpenContractForApp}
+                onGrantEditing={handleGrantEditing}
+                onRevokeEditing={handleRevokeEditing}
                 onDeleteApplication={handleDeleteApplication}
                 onDeleteMultipleApplications={handleDeleteMultipleApplications}
                 onDeleteAllApplications={handleDeleteAllApplications}

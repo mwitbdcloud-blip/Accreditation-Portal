@@ -52,6 +52,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [regMobile, setRegMobile] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regRegion, setRegRegion] = useState<Region>('Asia Pacific 2');
+  const [regPosition, setRegPosition] = useState<Position>('Marketing Associate');
   const [regAccreditationDate, setRegAccreditationDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [regAcceptedTerms, setRegAcceptedTerms] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -120,6 +121,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
         mobileNumber: regMobile,
         password: regPassword,
         region: regRegion,
+        position: regPosition,
         accreditationStartDate: startDate,
         accreditationExpiryDate: expiryDate,
       });
@@ -492,6 +494,28 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Assigned / Applied Position
+                </label>
+                <select
+                  value={regPosition}
+                  onChange={(e) => setRegPosition(e.target.value as Position)}
+                  className="w-full px-2.5 py-2 text-xs bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                >
+                  <option value="Marketing Associate">Marketing Associate (Automatic Accreditation Access)</option>
+                  <option value="Senior Marketing Associate">Senior Marketing Associate (Staff/Admin Approval Required)</option>
+                  <option value="Marketing Manager">Marketing Manager (Staff/Admin Approval Required)</option>
+                  <option value="Marketing Director">Marketing Director (Staff/Admin Approval Required)</option>
+                  <option value="Marketing Partner">Marketing Partner (Staff/Admin Approval Required)</option>
+                </select>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {regPosition === 'Marketing Associate'
+                    ? '✨ Marketing Associates automatically gain immediate access to edit and submit the Accreditation Application.'
+                    : '⏳ This position requires Staff/Admin eligibility approval before gaining access to the Accreditation Application.'}
+                </p>
               </div>
 
               {/* Accreditation Date (Start of Accreditation) */}

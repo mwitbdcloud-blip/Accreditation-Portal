@@ -48,6 +48,61 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
     (agent.position as Position) || 'Marketing Associate'
   );
 
+  // Role-Based Position Eligibility Gate:
+  // Marketing Associate has automatic access without requiring prior Staff/Admin approval.
+  // Marketing Manager, Marketing Director, Senior Marketing Associate, Marketing Partner require Staff/Admin review.
+  const isMarketingAssociate = agent.position === 'Marketing Associate';
+  const isPositionApproved =
+    isMarketingAssociate ||
+    agent.positionEligibilityApproved === true ||
+    agent.unlockedPositions?.includes(agent.position as Position);
+
+  const [hasRequestedReview, setHasRequestedReview] = useState(false);
+  const [positionRequestSuccess, setPositionRequestSuccess] = useState<string | null>(null);
+  const [isSwitchingPosition, setIsSwitchingPosition] = useState(false);
+
+  const handleRequestPositionReview = async () => {
+    if (onRequestPositionAccess) {
+      onRequestPositionAccess(agent.position as Position);
+      setHasRequestedReview(true);
+      setPositionRequestSuccess(`Position review request for ${agent.position} submitted for BD Staff review.`);
+    } else {
+      try {
+        await api.submitPositionRequest(
+          agent.affiliateCode,
+          agent.position as Position,
+          `Initial accreditation access request for ${agent.position}`
+        );
+        setHasRequestedReview(true);
+        setPositionRequestSuccess(`Position review request for ${agent.position} submitted for BD Staff review.`);
+      } catch (err: any) {
+        setErrorMessage(err?.message || 'Failed to submit position review request');
+      }
+    }
+  };
+
+  const handleSwitchToAssociate = async () => {
+    setIsSwitchingPosition(true);
+    try {
+      await api.updateAgentProfile(agent.affiliateCode, {
+        position: 'Marketing Associate',
+        positionEligibilityApproved: true,
+        unlockedPositions: ['Marketing Associate'],
+      });
+      setSelectedPosition('Marketing Associate');
+      agent.position = 'Marketing Associate';
+      agent.positionEligibilityApproved = true;
+      agent.unlockedPositions = ['Marketing Associate'];
+      if (onSubmitSuccess) {
+        onSubmitSuccess();
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to switch position to Marketing Associate');
+    } finally {
+      setIsSwitchingPosition(false);
+    }
+  };
+
   // Renewal Accreditation is locked for newly registered agents and can only be accessed once the accreditation is expired
   const isAccreditationExpired =
     agent.accreditationStatus === 'Expired' ||
@@ -72,6 +127,11 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
   // Only the staff and admin can change, revise, or edit the data they submit if there is need for correction.
   const isSubmittedAndLocked = useMemo(() => {
     if (!existingApplication) return false;
+
+    // If Staff or Admin has granted editing permission for revisions, it is NOT locked:
+    if (existingApplication.isEditingEnabled || agent.isEditingEnabled) {
+      return false;
+    }
 
     // A draft application is never locked — the agent is actively filling out and providing their details
     if (existingApplication.status === 'Draft') return false;
@@ -98,7 +158,7 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
       existingApplication.status === 'Approved' ||
       existingApplication.status === 'Revision Required'
     );
-  }, [existingApplication, isRenewalUnlocked, applicationType]);
+  }, [existingApplication, isRenewalUnlocked, applicationType, agent.isEditingEnabled]);
 
   // Form Fields - Personal Details (Initialize with existing application or leave blank for new registrants)
   // Initial Form State - personal details with agent profile fallback
@@ -571,70 +631,228 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
         </div>
       </div>
 
-      {/* Submitted & Locked Status Banner for Agent View */}
-      {isSubmittedAndLocked && (
-        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-5 shadow-xs">
-          <div className="flex items-start gap-3.5">
-            <div className="p-2.5 bg-amber-100 text-amber-900 rounded-xl mt-0.5 shrink-0">
-              <Lock className="w-5 h-5" />
-            </div>
-            <div className="flex-1">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-                <h4 className="text-sm font-bold text-amber-950 flex items-center gap-2">
-                  <span>Accreditation Records Locked (Submitted & Under Review)</span>
-                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-amber-200 text-amber-900">
-                    Read-Only For Agent
+      {/* Role-Based Position Eligibility Gate */}
+      {!isPositionApproved ? (
+        <div className="bg-white rounded-2xl border-2 border-amber-300 shadow-md p-6 sm:p-8 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+            <div className="flex items-start gap-3.5">
+              <div className="p-3 bg-amber-100 text-amber-900 rounded-xl shrink-0">
+                <Lock className="w-6 h-6 text-amber-800" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
+                    Staff/Admin Approval Required
                   </span>
-                </h4>
-                <span className="text-xs font-mono font-bold text-amber-800 bg-white/80 px-2 py-0.5 rounded border border-amber-200">
-                  Status: {existingApplication?.status || 'Submitted'}
-                </span>
-              </div>
-              <p className="text-xs text-amber-900/90 mt-1.5 leading-relaxed">
-                You have completely submitted your accreditation details (Personal Details, Banking Information, Team Structure, 1x1 ID Photo, Government ID, and Electronic Signature). 
-                To maintain corporate compliance and contract integrity, <strong>all submitted data cannot be changed, revised, or edited by the agent</strong>. 
-                Only authorized Megaworld International BD Staff and Admin personnel can change, revise, or edit your submitted records if a correction is needed.
-              </p>
-              {existingApplication?.status === 'Approved' && (
-                <div className="mt-3 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={onCancel}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition"
-                  >
-                    <CheckCircle2 className="w-4 h-4" /> View Approved Accreditation & Dashboard
-                  </button>
+                  <span className="text-xs text-slate-500 font-mono">Restricted Position Access</span>
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Active Data Entry Banner when not yet submitted/locked */}
-      {!isSubmittedAndLocked && (
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 sm:p-5 shadow-xs">
-          <div className="flex items-start gap-3.5">
-            <div className="p-2.5 bg-blue-100 text-blue-900 rounded-xl mt-0.5 shrink-0">
-              <ShieldCheck className="w-5 h-5 text-blue-900" />
-            </div>
-            <div className="flex-1 text-xs">
-              <h4 className="text-sm font-bold text-blue-950">
-                Accreditation Data Entry: {applicationType} Application
-              </h4>
-              <p className="text-slate-600 mt-1 leading-relaxed">
-                Welcome to your accreditation portal. Please complete and provide your <strong>Personal Details</strong>, <strong>Bank Details for Commission Disbursements (Optional)</strong>, <strong>Team Details</strong>, <strong>1x1 ID Photo</strong>, <strong>Electronic Signature</strong>, and <strong>Valid Government ID / Passport</strong>.
-              </p>
-              <div className="mt-2.5 p-2.5 bg-white rounded-xl border border-blue-200 flex items-center gap-2 text-slate-700 text-[11px] font-medium">
-                <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                <span>
-                  <strong>Important Notice:</strong> Once your information is completely submitted or saved, all data will be locked in read-only mode and cannot be changed, revised, or edited by the agent. If any corrections are needed thereafter, only Megaworld International BD Staff and Administrators have permission to revise the records.
-                </span>
+                <h3 className="text-lg font-bold text-slate-900">
+                  Accreditation Application Access Restricted
+                </h3>
+                <p className="text-xs text-slate-600 mt-1">
+                  Position endorsement required before data entry is unlocked.
+                </p>
               </div>
             </div>
+
+            <div className="text-right">
+              <span className="text-xs text-slate-500 block">Assigned Position</span>
+              <span className="text-sm font-bold text-blue-900 font-mono">{agent.position}</span>
+            </div>
+          </div>
+
+          {/* Workflow Explanation Banner */}
+          <div className="p-4 bg-amber-50/80 rounded-xl border border-amber-200 text-xs text-amber-950 space-y-2 leading-relaxed">
+            <h4 className="font-bold flex items-center gap-1.5 text-amber-900">
+              <AlertCircle className="w-4 h-4 text-amber-700" />
+              Two-Step Accreditation Authorization Workflow
+            </h4>
+            <p>
+              Under Megaworld International corporate standards, new applicants assigned to <strong>Marketing Manager</strong>, <strong>Marketing Director</strong>, or other leadership positions must undergo Staff/Admin eligibility review before gaining access to the Accreditation Application.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-2 text-[11px]">
+              <div className="p-2.5 bg-white rounded-lg border border-amber-300 font-medium">
+                <strong className="text-amber-900 block mb-0.5">Step 1: Position Eligibility (Current)</strong>
+                Staff/Admin reviews your assigned position and endorsement records.
+              </div>
+              <div className="p-2.5 bg-white/70 rounded-lg border border-slate-200 text-slate-600">
+                <strong className="text-slate-800 block mb-0.5">Step 2: Accreditation Data Entry</strong>
+                Complete personal, banking, upline details, and submit required documents.
+              </div>
+              <div className="p-2.5 bg-white/70 rounded-lg border border-slate-200 text-slate-600">
+                <strong className="text-slate-800 block mb-0.5">Step 3: SAA Contract Issuance</strong>
+                Official 4-month Sales Agency Agreement is generated upon final review.
+              </div>
+            </div>
+            <p className="text-[11px] text-amber-800 pt-1">
+              <strong>Notice:</strong> Position eligibility approval unlocks your accreditation application form; it does <em>not</em> constitute automatic accreditation approval.
+            </p>
+          </div>
+
+          {/* Applicant Summary */}
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div>
+              <span className="text-slate-400 block text-[11px]">Affiliate Code</span>
+              <span className="font-mono font-bold text-blue-950 text-sm">{agent.affiliateCode}</span>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[11px]">Applicant Name</span>
+              <span className="font-bold text-slate-900">{agent.fullName}</span>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[11px]">Registered Region</span>
+              <span className="font-semibold text-slate-800">{agent.region}</span>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[11px]">Eligibility Status</span>
+              <span className="inline-flex items-center gap-1 font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full text-[10px]">
+                <Clock className="w-3 h-3" /> Awaiting Staff Review
+              </span>
+            </div>
+          </div>
+
+          {positionRequestSuccess && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{positionRequestSuccess}</span>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200">
+            <button
+              type="button"
+              disabled={hasRequestedReview}
+              onClick={handleRequestPositionReview}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white bg-blue-900 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-xs transition cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              {hasRequestedReview ? 'Review Request Submitted' : `Request BD Staff Position Review (${agent.position})`}
+            </button>
+
+            <button
+              type="button"
+              disabled={isSwitchingPosition}
+              onClick={handleSwitchToAssociate}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+              title="Marketing Associate position grants instant automatic access to Accreditation Data Entry"
+            >
+              <Sparkles className="w-4 h-4 text-amber-600" />
+              {isSwitchingPosition ? 'Updating Position...' : 'Switch to Marketing Associate (Instant Access)'}
+            </button>
           </div>
         </div>
-      )}
+      ) : (
+        <>
+          {/* Revision Required – Editing Enabled Banner (Staff/Admin Granted Permission) */}
+          {(existingApplication?.isEditingEnabled || agent.isEditingEnabled) && (
+            <div className="bg-purple-50 border-2 border-purple-300 rounded-2xl p-5 shadow-xs">
+              <div className="flex items-start gap-3.5">
+                <div className="p-2.5 bg-purple-100 text-purple-900 rounded-xl mt-0.5 shrink-0">
+                  <Sparkles className="w-5 h-5 text-purple-700" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                    <h4 className="text-sm font-bold text-purple-950 flex items-center gap-2">
+                      <span>Revision Required – Editing Enabled</span>
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-purple-200 text-purple-900">
+                        Staff/Admin Permission Granted
+                      </span>
+                    </h4>
+                    <span className="text-xs font-mono font-bold text-purple-800 bg-white/80 px-2 py-0.5 rounded border border-purple-200">
+                      Status: Revision Required
+                    </span>
+                  </div>
+                  <p className="text-xs text-purple-900/90 mt-1.5 leading-relaxed">
+                    Megaworld International BD Staff has granted you permission to revise your accreditation application. 
+                    All form fields, document uploads, and signature inputs are unlocked and fully editable for you to make the necessary corrections.
+                  </p>
+                  {(existingApplication?.editingReason || existingApplication?.reviewNotes) && (
+                    <div className="mt-2.5 p-3 bg-white rounded-xl border border-purple-200 text-xs text-purple-950">
+                      <strong>Staff Revision Instructions:</strong>{' '}
+                      <span className="italic">{existingApplication.editingReason || existingApplication.reviewNotes}</span>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-purple-800 mt-2 font-medium">
+                    Please modify the required information and click <strong>&quot;Resubmit Accreditation Application&quot;</strong> below. Upon submission, your application will automatically return to <strong>READ-ONLY MODE</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Submitted & Locked Status Banner for Agent View (Read-Only Mode) */}
+          {isSubmittedAndLocked && (
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-5 shadow-xs">
+              <div className="flex items-start gap-3.5">
+                <div className="p-2.5 bg-amber-100 text-amber-900 rounded-xl mt-0.5 shrink-0">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                    <h4 className="text-sm font-bold text-amber-950 flex items-center gap-2">
+                      <span>Accreditation Records Locked (Submitted – Under Review)</span>
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-amber-200 text-amber-900">
+                        Read-Only Mode For Agent
+                      </span>
+                    </h4>
+                    <span className="text-xs font-mono font-bold text-amber-800 bg-white/80 px-2 py-0.5 rounded border border-amber-200">
+                      Status: {existingApplication?.status || 'Submitted – Under Review'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-900/90 mt-1.5 leading-relaxed">
+                    You have submitted your accreditation application (Personal Details, Banking Information, Team Structure, 1x1 ID Photo, Government ID, and Electronic Signature). 
+                    To ensure compliance and data integrity, <strong>the application is currently locked in READ-ONLY MODE</strong>. 
+                    You cannot edit, delete, replace, or modify submitted details or documents.
+                  </p>
+                  <p className="text-xs text-amber-900/80 mt-1 leading-relaxed">
+                    If corrections are necessary, authorized Megaworld International BD Staff or Administrators can grant you temporary editing permission.
+                  </p>
+                  {existingApplication?.status === 'Approved' && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={onCancel}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition"
+                      >
+                        <CheckCircle2 className="w-4 h-4" /> View Approved Accreditation & Dashboard
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Active Data Entry Banner when draft / not locked and not revision */}
+          {!isSubmittedAndLocked && !(existingApplication?.isEditingEnabled || agent.isEditingEnabled) && (
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 sm:p-5 shadow-xs">
+              <div className="flex items-start gap-3.5">
+                <div className="p-2.5 bg-blue-100 text-blue-900 rounded-xl mt-0.5 shrink-0">
+                  <ShieldCheck className="w-5 h-5 text-blue-900" />
+                </div>
+                <div className="flex-1 text-xs">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-bold text-blue-950">
+                      Accreditation Data Entry: {applicationType} Application
+                    </h4>
+                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-emerald-100 text-emerald-800">
+                      Editable Mode
+                    </span>
+                  </div>
+                  <p className="text-slate-600 mt-1 leading-relaxed">
+                    Welcome to your accreditation portal. Newly registered Marketing Associates have automatic access to this form. Please complete and provide your <strong>Personal Details</strong>, <strong>Bank Details for Commission Disbursements (Optional)</strong>, <strong>Team Details</strong>, <strong>1x1 ID Photo</strong>, <strong>Electronic Signature</strong>, and <strong>Valid Government ID / Passport</strong>.
+                  </p>
+                  <div className="mt-2.5 p-2.5 bg-white rounded-xl border border-blue-200 flex items-center gap-2 text-slate-700 text-[11px] font-medium">
+                    <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>
+                      <strong>Important Notice:</strong> Once your information is completely submitted, all data will automatically lock in <strong>READ-ONLY MODE</strong>. Refreshing the page, logging out, or logging back in preserves the lock. Only BD Staff/Admin can grant editing access if revisions are required.
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
       {/* Position Cards (MA, MM, MD) */}
       <div>
@@ -2109,6 +2327,10 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
                     <>
                       <RefreshCw className="w-4 h-4 animate-spin" /> Submitting Application...
                     </>
+                  ) : (existingApplication?.isEditingEnabled || agent.isEditingEnabled) ? (
+                    <>
+                      <ShieldCheck className="w-4 h-4" /> Resubmit Accreditation Application
+                    </>
                   ) : (
                     <>
                       <ShieldCheck className="w-4 h-4" /> Save & Submit {applicationType} Application
@@ -2120,6 +2342,8 @@ export const AccreditationForm: React.FC<AccreditationFormProps> = ({
           </div>
         )}
       </form>
+        </>
+      )}
     </div>
   );
 };
