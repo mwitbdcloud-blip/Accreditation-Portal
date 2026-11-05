@@ -20,7 +20,7 @@ export const OfficialSaaDocument: React.FC<OfficialSaaDocumentProps> = ({
   zoomScale = 1,
   onTotalPagesCalculated,
 }) => {
-  const totalPages = 9;
+  const totalPages = 7;
 
   React.useEffect(() => {
     if (onTotalPagesCalculated) {
@@ -719,7 +719,7 @@ export const OfficialSaaDocument: React.FC<OfficialSaaDocumentProps> = ({
         </div>
 
       {/* ============================================================== */}
-      {/* PAGE 4: SAA AGREEMENT BODY PAGE 3 (Exact layout of Page 4.jpg) */}
+      {/* PAGE 4: SAA AGREEMENT BODY PAGE 3 (General Provisions)          */}
       {/* ============================================================== */}
       <div
         id="saa-page-4"
@@ -732,107 +732,14 @@ export const OfficialSaaDocument: React.FC<OfficialSaaDocumentProps> = ({
           <div className="relative z-10 pl-6 sm:pl-8">
             {renderDocumentTopHeader()}
 
-            <div className="space-y-3.5 text-justify text-[13px] sm:text-[13.5px] leading-relaxed text-slate-800">
-              <p className="pl-4">
-                2.2 To supply the {position} by way of distribution of sales materials, such as brochures, leaflets,
-                price lists, business cards, pamphlet/fliers, etc.; necessary for the discharge by the {position} of
-                its obligations under this Agreement.
-              </p>
-
-              <div className="space-y-1 pt-1 font-sans">
-                <h4 className="font-bold text-slate-950 text-xs uppercase tracking-wider">3. Term</h4>
-                <p className="font-serif text-[13px] text-justify">
-                  Unless sooner terminated by Megaworld for any of the causes stipulated in Section 6, this Agreement
-                  shall be effective for a period of four (4) months from execution of this Agreement (
-                  <strong className="underline text-blue-950 font-sans">
-                    {contractData.startDate || 'October 28, 2026'} to {contractData.expiryDate || 'February 27, 2027'}
-                  </strong>
-                  ). This Agreement shall be renewable, at the sole option of Megaworld, for such term as may be agreed
-                  upon by the parties.
-                </p>
-              </div>
-
-              <div className="space-y-1 pt-1 font-sans">
-                <h4 className="font-bold text-slate-950 text-xs uppercase tracking-wider">4. Exclusivity</h4>
-                <p className="font-serif text-[13px] text-justify">
-                  For the duration of this Agreement, the {position} shall not promote, sell, or otherwise deal with,
-                  for his/her own account, whether directly or indirectly, or for the account of other persons or
-                  entities, real estate projects being developed, owned, or otherwise dealt with by other companies,
-                  corporations, partnerships or such other entities engaged in a business or industry in competition
-                  with Megaworld in the Philippines.
-                </p>
-                <p className="font-serif text-[13px] text-justify pt-1">
-                  The {position} acknowledges that this Agreement does not preclude Megaworld from promoting or selling,
-                  or otherwise dealing with the Projects within the Territory, for its own account or for the account
-                  of other persons or entities.
-                </p>
-              </div>
-
-              <div className="space-y-1 pt-1 font-sans">
-                <h4 className="font-bold text-slate-950 text-xs uppercase tracking-wider">5. Pre-termination</h4>
-                <p className="font-serif text-[13px] text-justify">
-                  Prior to the expiration of the term of this Agreement, Megaworld shall be entitled to terminate this
-                  Agreement, upon written notice to {position}, for any of the following causes:
-                </p>
-                <p className="font-serif text-[13px] text-justify pl-4">
-                  6.1 Breach or an attempt to breach, by {position} of any of the terms and conditions of this Agreement;
-                </p>
-                <p className="font-serif text-[13px] text-justify pl-4">
-                  6.2 Fraud and/or any misrepresentation committed by {position} for the purpose of obtaining the
-                  consent of Megaworld in entering into this Agreement;
-                </p>
-                <p className="font-serif text-[13px] text-justify pl-4">
-                  6.3 Any change in the government policy and/or laws of the Territory or the Philippines which will
-                  render unlawful the performance by Megaworld of its obligations under this Agreement.
-                </p>
-              </div>
-
-              <div className="space-y-1 pt-1 font-sans">
-                <h4 className="font-bold text-slate-950 text-xs uppercase tracking-wider">
-                  6. Obligations upon Termination
-                </h4>
-                <p className="font-serif text-[13px] text-justify">
-                  Within ten (10) days from expiration of the term of this Agreement or from receipt by {position} of a
-                  written notice of the termination of this Agreement pursuant to Section 6, the {position} shall be
-                  obliged to:
-                </p>
-                <p className="font-serif text-[13px] text-justify pl-4">
-                  7.1 Endorse and submit to Megaworld all accounts and/or records of buyers, regardless of the status of
-                  said accounts.
-                </p>
-                <p className="font-serif text-[13px] text-justify pl-4">
-                  7.2 Turn over to Megaworld all marketing materials, brochures, pamphlets, fliers, etc. supplied to{' '}
-                  {position} by Megaworld;
-                </p>
-                <p className="font-serif text-[13px] text-justify pl-4">
-                  7.3 Settle all outstanding accounts with Megaworld.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {renderPageFooter(4)}
-        </div>
-
-      {/* ============================================================== */}
-      {/* PAGE 5: SAA AGREEMENT BODY PAGE 4 (Exact layout of Page 5.jpg) */}
-      {/* ============================================================== */}
-      <div
-        id="saa-page-5"
-        className={`saa-page-sheet relative w-full bg-white shadow-xl rounded-sm p-8 sm:p-12 border border-slate-300/90 text-slate-900 font-serif min-h-[1080px] flex-col justify-between overflow-hidden print:shadow-none print:border-none print:p-8 ${
-          viewMode === 'paginated' && currentPageIndex !== 4 ? 'hidden print:flex' : 'flex'
-        }`}
-      >
-          {renderParaphSignature()}
-
-          <div className="relative z-10 pl-6 sm:pl-8">
-            {renderDocumentTopHeader()}
-
             <div className="space-y-4 text-justify text-[13px] sm:text-[13.5px] leading-relaxed text-slate-800">
-              <p>
-                contained in this Agreement shall be deemed or interpreted to constitute {position} as a partner,
-                agent, or employee of Megaworld.
-              </p>
+              <div className="space-y-1 font-sans">
+                <h4 className="font-bold text-slate-950 text-xs uppercase tracking-wider">8. Relationship of Parties</h4>
+                <p className="font-serif text-[13px] text-justify">
+                  Nothing contained in this Agreement shall be deemed or interpreted to constitute {position} as a partner,
+                  agent, or employee of Megaworld.
+                </p>
+              </div>
 
               <div className="space-y-1 font-sans">
                 <h4 className="font-bold text-slate-950 text-xs uppercase tracking-wider">9. Governing Law</h4>
@@ -879,16 +786,16 @@ export const OfficialSaaDocument: React.FC<OfficialSaaDocumentProps> = ({
             </div>
           </div>
 
-          {renderPageFooter(5)}
+          {renderPageFooter(4)}
         </div>
 
       {/* ============================================================== */}
-      {/* PAGE 6: WITNESSING & SIGNATURES (Exact layout of Page 6.jpg) */}
+      {/* PAGE 5: WITNESSING & SIGNATURES (Exact layout of Page 6.jpg) */}
       {/* ============================================================== */}
       <div
-        id="saa-page-6"
+        id="saa-page-5"
         className={`saa-page-sheet relative w-full bg-white shadow-xl rounded-sm p-8 sm:p-12 border border-slate-300/90 text-slate-900 font-serif min-h-[1080px] flex-col justify-between overflow-hidden print:shadow-none print:border-none print:p-8 ${
-          viewMode === 'paginated' && currentPageIndex !== 5 ? 'hidden print:flex' : 'flex'
+          viewMode === 'paginated' && currentPageIndex !== 4 ? 'hidden print:flex' : 'flex'
         }`}
       >
         <div className="relative z-10 pl-4 sm:pl-6">
@@ -995,16 +902,16 @@ export const OfficialSaaDocument: React.FC<OfficialSaaDocumentProps> = ({
             </div>
           </div>
 
-          {renderPageFooter(6)}
+          {renderPageFooter(5)}
         </div>
 
       {/* ============================================================== */}
-      {/* PAGE 7: NOTARIAL ACKNOWLEDGMENT (Exact layout of Page 7.jpg) */}
+      {/* PAGE 6: NOTARIAL ACKNOWLEDGMENT (Exact layout of Page 7.jpg) */}
       {/* ============================================================== */}
       <div
-        id="saa-page-7"
+        id="saa-page-6"
         className={`saa-page-sheet relative w-full bg-white shadow-xl rounded-sm p-8 sm:p-12 border border-slate-300/90 text-slate-900 font-serif min-h-[1080px] flex-col justify-between overflow-hidden print:shadow-none print:border-none print:p-8 ${
-          viewMode === 'paginated' && currentPageIndex !== 6 ? 'hidden print:flex' : 'flex'
+          viewMode === 'paginated' && currentPageIndex !== 5 ? 'hidden print:flex' : 'flex'
         }`}
       >
           {renderParaphSignature()}
@@ -1087,108 +994,16 @@ export const OfficialSaaDocument: React.FC<OfficialSaaDocumentProps> = ({
             </div>
           </div>
 
-          {renderPageFooter(7)}
-        </div>
-
-      {/* ============================================================== */}
-      {/* PAGE 8: ANNEX E — CODE OF ETHICS (Exact layout of Page 8.jpg) */}
-      {/* ============================================================== */}
-      <div
-        id="saa-page-8"
-        className={`saa-page-sheet relative w-full bg-white shadow-xl rounded-sm p-8 sm:p-12 border border-slate-300/90 text-slate-900 font-serif min-h-[1080px] flex-col justify-between overflow-hidden print:shadow-none print:border-none print:p-8 ${
-          viewMode === 'paginated' && currentPageIndex !== 7 ? 'hidden print:flex' : 'flex'
-        }`}
-      >
-          <div className="relative z-10 pl-4 sm:pl-6">
-            {renderDocumentTopHeader({ rightLabel: "Agent's Copy" })}
-
-            <div className="text-center my-3 font-sans">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Annex E</h3>
-              <h2 className="text-base sm:text-lg font-bold text-slate-950 uppercase tracking-wide mt-0.5">
-                Code of Ethics
-              </h2>
-            </div>
-
-            <div className="space-y-3.5 text-justify text-[12.5px] sm:text-[13px] leading-relaxed text-slate-800 font-serif">
-              <p>
-                The Code of Ethics serves as our guide in our working relationship with our business partners: Megaworld
-                VP-Sales, AVP, Senior Country Managers, Country Managers, Assistant Country Managers, Marketing
-                Partners, Marketing Managers, and Marketing Associates.
-              </p>
-
-              <p>
-                We agree to support Megaworld International&apos;s sales policies, programs, regulations and procedures as
-                our guide in the professional conduct of our business.
-              </p>
-
-              <p>
-                We will properly inform our respective network of marketing agents about the Company&apos;s policies,
-                programs, regulations and procedures to protect their rights and privileges as business partners.
-              </p>
-
-              <p>
-                We will encourage our marketing agents to strive for promotion to higher levels of position in the
-                Company for personal and professional growth and development.
-              </p>
-
-              <p>We will respect the marketing network of our fellow marketing agents by:</p>
-
-              <ol className="list-decimal pl-6 space-y-1 text-slate-800">
-                <li>
-                  Not recruiting marketing agents from other groups to join one&apos;s own group in Megaworld
-                  International, and/or one&apos;s group in other real estate companies or any direct selling company;
-                </li>
-                <li>Not selling to marketing agents from other groups;</li>
-                <li>
-                  Encouraging dissatisfied marketing agents from other groups to settle their differences with their
-                  current superiors to avoid transfer of sponsorship.
-                </li>
-              </ol>
-
-              <p>
-                We will refrain from conducting other real estate marketing business within Megaworld International&apos;s
-                premises and/or during Company-sponsored activities. Likewise, we will refrain from using Company
-                resources for other real estate marketing businesses or any other business.
-              </p>
-
-              <p>We shall not engage in selling products directly or indirectly competing with Megaworld International.</p>
-
-              <p>
-                Together, we agree to police our respective marketing network to protect the rights and privileges of
-                our fellow marketing agents.
-              </p>
-
-              <p>
-                Megaworld International reserves the right to disqualify and/or terminate any Marketing agent (VP-Sales,
-                AVP, Senior Country Managers, Country Managers, Assistant Country Managers, Marketing Partners,
-                Marketing Managers, Marketing Associates/Sr. Marketing Associates) from doing business with the company
-                for failure to comply with these policies and for other reasons whatsoever that will prejudice the
-                company&apos;s operations as a whole.
-              </p>
-
-              <div className="pt-4 flex flex-col items-center font-sans">
-                <div className="h-16 sm:h-20 flex items-center justify-center">
-                  {renderSignature('h-14 sm:h-16 w-52 sm:w-60 object-contain')}
-                </div>
-                <div className="border-t border-black w-64 text-center pt-1">
-                  <span className="font-bold text-xs text-blue-900 uppercase block">{contractData.fullName}</span>
-                  <span className="text-[10px] text-slate-600 block">(Signature over printed name)</span>
-                  <span className="text-xs font-bold text-slate-900 block">{position}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {renderPageFooter(8)}
+          {renderPageFooter(6)}
         </div>
 
       {/* ========================================================================= */}
-      {/* PAGE 9: VALID ID COPY & 3 SPECIMEN SIGNATURES (Exact layout of Page 9.jpg) */}
+      {/* PAGE 7: VALID ID COPY & 3 SPECIMEN SIGNATURES (Exact layout of Page 9.jpg) */}
       {/* ========================================================================= */}
       <div
-        id="saa-page-9"
+        id="saa-page-7"
         className={`saa-page-sheet relative w-full bg-white shadow-xl rounded-sm p-8 sm:p-12 border border-slate-300/90 text-slate-900 font-sans min-h-[1080px] flex-col justify-between overflow-hidden print:shadow-none print:border-none print:p-8 ${
-          viewMode === 'paginated' && currentPageIndex !== 8 ? 'hidden print:flex' : 'flex'
+          viewMode === 'paginated' && currentPageIndex !== 6 ? 'hidden print:flex' : 'flex'
         }`}
       >
           <div className="relative z-10 pl-4 sm:pl-6">

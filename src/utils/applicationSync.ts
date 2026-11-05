@@ -161,10 +161,19 @@ export function syncAgentsAndApplications(
 
   const appMap = new Map<string, AccreditationApplication>();
   const emailMap = new Map<string, AccreditationApplication>();
+  const seenCodes = new Set<string>();
+  const deduplicatedApps: AccreditationApplication[] = [];
 
+  // Deduplicate applications by affiliateCode first to avoid dual IDs
   safeApps.forEach((app) => {
-    if (app.affiliateCode) {
-      appMap.set(app.affiliateCode.toUpperCase(), app);
+    const code = (app.affiliateCode || '').toUpperCase().trim();
+    if (code) {
+      if (seenCodes.has(code)) return;
+      seenCodes.add(code);
+    }
+    deduplicatedApps.push(app);
+    if (code) {
+      appMap.set(code, app);
     }
     const email = app.personalDetails?.emailAddress?.toLowerCase().trim();
     if (email) {
@@ -172,7 +181,7 @@ export function syncAgentsAndApplications(
     }
   });
 
-  const syncedList: AccreditationApplication[] = [...safeApps];
+  const syncedList: AccreditationApplication[] = [...deduplicatedApps];
 
   agents.forEach((agent) => {
     // If agent is a sample agent and we shouldn't have samples, skip

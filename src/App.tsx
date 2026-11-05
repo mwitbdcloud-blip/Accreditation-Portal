@@ -18,6 +18,8 @@ import {
   FileText,
   User,
   Zap,
+  Menu,
+  X,
 } from 'lucide-react';
 import {
   AgentProfile,
@@ -130,10 +132,18 @@ export default function App() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [settings, setSettings] = useState<SystemSettings>({
     accreditationDurationMonths: 4,
+    renewalWindowDaysBeforeExpiry: 30,
+    reminderIntervalsDays: [30, 15, 7, 0],
+    reminderIntervalDays: [30, 15, 7, 0],
     googleSpreadsheetId: 'International Property Affiliates — Agents Database',
+    googleAppsScriptUrl: '',
+    googleDriveFolderId: '0B_MegaWorldAgents_GlobalRoot',
     googleDriveRootFolderId: '0B_MegaWorldAgents_GlobalRoot',
     contractTemplateName: 'Megaworld Sales Agreement Agency',
-    reminderIntervalDays: [30, 15, 7, 0],
+    contractTemplateText: '',
+    autoSyncGoogleSheets: true,
+    autoRenewalUnlock: true,
+    preventDuplicateIdentities: true,
     emailNotificationsEnabled: true,
     auditRetentionYears: 5,
     maintenanceMode: false,
@@ -144,6 +154,7 @@ export default function App() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Contract Modal Viewer
   const [contractModalData, setContractModalData] = useState<{
@@ -613,9 +624,17 @@ export default function App() {
     action: 'Approve' | 'Reject' | 'Revision Required',
     notes?: string,
     updatedTeamDetails?: any,
-    updatedData?: any
+    arg5?: any,
+    arg6?: AccreditationApplication
   ) => {
     try {
+      // Handle both (id, action, notes, team, mergedApp) and (id, action, notes, team, updatedData, mergedApp)
+      const applicationData: AccreditationApplication | undefined =
+        arg6 ||
+        (arg5 && typeof arg5 === 'object' && ('affiliateCode' in arg5 || 'personalDetails' in arg5) ? arg5 : undefined);
+      const updatedData =
+        arg5 && typeof arg5 === 'object' && !('affiliateCode' in arg5) ? arg5 : undefined;
+
       const res = await api.reviewApplication(
         id,
         action,
@@ -623,7 +642,8 @@ export default function App() {
         currentUser?.role || 'Staff',
         notes,
         updatedTeamDetails,
-        updatedData
+        updatedData,
+        applicationData
       );
       showToast(`Application ${id} marked as ${action}. 4-month accreditation record & contract updated.`);
       await loadPortalData();
@@ -943,7 +963,7 @@ export default function App() {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-100 text-slate-900 flex font-sans antialiased">
       {/* Toast Alert Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white text-xs px-4 py-3 rounded-xl shadow-2xl border border-slate-700 flex items-center gap-2 animate-in slide-in-from-bottom-5">
@@ -952,346 +972,563 @@ export default function App() {
         </div>
       )}
 
-      {/* Top Navigation Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo & Portal Identity */}
-            <div className="flex items-center gap-3">
-              <MegaworldLogo theme="light" size="md" className="shrink-0" />
-              <div className="h-8 w-px bg-slate-200 hidden sm:block" />
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-slate-900 tracking-tight">
-                    International Property Affiliates
-                  </span>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-900 border border-blue-200">
-                    Megaworld
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-500 leading-none mt-0.5">
-                  Accreditation Portal
-                </p>
-              </div>
+      {/* Mobile Sidebar Overlay Backdrop */}
+      {isMobileSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-40 lg:hidden"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        />
+      )}
+
+      {/* LEFT SIDEBAR NAVIGATION */}
+      <aside
+        id="app-left-sidebar"
+        className={`fixed inset-y-0 left-0 z-50 w-64 xl:w-72 bg-white border-r border-slate-200 flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:h-screen lg:sticky lg:top-0 shadow-xl lg:shadow-none ${
+          isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* Brand / Logo Section */}
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <MegaworldLogo theme="light" size="md" className="shrink-0" />
+            <div className="flex flex-col">
+              <span className="text-[11px] font-black uppercase tracking-wider text-blue-950">
+                Megaworld
+              </span>
+              <span className="text-xs font-bold text-slate-800 leading-tight">
+                International Affiliates
+              </span>
+              <span className="text-[10px] text-slate-400 leading-none mt-0.5">
+                Accreditation Portal
+              </span>
             </div>
+          </div>
+          <button
+            type="button"
+            id="close-mobile-sidebar-btn"
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="lg:hidden p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+            title="Close menu"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-            {/* User Session Info & Action Controls */}
-            <div className="flex items-center gap-3">
-              {/* Persona Quick Switcher - Hidden from agents for privacy */}
-              {currentUser.role === 'Admin' && (
-                <div className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 px-1.5">Dev Switch:</span>
-                  <button
-                    type="button"
-                    id="switch-persona-agent"
-                    onClick={() => handleSwitchPersona('Agent')}
-                    className={`px-2.5 py-1 rounded-lg font-semibold transition ${
-                      currentUser.role === 'Agent' ? 'bg-white shadow-xs text-blue-900 font-bold' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Agent
-                  </button>
-                  <button
-                    type="button"
-                    id="switch-persona-staff"
-                    onClick={() => handleSwitchPersona('Staff')}
-                    className={`px-2.5 py-1 rounded-lg font-semibold transition ${
-                      currentUser.role === 'Staff' ? 'bg-white shadow-xs text-blue-900 font-bold' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    BD Staff
-                  </button>
-                  <button
-                    type="button"
-                    id="switch-persona-admin"
-                    onClick={() => handleSwitchPersona('Admin')}
-                    className={`px-2.5 py-1 rounded-lg font-semibold transition ${
-                      currentUser.role === 'Admin' ? 'bg-white shadow-xs text-purple-900 font-bold' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Admin
-                  </button>
-                </div>
-              )}
-
-              {/* IPA Code Tag (for Agents) */}
-              {activeAgent && (
-                <div className="hidden sm:flex flex-col text-right">
-                  <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
-                    IPA Code
-                  </span>
-                  <span className="font-mono text-xs font-bold text-blue-950">
+        {/* User Profile Summary Card */}
+        <div className="p-3 mx-3 mt-3 bg-slate-50 rounded-2xl border border-slate-200/80">
+          <div className="flex items-center gap-2.5">
+            {currentUser.photoUrl ? (
+              <img
+                src={currentUser.photoUrl}
+                alt={currentUser.displayName}
+                className="w-9 h-9 rounded-full object-cover border-2 border-blue-900 shrink-0"
+              />
+            ) : (
+              <div className="w-9 h-9 rounded-full bg-blue-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                {currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : 'U'}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-xs font-bold text-slate-900 truncate">
+                  {currentUser.displayName}
+                </span>
+                <span
+                  className={`text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded-full shrink-0 ${
+                    currentUser.role === 'Admin'
+                      ? 'bg-purple-100 text-purple-900 border border-purple-200'
+                      : currentUser.role === 'Staff'
+                      ? 'bg-blue-100 text-blue-900 border border-blue-200'
+                      : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                  }`}
+                >
+                  {currentUser.role}
+                </span>
+              </div>
+              {activeAgent?.affiliateCode ? (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="font-mono text-[10px] font-bold text-blue-950 bg-blue-100/70 px-1.5 py-0.5 rounded border border-blue-200/60">
                     {activeAgent.affiliateCode}
                   </span>
                 </div>
+              ) : (
+                <p className="text-[11px] text-slate-500 truncate mt-0.5">{currentUser.email}</p>
               )}
-
-              {/* Role badge */}
-              <span
-                className={`px-2.5 py-1 text-xs font-bold rounded-lg ${
-                  currentUser.role === 'Admin'
-                    ? 'bg-purple-100 text-purple-900 border border-purple-200'
-                    : currentUser.role === 'Staff'
-                    ? 'bg-blue-100 text-blue-900 border border-blue-200'
-                    : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
-                }`}
-              >
-                {currentUser.role}
-              </span>
-
-              {/* Profile Editor Trigger */}
-              <button
-                type="button"
-                id="edit-profile-btn"
-                onClick={() => setIsProfileOpen(true)}
-                className="flex items-center gap-2 p-1.5 hover:bg-slate-100 rounded-xl transition border border-slate-200 text-left cursor-pointer"
-                title="Profile Editor: Change photo, name, email, or password"
-              >
-                {currentUser.photoUrl ? (
-                  <img
-                    src={currentUser.photoUrl}
-                    alt={currentUser.displayName}
-                    className="w-7 h-7 rounded-full object-cover border border-blue-900"
-                  />
-                ) : (
-                  <div className="w-7 h-7 rounded-full bg-blue-900 text-white flex items-center justify-center font-bold text-xs">
-                    {currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : 'U'}
-                  </div>
-                )}
-                <div className="hidden sm:flex flex-col pr-1">
-                  <span className="text-xs font-semibold text-slate-900 leading-tight">
-                    {currentUser.displayName}
-                  </span>
-                  <span className="text-[10px] text-blue-900 font-medium hover:underline flex items-center gap-0.5">
-                    Edit Profile
-                  </span>
-                </div>
-              </button>
-
-              {/* Notifications Toggle */}
-              <button
-                type="button"
-                id="notifications-btn"
-                onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition"
-                title="Notifications"
-              >
-                <Bell className="w-4 h-4" />
-                {unreadCount > 0 && (
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full ring-2 ring-white" />
-                )}
-              </button>
-
-              {/* Sign Out */}
-              <button
-                type="button"
-                id="sign-out-btn"
-                onClick={handleLogout}
-                className="p-2 text-slate-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition"
-                title="Sign Out"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
             </div>
           </div>
+          <button
+            type="button"
+            id="sidebar-edit-profile-btn"
+            onClick={() => setIsProfileOpen(true)}
+            className="w-full mt-2 py-1 text-[11px] font-semibold text-blue-900 hover:text-blue-950 bg-white hover:bg-blue-50 border border-slate-200 rounded-lg text-center transition flex items-center justify-center gap-1 cursor-pointer"
+          >
+            <User className="w-3 h-3" />
+            <span>Edit Profile</span>
+          </button>
+        </div>
 
-          {/* Navigation Tabs Bar */}
-          <div className="flex items-center gap-1 overflow-x-auto border-t border-slate-100 py-1.5 scrollbar-none text-xs">
-            {currentUser.role === 'Agent' ? (
-              <>
+        {/* Vertical Tabs List on Left Side */}
+        <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-4 scrollbar-thin">
+          {currentUser.role === 'Agent' ? (
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 px-3 mb-1.5">
+                Agent Navigation
+              </p>
+              <div className="space-y-1">
                 <button
                   type="button"
                   id="nav-agent-dashboard"
-                  onClick={() => setActiveTab('dashboard')}
-                  className={`px-3.5 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
+                  onClick={() => {
+                    setActiveTab('dashboard');
+                    setIsMobileSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer text-left ${
                     activeTab === 'dashboard'
-                      ? 'bg-blue-900 text-white'
+                      ? 'bg-blue-900 text-white shadow-xs font-bold'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <Layers className="w-3.5 h-3.5" /> Home
+                  <Layers className={`w-4 h-4 shrink-0 ${activeTab === 'dashboard' ? 'text-white' : 'text-slate-400'}`} />
+                  <span className="flex-1 truncate">Home / Overview</span>
                 </button>
 
                 <button
                   type="button"
                   id="nav-agent-id-badge"
-                  onClick={() => setActiveTab('digitalIdBadge')}
-                  className={`px-3.5 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
+                  onClick={() => {
+                    setActiveTab('digitalIdBadge');
+                    setIsMobileSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer text-left ${
                     activeTab === 'digitalIdBadge'
-                      ? 'bg-blue-900 text-white'
+                      ? 'bg-blue-900 text-white shadow-xs font-bold'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <Award className="w-3.5 h-3.5 text-amber-500" /> Digital ID Badge & Welcome Letter
+                  <Award className={`w-4 h-4 shrink-0 ${activeTab === 'digitalIdBadge' ? 'text-amber-300' : 'text-amber-500'}`} />
+                  <span className="flex-1 truncate">Digital ID & Welcome Letter</span>
                 </button>
 
                 <button
                   type="button"
                   id="nav-agent-accreditation"
-                  onClick={() => setActiveTab('accreditation')}
-                  className={`px-3.5 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
+                  onClick={() => {
+                    setActiveTab('accreditation');
+                    setIsMobileSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer text-left ${
                     activeTab === 'accreditation'
-                      ? 'bg-blue-900 text-white'
+                      ? 'bg-blue-900 text-white shadow-xs font-bold'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <FileText className="w-3.5 h-3.5" /> Accreditation
+                  <FileText className={`w-4 h-4 shrink-0 ${activeTab === 'accreditation' ? 'text-white' : 'text-slate-400'}`} />
+                  <span className="flex-1 truncate">Accreditation Application</span>
                 </button>
 
                 <button
                   type="button"
                   id="nav-agent-resources"
-                  onClick={() => setActiveTab('resources')}
-                  className={`px-3.5 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
+                  onClick={() => {
+                    setActiveTab('resources');
+                    setIsMobileSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer text-left ${
                     activeTab === 'resources'
-                      ? 'bg-blue-900 text-white'
+                      ? 'bg-blue-900 text-white shadow-xs font-bold'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <ExternalLink className="w-3.5 h-3.5" /> Affiliate Resources
+                  <ExternalLink className={`w-4 h-4 shrink-0 ${activeTab === 'resources' ? 'text-white' : 'text-slate-400'}`} />
+                  <span className="flex-1 truncate">Affiliate Resources</span>
                 </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  id="nav-admin-overview"
-                  onClick={() => setActiveTab('overview')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
-                    activeTab === 'overview'
-                      ? 'bg-blue-900 text-white'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <BarChart3 className="w-3.5 h-3.5" /> Overview
-                </button>
-
-                <button
-                  type="button"
-                  id="nav-admin-applications"
-                  onClick={() => setActiveTab('applications')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
-                    activeTab === 'applications'
-                      ? 'bg-blue-900 text-white'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <FileCheck className="w-3.5 h-3.5" /> Applications Review ({applications.length})
-                </button>
-
-                <button
-                  type="button"
-                  id="nav-admin-contracts"
-                  onClick={() => setActiveTab('contractManagement')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
-                    activeTab === 'contractManagement'
-                      ? 'bg-blue-900 text-white'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <FileText className="w-3.5 h-3.5 text-amber-500" /> Sales Agency Agreement (SAA)
-                </button>
-
-                <button
-                  type="button"
-                  id="nav-admin-database"
-                  onClick={() => setActiveTab('agentsDatabase')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
-                    activeTab === 'agentsDatabase'
-                      ? 'bg-blue-900 text-white'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <Database className="w-3.5 h-3.5 text-emerald-500" /> Agents Database (Sheets)
-                </button>
-
-                <button
-                  type="button"
-                  id="nav-admin-positions"
-                  onClick={() => setActiveTab('positionRequests')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
-                    activeTab === 'positionRequests'
-                      ? 'bg-blue-900 text-white'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <Award className="w-3.5 h-3.5" /> Position Requests ({positionRequests.filter((p) => p.status === 'Pending').length})
-                </button>
-
-                <button
-                  type="button"
-                  id="nav-admin-monitoring"
-                  onClick={() => setActiveTab('accreditationMonitoring')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
-                    activeTab === 'accreditationMonitoring'
-                      ? 'bg-blue-900 text-white'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <Clock className="w-3.5 h-3.5 text-amber-500" /> 4-Month Expiry Radar
-                </button>
-
-                <button
-                  type="button"
-                  id="nav-admin-reports"
-                  onClick={() => setActiveTab('reports')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
-                    activeTab === 'reports'
-                      ? 'bg-blue-900 text-white'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <BarChart3 className="w-3.5 h-3.5" /> Reports & Analytics
-                </button>
-
-                <button
-                  type="button"
-                  id="nav-admin-audit"
-                  onClick={() => setActiveTab('auditTrail')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
-                    activeTab === 'auditTrail'
-                      ? 'bg-blue-900 text-white'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" /> Audit Trail
-                </button>
-
-                {currentUser.role === 'Admin' && (
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Operations & Review Group */}
+              <div>
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 px-3 mb-1.5">
+                  Operations & Review
+                </p>
+                <div className="space-y-1">
                   <button
                     type="button"
-                    id="nav-admin-settings"
-                    onClick={() => setActiveTab('systemSettings')}
-                    className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
-                      activeTab === 'systemSettings'
-                        ? 'bg-blue-900 text-white'
+                    id="nav-admin-overview"
+                    onClick={() => {
+                      setActiveTab('overview');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer text-left ${
+                      activeTab === 'overview'
+                        ? 'bg-blue-900 text-white shadow-xs font-bold'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                     }`}
                   >
-                    <Settings className="w-3.5 h-3.5" /> System Settings
+                    <BarChart3 className={`w-4 h-4 shrink-0 ${activeTab === 'overview' ? 'text-white' : 'text-slate-400'}`} />
+                    <span className="flex-1 truncate">Overview</span>
                   </button>
-                )}
 
+                  <button
+                    type="button"
+                    id="nav-admin-applications"
+                    onClick={() => {
+                      setActiveTab('applications');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer text-left ${
+                      activeTab === 'applications'
+                        ? 'bg-blue-900 text-white shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <FileCheck className={`w-4 h-4 shrink-0 ${activeTab === 'applications' ? 'text-white' : 'text-slate-400'}`} />
+                    <span className="flex-1 truncate">Applications Review</span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        activeTab === 'applications'
+                          ? 'bg-white/20 text-white'
+                          : 'bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {applications.length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="nav-admin-contracts"
+                    onClick={() => {
+                      setActiveTab('contractManagement');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer text-left ${
+                      activeTab === 'contractManagement'
+                        ? 'bg-blue-900 text-white shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <FileText className={`w-4 h-4 shrink-0 ${activeTab === 'contractManagement' ? 'text-amber-300' : 'text-amber-500'}`} />
+                    <span className="flex-1 truncate">Sales Agency Agreement</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="nav-admin-database"
+                    onClick={() => {
+                      setActiveTab('agentsDatabase');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer text-left ${
+                      activeTab === 'agentsDatabase'
+                        ? 'bg-blue-900 text-white shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Database className={`w-4 h-4 shrink-0 ${activeTab === 'agentsDatabase' ? 'text-emerald-300' : 'text-emerald-500'}`} />
+                    <span className="flex-1 truncate">Agents Database (Sheets)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="nav-admin-positions"
+                    onClick={() => {
+                      setActiveTab('positionRequests');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer text-left ${
+                      activeTab === 'positionRequests'
+                        ? 'bg-blue-900 text-white shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Award className={`w-4 h-4 shrink-0 ${activeTab === 'positionRequests' ? 'text-white' : 'text-slate-400'}`} />
+                    <span className="flex-1 truncate">Position Requests</span>
+                    {positionRequests.filter((p) => p.status === 'Pending').length > 0 && (
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          activeTab === 'positionRequests'
+                            ? 'bg-amber-400 text-slate-900'
+                            : 'bg-amber-100 text-amber-900 border border-amber-200'
+                        }`}
+                      >
+                        {positionRequests.filter((p) => p.status === 'Pending').length}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Compliance & Monitoring Group */}
+              <div>
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 px-3 mb-1.5">
+                  Compliance & Monitoring
+                </p>
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    id="nav-admin-monitoring"
+                    onClick={() => {
+                      setActiveTab('accreditationMonitoring');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer text-left ${
+                      activeTab === 'accreditationMonitoring'
+                        ? 'bg-blue-900 text-white shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Clock className={`w-4 h-4 shrink-0 ${activeTab === 'accreditationMonitoring' ? 'text-amber-300' : 'text-amber-500'}`} />
+                    <span className="flex-1 truncate">4-Month Expiry Radar</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="nav-admin-reports"
+                    onClick={() => {
+                      setActiveTab('reports');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer text-left ${
+                      activeTab === 'reports'
+                        ? 'bg-blue-900 text-white shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <BarChart3 className={`w-4 h-4 shrink-0 ${activeTab === 'reports' ? 'text-white' : 'text-slate-400'}`} />
+                    <span className="flex-1 truncate">Reports & Analytics</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="nav-admin-audit"
+                    onClick={() => {
+                      setActiveTab('auditTrail');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer text-left ${
+                      activeTab === 'auditTrail'
+                        ? 'bg-blue-900 text-white shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <ShieldCheck className={`w-4 h-4 shrink-0 ${activeTab === 'auditTrail' ? 'text-white' : 'text-slate-400'}`} />
+                    <span className="flex-1 truncate">Audit Trail</span>
+                  </button>
+
+                  {currentUser.role === 'Admin' && (
+                    <button
+                      type="button"
+                      id="nav-admin-settings"
+                      onClick={() => {
+                        setActiveTab('systemSettings');
+                        setIsMobileSidebarOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer text-left ${
+                        activeTab === 'systemSettings'
+                          ? 'bg-blue-900 text-white shadow-xs font-bold'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
+                    >
+                      <Settings className={`w-4 h-4 shrink-0 ${activeTab === 'systemSettings' ? 'text-white' : 'text-slate-400'}`} />
+                      <span className="flex-1 truncate">System Settings</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* External / Resources Group */}
+              <div>
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 px-3 mb-1.5">
+                  External Portals
+                </p>
                 <button
                   type="button"
                   id="nav-admin-resources"
-                  onClick={() => setActiveTab('resources')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
+                  onClick={() => {
+                    setActiveTab('resources');
+                    setIsMobileSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer text-left ${
                     activeTab === 'resources'
-                      ? 'bg-blue-900 text-white'
+                      ? 'bg-blue-900 text-white shadow-xs font-bold'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <ExternalLink className="w-3.5 h-3.5" /> External Portals
+                  <ExternalLink className={`w-4 h-4 shrink-0 ${activeTab === 'resources' ? 'text-white' : 'text-slate-400'}`} />
+                  <span className="flex-1 truncate">External Portals</span>
                 </button>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
+              </div>
+            </>
+          )}
+        </nav>
 
-      {/* Main Body View */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Sidebar Footer */}
+        <div className="p-3 border-t border-slate-200 bg-slate-50 space-y-2">
+          {currentUser.role === 'Admin' && (
+            <div className="p-2 bg-white rounded-xl border border-slate-200 text-xs">
+              <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1">
+                Role Persona Switcher:
+              </span>
+              <div className="grid grid-cols-3 gap-1">
+                <button
+                  type="button"
+                  id="switch-persona-agent"
+                  onClick={() => handleSwitchPersona('Agent')}
+                  className={`py-1 text-[11px] rounded-lg font-semibold transition text-center cursor-pointer ${
+                    currentUser.role === 'Agent'
+                      ? 'bg-blue-900 text-white shadow-xs font-bold'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Agent
+                </button>
+                <button
+                  type="button"
+                  id="switch-persona-staff"
+                  onClick={() => handleSwitchPersona('Staff')}
+                  className={`py-1 text-[11px] rounded-lg font-semibold transition text-center cursor-pointer ${
+                    currentUser.role === 'Staff'
+                      ? 'bg-blue-900 text-white shadow-xs font-bold'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Staff
+                </button>
+                <button
+                  type="button"
+                  id="switch-persona-admin"
+                  onClick={() => handleSwitchPersona('Admin')}
+                  className={`py-1 text-[11px] rounded-lg font-semibold transition text-center cursor-pointer ${
+                    currentUser.role === 'Admin'
+                      ? 'bg-purple-900 text-white shadow-xs font-bold'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Admin
+                </button>
+              </div>
+            </div>
+          )}
+
+          <button
+            type="button"
+            id="sidebar-sign-out-btn"
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold text-rose-700 hover:text-rose-800 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded-xl transition cursor-pointer"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* RIGHT SIDE / MAIN CONTENT WRAPPER */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden">
+        {/* Top Header Bar */}
+        <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-2xs px-4 sm:px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {/* Mobile Sidebar Hamburger Toggle */}
+            <button
+              type="button"
+              id="mobile-sidebar-toggle-btn"
+              onClick={() => setIsMobileSidebarOpen(true)}
+              className="lg:hidden p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer border border-slate-200"
+              title="Open Navigation"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
+            {/* Breadcrumb & Section Name */}
+            <div>
+              <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                <span className="hidden sm:inline">Megaworld International</span>
+                <span className="hidden sm:inline">/</span>
+                <span className="text-slate-700 font-bold uppercase tracking-wider text-[10px]">
+                  {currentUser.role} Portal
+                </span>
+              </div>
+              <h1 className="text-sm sm:text-base font-bold text-slate-900 leading-tight">
+                {activeTab === 'dashboard'
+                  ? 'Agent Home / Overview'
+                  : activeTab === 'digitalIdBadge'
+                  ? 'Digital ID Badge & Welcome Letter'
+                  : activeTab === 'accreditation'
+                  ? 'Accreditation Application'
+                  : activeTab === 'overview'
+                  ? 'Executive Overview'
+                  : activeTab === 'applications'
+                  ? 'Applications Review'
+                  : activeTab === 'contractManagement'
+                  ? 'Sales Agency Agreement (SAA)'
+                  : activeTab === 'agentsDatabase'
+                  ? 'Agents Database (Sheets)'
+                  : activeTab === 'positionRequests'
+                  ? 'Position Requests'
+                  : activeTab === 'accreditationMonitoring'
+                  ? '4-Month Expiry Radar'
+                  : activeTab === 'reports'
+                  ? 'Reports & Analytics'
+                  : activeTab === 'auditTrail'
+                  ? 'Audit Trail & Compliance'
+                  : activeTab === 'systemSettings'
+                  ? 'System Settings'
+                  : activeTab === 'resources'
+                  ? 'Affiliate Resources & Portals'
+                  : 'Dashboard'}
+              </h1>
+            </div>
+          </div>
+
+          {/* Right Header Quick Controls */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Notifications Toggle */}
+            <button
+              type="button"
+              id="notifications-btn"
+              onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+              className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition border border-slate-200 cursor-pointer"
+              title="Notifications"
+            >
+              <Bell className="w-4 h-4" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-white" />
+              )}
+            </button>
+
+            {/* Profile Avatar Quick Link */}
+            <button
+              type="button"
+              id="header-profile-btn"
+              onClick={() => setIsProfileOpen(true)}
+              className="flex items-center gap-2 p-1 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+              title="Profile Settings"
+            >
+              {currentUser.photoUrl ? (
+                <img
+                  src={currentUser.photoUrl}
+                  alt={currentUser.displayName}
+                  className="w-8 h-8 rounded-full object-cover border border-blue-900"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-blue-900 text-white flex items-center justify-center font-bold text-xs">
+                  {currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : 'U'}
+                </div>
+              )}
+              <div className="hidden md:flex flex-col text-left pr-1">
+                <span className="text-xs font-semibold text-slate-900 leading-tight">
+                  {currentUser.displayName}
+                </span>
+                <span className="text-[10px] text-blue-900 font-medium">
+                  {currentUser.role}
+                </span>
+              </div>
+            </button>
+          </div>
+        </header>
+
+        {/* Main Body View */}
+        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {currentUser.role === 'Agent' ? (
           /* Agent Views */
           <>
@@ -1509,6 +1746,7 @@ export default function App() {
           </span>
         </div>
       </footer>
+      </div>
     </div>
   );
 }

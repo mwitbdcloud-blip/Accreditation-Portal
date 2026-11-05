@@ -362,16 +362,21 @@ export interface SystemSettings {
   accreditationDurationMonths: number; // default: 4 months
   renewalWindowDaysBeforeExpiry: number; // default: 30 days or on expiry
   reminderIntervalsDays: number[]; // [30, 15, 7, 0]
+  reminderIntervalDays?: number[]; // alias
   googleSpreadsheetId: string;
   googleAppsScriptUrl: string;
   googleDriveFolderId: string;
+  googleDriveRootFolderId?: string; // alias
   contractTemplateName: string;
   contractTemplateText: string;
   autoSyncGoogleSheets: boolean;
   autoRenewalUnlock: boolean;
   preventDuplicateIdentities: boolean;
+  emailNotificationsEnabled?: boolean;
+  auditRetentionYears?: number;
+  maintenanceMode?: boolean;
   lastSheetsSyncTimestamp?: string;
-  sheetsSyncStatus: 'Synced' | 'Pending' | 'Syncing' | 'Error';
+  sheetsSyncStatus: 'Synced' | 'Pending' | 'Syncing' | 'Error' | 'Connected';
 }
 
 export interface PositionContractTemplate {

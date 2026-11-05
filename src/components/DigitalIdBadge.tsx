@@ -23,11 +23,13 @@ import {
   FileText,
   Lock,
   Clock,
+  RefreshCw,
 } from 'lucide-react';
 import { AgentProfile, AccreditationApplication } from '../types';
 import { formatDate } from '../utils/dateFormatter';
 import { MegaworldLogo } from './MegaworldLogo';
 import { safeHtml2Canvas } from '../utils/colorSanitizer';
+import { downloadWelcomeLetterPdf } from '../utils/welcomeLetterPdfGenerator';
 import { WelcomeLetterModal } from './WelcomeLetterModal';
 import QRCode from 'qrcode';
 
@@ -210,81 +212,56 @@ export const DigitalIdBadge: React.FC<DigitalIdBadgeProps> = ({
     window.print();
   };
 
+  const [isDownloadingWlPdf, setIsDownloadingWlPdf] = useState(false);
   const welcomeLetter = agent.welcomeLetter || latestApplication?.welcomeLetter;
 
-  const handleDownloadWelcomeLetter = () => {
-    if (!isApplicationApproved) {
+  const handleDownloadWelcomeLetter = async () => {
+    if (!isApplicationApproved || isDownloadingWlPdf) {
       return;
     }
-    const raw = welcomeLetter?.sentAt || agent.accreditationStartDate;
-    const dateObj = raw ? new Date(raw) : new Date();
-    const formattedDate = !isNaN(dateObj.getTime())
-      ? dateObj.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
-      : 'January 01, 2026';
+    setIsDownloadingWlPdf(true);
+    try {
+      const raw = welcomeLetter?.sentAt || agent.accreditationStartDate;
+      const dateObj = raw ? new Date(raw) : new Date();
+      const formattedDate = !isNaN(dateObj.getTime())
+        ? dateObj.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
+        : 'January 01, 2026';
 
-    const expiryRaw = welcomeLetter?.termEndDate || agent.accreditationExpiryDate;
-    const expiryObj = expiryRaw ? new Date(expiryRaw) : new Date();
-    const formattedExpiry = !isNaN(expiryObj.getTime())
-      ? expiryObj.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
-      : 'May 30, 2026';
+      const expiryRaw = welcomeLetter?.termEndDate || agent.accreditationExpiryDate;
+      const expiryObj = expiryRaw ? new Date(expiryRaw) : new Date();
+      const formattedExpiry = !isNaN(expiryObj.getTime())
+        ? expiryObj.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
+        : 'May 30, 2026';
 
-    const rawName = agent.fullName.trim();
-    const salutationPrefix =
-      (agent.personalDetails as any)?.gender === 'female' || (agent.personalDetails as any)?.civilStatus === 'Married'
-        ? 'Ms.'
-        : 'Mr.';
-    const salutation = /^(mr\.|ms\.|mrs\.|dr\.|engr\.|atty\.)/i.test(rawName)
-      ? rawName
-      : `${salutationPrefix} ${rawName}`;
+      const rawName = agent.fullName.trim();
+      const salutationPrefix =
+        (agent.personalDetails as any)?.gender === 'female' || (agent.personalDetails as any)?.civilStatus === 'Married'
+          ? 'Ms.'
+          : 'Mr.';
+      const salutation = /^(mr\.|ms\.|mrs\.|dr\.|engr\.|atty\.)/i.test(rawName)
+        ? rawName
+        : `${salutationPrefix} ${rawName}`;
 
-    const content = `
-${formattedDate}
+      const refNumber =
+        welcomeLetter?.refNumber ||
+        `MWI-WL-2026-${(agent.affiliateCode || '').replace(/[^0-9]/g, '').slice(-6) || '000001'}`;
 
-Dear ${salutation},
-
-Thank you very much for joining our growing Megaworld Corporation - International Marketing Division family!
-
-It is my distinct privilege to welcome you to our group of dynamic and driven real estate sales professionals operating in key territories all over the world. Just like them, you were accepted because of your knowledge, attitudes, skills and integrity that form the core of our business. It is our fervent hope that you will champion, observe, and respect the corporate values we espouse toward the achievement of our corporate vision and dreams. In the process, we hope you achieve yours too.
-
-As a new member, you are entitled to the following benefits:
-
-  o Career Development
-  o Rewarding Commission
-  o Exciting Promos and Incentives
-  o Acquaintances and Conferences
-  o Training and Self-Development
-  o Enriching Experience
-
-Please check this guide and sign up at our 1.) Agent’s Hub - the one-stop, web-based sales management tool to access latest inventory, computations, updates and promotions; 2.) TBD Cloud - access and download presentation materials of Megaworld and its subsidiaries; and 3.) Sales and Commission Portal – for monitoring commission and generating sales reports.
-
-You are signed up as a ${positionTitle} under ${agent.region || 'Asia Pacific 1'} region. Your sales contract expires on ${formattedExpiry} and is renewable upon further evaluation of your sales performance. You may also refer to your Sales Agency Agreement for the details of your sales targets & commission structure.
-
-We wish you all the best. Welcome to our world! Welcome to Megaworld!
-${welcomeLetter?.customNote ? `\nManagement Remarks:\n"${welcomeLetter.customNote}"\n` : ''}
-Sincerely,
-
-MR. JAVIER ROMEO K. ABUSTAN
-Managing Director
-
-------------------------------------------------------------------------
-Megaworld International Contacts & Portals:
-Website: www.megaworldinternational.com
-Phone: (632) 894-6300
-Facebook: MegaworldInternationalOfficial | MegaworldInternationalRecruitment
-Twitter: @megaworld_intl
-Instagram: @megaworld_intl
-------------------------------------------------------------------------
-`.trim();
-
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Megaworld_International_Welcome_Letter_${agent.affiliateCode}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+      await downloadWelcomeLetterPdf({
+        recipientName: rawName,
+        salutationName: salutation,
+        affiliateCode: agent.affiliateCode,
+        position: positionTitle,
+        region: agent.region || 'Asia Pacific 1',
+        letterDateFormatted: formattedDate,
+        expiryDateFormatted: formattedExpiry,
+        refNumber,
+        customNote: welcomeLetter?.customNote,
+      });
+    } catch (err) {
+      console.error('Failed to download Welcome Letter PDF:', err);
+    } finally {
+      setIsDownloadingWlPdf(false);
+    }
   };
 
   // Reusable card face renderer
@@ -873,11 +850,21 @@ Instagram: @megaworld_intl
                   type="button"
                   id="btn-download-welcome-letter-badge"
                   onClick={handleDownloadWelcomeLetter}
-                  className="py-2.5 px-4 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition flex items-center justify-center gap-2 cursor-pointer"
-                  title="Download official Welcome Letter text"
+                  disabled={isDownloadingWlPdf}
+                  className="py-2.5 px-4 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  title="Download official Welcome Letter as PDF file"
                 >
-                  <Download className="w-3.5 h-3.5 text-blue-900" />
-                  <span>Download (.txt)</span>
+                  {isDownloadingWlPdf ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 text-blue-900 animate-spin" />
+                      <span>Generating PDF...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5 text-blue-900" />
+                      <span>Download (PDF)</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

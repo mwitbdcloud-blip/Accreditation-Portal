@@ -4,8 +4,6 @@ import {
   Mail,
   Printer,
   Download,
-  Copy,
-  Check,
   UploadCloud,
   FileText,
   Award,
@@ -15,12 +13,17 @@ import {
   CheckCircle2,
   ExternalLink,
   Lock,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
 } from 'lucide-react';
 import { AccreditationApplication, AgentProfile, WelcomeLetterTemplate } from '../types';
 import { MegaworldLogo } from './MegaworldLogo';
 import { formatDate, computeExpiryDate } from '../utils/dateFormatter';
 import { api } from '../services/api';
 import { clientStorage } from '../services/clientStorage';
+import { jsPDF } from 'jspdf';
+import { downloadWelcomeLetterPdf, WelcomeLetterDocument } from '../utils/welcomeLetterPdfGenerator';
 
 interface WelcomeLetterModalProps {
   application?: AccreditationApplication | null;
@@ -48,10 +51,11 @@ export const WelcomeLetterModal: React.FC<WelcomeLetterModalProps> = ({
 }) => {
   const [isSending, setIsSending] = useState(false);
   const [sentSuccess, setSentSuccess] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [customNote, setCustomNote] = useState('');
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [showGuideModal, setShowGuideModal] = useState(false);
+  const [zoomScale, setZoomScale] = useState<number>(0.8);
   const letterRef = useRef<HTMLDivElement>(null);
 
   const template = clientStorage.getWelcomeLetterTemplate();
@@ -144,62 +148,29 @@ export const WelcomeLetterModal: React.FC<WelcomeLetterModalProps> = ({
     }
   };
 
-  const getLetterPlainText = () => {
-    return `
-${letterDateFormatted}
-
-Dear ${salutationName},
-
-Thank you very much for joining our growing Megaworld Corporation - International Marketing Division family!
-
-It is my distinct privilege to welcome you to our group of dynamic and driven real estate sales professionals operating in key territories all over the world. Just like them, you were accepted because of your knowledge, attitudes, skills and integrity that form the core of our business. It is our fervent hope that you will champion, observe, and respect the corporate values we espouse toward the achievement of our corporate vision and dreams. In the process, we hope you achieve yours too.
-
-As a new member, you are entitled to the following benefits:
-
-  o Career Development
-  o Rewarding Commission
-  o Exciting Promos and Incentives
-  o Acquaintances and Conferences
-  o Training and Self-Development
-  o Enriching Experience
-
-Please check this guide and sign up at our 1.) Agent’s Hub - the one-stop, web-based sales management tool to access latest inventory, computations, updates and promotions; 2.) TBD Cloud - access and download presentation materials of Megaworld and its subsidiaries; and 3.) Sales and Commission Portal – for monitoring commission and generating sales reports.
-
-You are signed up as a ${position} under ${region} region. Your sales contract expires on ${expiryDateFormatted} and is renewable upon further evaluation of your sales performance. You may also refer to your Sales Agency Agreement for the details of your sales targets & commission structure.
-
-We wish you all the best. Welcome to our world! Welcome to Megaworld!
-${effectiveCustomNote ? `\nManagement Remarks:\n${effectiveCustomNote}\n` : ''}
-Sincerely,
-
-MR. JAVIER ROMEO K. ABUSTAN
-Managing Director
-
-------------------------------------------------------------------------
-Megaworld International Contacts & Portals:
-Website: www.megaworldinternational.com
-Phone: (632) 894-6300
-Facebook: MegaworldInternationalOfficial | MegaworldInternationalRecruitment
-Twitter: @megaworld_intl
-Instagram: @megaworld_intl
-------------------------------------------------------------------------
-`.trim();
-  };
-
-  const handleCopyText = () => {
-    navigator.clipboard.writeText(getLetterPlainText());
-    setCopied(true);
-    showToast('Welcome Letter text copied to clipboard!');
-    setTimeout(() => setCopied(false), 2500);
-  };
-
-  const handleDownloadLetter = () => {
-    const plainText = getLetterPlainText();
-    const blob = new Blob([plainText], { type: 'text/plain;charset=utf-8' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Megaworld_International_Welcome_Letter_${affiliateCode}.txt`;
-    link.click();
-    showToast('Welcome Letter downloaded successfully!');
+  const handleDownloadPdf = async () => {
+    if (isGeneratingPdf) return;
+    setIsGeneratingPdf(true);
+    try {
+      showToast('Generating official 1-page Welcome Letter PDF...');
+      await downloadWelcomeLetterPdf({
+        recipientName,
+        salutationName,
+        affiliateCode,
+        position,
+        region,
+        letterDateFormatted,
+        expiryDateFormatted,
+        refNumber,
+        customNote: effectiveCustomNote,
+      });
+      showToast('Welcome Letter PDF downloaded successfully!');
+    } catch (err: any) {
+      console.error('Error generating Welcome Letter PDF:', err);
+      showToast('Failed to generate PDF. Please use the Print button to Save as PDF.');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   const handlePrint = () => {
@@ -265,7 +236,7 @@ Instagram: @megaworld_intl
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-4xl my-6 bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[92vh]"
+        className="relative w-full max-w-5xl my-4 bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[94vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Modal Header */}
@@ -330,6 +301,55 @@ Instagram: @megaworld_intl
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Full-Page Zoom Controls */}
+            <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setZoomScale((prev) => Math.max(0.5, Number((prev - 0.1).toFixed(2))))}
+                className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition cursor-pointer"
+                title="Zoom Out"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              <span className="font-mono text-[11px] text-slate-700 font-semibold px-1 min-w-[38px] text-center">
+                {Math.round(zoomScale * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={() => setZoomScale((prev) => Math.min(1.4, Number((prev + 0.1).toFixed(2))))}
+                className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition cursor-pointer"
+                title="Zoom In"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+              <div className="w-[1px] h-3 bg-slate-200 mx-1" />
+              <button
+                type="button"
+                onClick={() => setZoomScale(0.75)}
+                className={`px-2 py-0.5 text-[11px] font-medium rounded transition cursor-pointer flex items-center gap-1 ${
+                  Math.abs(zoomScale - 0.75) < 0.03
+                    ? 'bg-blue-100 text-blue-900 font-bold'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+                title="Fit entire page in view"
+              >
+                <Maximize2 className="w-3 h-3" />
+                <span>Fit Page</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoomScale(1.0)}
+                className={`px-2 py-0.5 text-[11px] font-medium rounded transition cursor-pointer ${
+                  Math.abs(zoomScale - 1.0) < 0.03
+                    ? 'bg-blue-100 text-blue-900 font-bold'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+                title="100% Actual Size"
+              >
+                100%
+              </button>
+            </div>
+
             {!isAgentView && (
               <button
                 type="button"
@@ -342,22 +362,18 @@ Instagram: @megaworld_intl
 
             <button
               type="button"
-              onClick={handleDownloadLetter}
-              className="px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg transition flex items-center gap-1 cursor-pointer"
-              title="Download text file"
+              id="btn-download-welcome-letter-pdf"
+              onClick={handleDownloadPdf}
+              disabled={isGeneratingPdf}
+              className="px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-50 rounded-lg transition flex items-center gap-1 cursor-pointer"
+              title="Download Welcome Letter as PDF file"
             >
-              <Download className="w-3.5 h-3.5 text-blue-900" />
-              <span>Download</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleCopyText}
-              className="px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg transition flex items-center gap-1 cursor-pointer"
-              title="Copy text of Welcome Letter"
-            >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? 'Copied' : 'Copy Text'}</span>
+              {isGeneratingPdf ? (
+                <div className="w-3.5 h-3.5 border-2 border-blue-900 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5 text-blue-900" />
+              )}
+              <span>{isGeneratingPdf ? 'Downloading...' : 'Download'}</span>
             </button>
 
             <button
@@ -388,259 +404,31 @@ Instagram: @megaworld_intl
           </div>
         )}
 
-        {/* Scrollable Letter Document Sheet matching image_15b08e2d.png */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 md:p-10 bg-slate-200/80 flex justify-center print:p-0 print:bg-white print:overflow-visible">
+        {/* Scrollable Letter Document Sheet calibrated strictly to ONE FULL PAGE */}
+        <div className="flex-1 overflow-y-auto overflow-x-auto p-4 sm:p-6 md:p-8 bg-slate-700/30 flex flex-col items-center print:p-0 print:bg-white print:overflow-visible">
           <div
             ref={letterRef}
-            id="welcome-letter-sheet"
-            className="relative w-full max-w-[760px] bg-white shadow-2xl rounded-2xl p-8 sm:p-12 md:p-16 border border-slate-300/80 text-slate-900 font-sans overflow-hidden select-text print:shadow-none print:border-none print:rounded-none print:p-8"
-            style={{ minHeight: '1020px' }}
+            className="transition-transform duration-150 origin-top flex flex-col items-center print:transform-none"
+            style={{
+              transform: `scale(${zoomScale})`,
+              transformOrigin: 'top center',
+              marginBottom: zoomScale < 1 ? `-${Math.round((1 - zoomScale) * 1123)}px` : '24px',
+            }}
           >
-            {/* TOP-RIGHT CURVED GRADIENT WAVES ACCENT */}
-            <div className="absolute top-0 right-0 w-64 h-52 sm:w-84 sm:h-68 pointer-events-none overflow-hidden z-0 print:opacity-100">
-              <svg viewBox="0 0 400 320" className="w-full h-full" preserveAspectRatio="none" fill="none">
-                <defs>
-                  <linearGradient id="topWaveGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.9" />
-                    <stop offset="50%" stopColor="#0284c7" stopOpacity="0.85" />
-                    <stop offset="100%" stopColor="#0369a1" stopOpacity="0.95" />
-                  </linearGradient>
-                  <linearGradient id="topWaveGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#7dd3fc" stopOpacity="0.75" />
-                    <stop offset="60%" stopColor="#0284c7" stopOpacity="0.75" />
-                    <stop offset="100%" stopColor="#075985" stopOpacity="0.85" />
-                  </linearGradient>
-                  <linearGradient id="topWaveGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#bae6fd" stopOpacity="0.6" />
-                    <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.6" />
-                  </linearGradient>
-                </defs>
-                <path d="M110 0 C210 50 310 120 400 240 L400 0 Z" fill="url(#topWaveGrad1)" />
-                <path d="M170 0 C250 70 330 160 400 320 L400 0 Z" fill="url(#topWaveGrad2)" />
-                <path d="M50 0 C150 30 270 80 400 160 L400 0 Z" fill="url(#topWaveGrad3)" />
-              </svg>
-            </div>
-
-            {/* BOTTOM-LEFT & BOTTOM SPREAD GRADIENT WAVES ACCENT */}
-            <div className="absolute bottom-0 left-0 w-full h-36 sm:h-44 pointer-events-none overflow-hidden z-0 print:opacity-100">
-              <svg viewBox="0 0 900 200" className="w-full h-full" preserveAspectRatio="none" fill="none">
-                <defs>
-                  <linearGradient id="botWaveGrad1" x1="0%" y1="100%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#0284c7" stopOpacity="0.85" />
-                    <stop offset="60%" stopColor="#38bdf8" stopOpacity="0.8" />
-                    <stop offset="100%" stopColor="#7dd3fc" stopOpacity="0.65" />
-                  </linearGradient>
-                  <linearGradient id="botWaveGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#0369a1" stopOpacity="0.92" />
-                    <stop offset="100%" stopColor="#0284c7" stopOpacity="0.75" />
-                  </linearGradient>
-                  <linearGradient id="botWaveGrad3" x1="0%" y1="100%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.55" />
-                    <stop offset="100%" stopColor="#bae6fd" stopOpacity="0.45" />
-                  </linearGradient>
-                </defs>
-                <path d="M0 70 C220 30 500 160 900 60 L900 200 L0 200 Z" fill="url(#botWaveGrad1)" />
-                <path d="M0 120 C280 60 580 180 900 100 L900 200 L0 200 Z" fill="url(#botWaveGrad2)" />
-                <path d="M0 30 C200 110 440 40 900 140 L900 200 L0 200 Z" fill="url(#botWaveGrad3)" />
-              </svg>
-            </div>
-
-            {/* RELATIVE CONTENT LAYER */}
-            <div className="relative z-10 space-y-5 text-slate-800 text-[13.5px] sm:text-[14px] leading-relaxed">
-              {/* TOP HEADER: OFFICIAL MEGAWORLD INTERNATIONAL LOGO ("Megaworld International Logo_blue_4-02") */}
-              <div className="pt-1">
-                <img
-                  src="/assets/aistudio/Megaworld_International_Logo_blue_4-02_2fcc5f75.png"
-                  alt="Megaworld International"
-                  className="h-16 sm:h-20 w-auto object-contain bg-transparent shrink-0 select-none"
-                />
-              </div>
-
-              {/* DATE */}
-              <div className="pt-4 text-slate-900 font-sans font-medium text-sm">
-                {letterDateFormatted}
-              </div>
-
-              {/* SALUTATION */}
-              <div className="pt-2 font-bold text-slate-900 text-sm">
-                Dear {salutationName},
-              </div>
-
-              {/* PARAGRAPH 1 */}
-              <p className="text-slate-900">
-                Thank you very much for joining our growing{' '}
-                <strong className="font-bold text-slate-950">
-                  Megaworld Corporation - International Marketing Division
-                </strong>{' '}
-                family!
-              </p>
-
-              {/* PARAGRAPH 2 */}
-              <p className="text-slate-800 text-justify">
-                It is my distinct privilege to welcome you to our group of dynamic and driven real estate
-                sales professionals operating in key territories all over the world. Just like them, you
-                were accepted because of your knowledge, attitudes, skills and integrity that form the core
-                of our business. It is our fervent hope that you will champion, observe, and respect the
-                corporate values we espouse toward the achievement of our corporate vision and dreams. In
-                the process, we hope you achieve yours too.
-              </p>
-
-              {/* BENEFITS INTRO & CREATE BULLETS */}
-              <div className="space-y-1.5 pt-1">
-                <p className="text-slate-900">
-                  As a new member, you are entitled to the following benefits:
-                </p>
-
-                <ul className="space-y-1.5 pl-6 sm:pl-8 text-slate-800">
-                  <li className="flex items-center gap-3">
-                    <span className="w-1.5 h-1.5 rounded-full border border-slate-700 inline-block shrink-0" />
-                    <span>
-                      <strong className="font-bold text-[#0080c8] text-base">C</strong>areer Development
-                    </span>
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <span className="w-1.5 h-1.5 rounded-full border border-slate-700 inline-block shrink-0" />
-                    <span>
-                      <strong className="font-bold text-[#0080c8] text-base">R</strong>ewarding Commission
-                    </span>
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <span className="w-1.5 h-1.5 rounded-full border border-slate-700 inline-block shrink-0" />
-                    <span>
-                      <strong className="font-bold text-[#0080c8] text-base">E</strong>xciting Promos and Incentives
-                    </span>
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <span className="w-1.5 h-1.5 rounded-full border border-slate-700 inline-block shrink-0" />
-                    <span>
-                      <strong className="font-bold text-[#0080c8] text-base">A</strong>cquaintances and Conferences
-                    </span>
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <span className="w-1.5 h-1.5 rounded-full border border-slate-700 inline-block shrink-0" />
-                    <span>
-                      <strong className="font-bold text-[#0080c8] text-base">T</strong>raining and Self-Development
-                    </span>
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <span className="w-1.5 h-1.5 rounded-full border border-slate-700 inline-block shrink-0" />
-                    <span>
-                      <strong className="font-bold text-[#0080c8] text-base">E</strong>nriching Experience
-                    </span>
-                  </li>
-                </ul>
-              </div>
-
-              {/* PLATFORMS & GUIDE PARAGRAPH */}
-              <p className="text-slate-800 text-justify pt-1">
-                Please check this{' '}
-                <button
-                  type="button"
-                  onClick={() => setShowGuideModal(true)}
-                  className="text-[#0080c8] underline font-medium hover:text-[#0060aa] cursor-pointer inline p-0 bg-transparent border-0"
-                >
-                  guide
-                </button>{' '}
-                and sign up at our 1.) <strong className="font-bold text-slate-950">Agent’s Hub</strong> -
-                the one-stop, web-based sales management tool to access latest inventory, computations,
-                updates and promotions; 2.) <strong className="font-bold text-slate-950">TBD Cloud</strong> -
-                access and download presentation materials of Megaworld and its subsidiaries; and 3.){' '}
-                <strong className="font-bold text-slate-950">Sales and Commission Portal</strong> – for
-                monitoring commission and generating sales reports.
-              </p>
-
-              {/* POSITION, REGION & EXPIRY PARAGRAPH */}
-              <p className="text-slate-800 text-justify pt-1">
-                You are signed up as a{' '}
-                <strong className="font-bold text-slate-950">{position}</strong> under{' '}
-                <strong className="font-bold text-slate-950">{region}</strong> region. Your sales
-                contract expires on{' '}
-                <strong className="font-bold text-slate-950">{expiryDateFormatted}</strong> and is
-                renewable upon further evaluation of your sales performance. You may also refer to your Sales
-                Agency Agreement for the details of your sales targets & commission structure.
-              </p>
-
-              {/* CLOSING GREETING */}
-              <p className="text-slate-900 font-normal pt-1">
-                We wish you all the best. Welcome to our world! Welcome to Megaworld!
-              </p>
-
-              {/* OPTIONAL OPERATIONS REMARKS */}
-              {effectiveCustomNote && (
-                <div className="p-3 bg-blue-50/80 border-l-4 border-[#0060AA] rounded-r-lg text-xs space-y-0.5 my-2">
-                  <span className="font-bold text-[#0060AA] block">Management Remarks:</span>
-                  <span className="text-slate-800 italic">{effectiveCustomNote}</span>
-                </div>
-              )}
-
-              {/* SIGN-OFF & CONTACT INFORMATION SECTION */}
-              <div className="pt-6 flex flex-col sm:flex-row sm:items-end justify-between gap-6 pb-6">
-                {/* Left Column: Sign-off */}
-                <div className="space-y-1">
-                  <p className="text-slate-800">Sincerely,</p>
-                  <div className="h-10 sm:h-12 flex items-center">
-                    <span className="font-serif italic text-xl text-blue-950/80 font-bold select-none tracking-wide">
-                      Javier Romeo K. Abustan
-                    </span>
-                  </div>
-                  <p className="font-bold text-slate-950 tracking-wider text-xs sm:text-sm">
-                    MR. JAVIER ROMEO K. ABUSTAN
-                  </p>
-                  <p className="text-xs text-slate-600 font-medium">Managing Director</p>
-                </div>
-
-                {/* Right Column: Contact & Social Handles */}
-                <div className="flex items-start gap-4">
-                  <div className="w-[1.5px] bg-slate-300 self-stretch hidden sm:block" />
-
-                  <div className="space-y-1.5 text-[11px] text-[#0080c8] font-sans">
-                    <div className="flex items-center gap-2">
-                      <svg className="w-3.5 h-3.5 shrink-0 text-[#0080c8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="10" />
-                        <line x1="2" y1="12" x2="22" y2="12" />
-                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                      </svg>
-                      <a href="https://www.megaworldinternational.com" target="_blank" rel="noreferrer" className="hover:underline">
-                        www.megaworldinternational.com
-                      </a>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <svg className="w-3.5 h-3.5 shrink-0 text-[#0080c8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-                      </svg>
-                      <span>(632) 894-6300</span>
-                    </div>
-
-                    <div className="flex items-start gap-2">
-                      <svg className="w-3.5 h-3.5 shrink-0 text-[#0080c8] mt-0.5" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
-                      </svg>
-                      <div className="flex flex-col leading-tight">
-                        <span>MegaworldInternationalOfficial</span>
-                        <span>MegaworldInternationalRecruitment</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <svg className="w-3.5 h-3.5 shrink-0 text-[#0080c8]" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z" />
-                      </svg>
-                      <span>@megaworld_intl</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <svg className="w-3.5 h-3.5 shrink-0 text-[#0080c8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
-                        <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-                        <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
-                      </svg>
-                      <span>@megaworld_intl</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <WelcomeLetterDocument
+              data={{
+                recipientName,
+                salutationName,
+                affiliateCode,
+                position,
+                region,
+                letterDateFormatted,
+                expiryDateFormatted,
+                refNumber,
+                customNote: effectiveCustomNote,
+              }}
+              onOpenGuide={() => setShowGuideModal(true)}
+            />
           </div>
         </div>
 
@@ -674,33 +462,13 @@ Instagram: @megaworld_intl
 
           <div className="flex items-center gap-2.5">
             {isAgentView ? (
-              <>
-                <button
-                  type="button"
-                  id="agent-download-letter-btn"
-                  onClick={handleDownloadLetter}
-                  className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5 text-blue-900" />
-                  <span>Download Letter (.txt)</span>
-                </button>
-                <button
-                  type="button"
-                  id="agent-print-letter-btn"
-                  onClick={handlePrint}
-                  className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5 text-slate-700" />
-                  <span>Print / PDF</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-5 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-xl transition cursor-pointer"
-                >
-                  Close
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-5 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-xl transition cursor-pointer"
+              >
+                Close
+              </button>
             ) : (
               <>
                 <button
@@ -803,28 +571,54 @@ Instagram: @megaworld_intl
         </div>
       )}
 
-      {/* Print Style Injector */}
+      {/* Print Style Injector: Strict Single-Page Fit Across A4 and Letter */}
       <style>{`
         @media print {
+          @page {
+            size: a4 portrait;
+            margin: 0;
+          }
+
+          html,
+          body {
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            background: #ffffff !important;
+          }
+
+          /* Hide everything except the welcome letter sheet */
           body * {
             visibility: hidden !important;
           }
-          #welcome-letter-sheet, #welcome-letter-sheet * {
+
+          #welcome-letter-sheet,
+          #welcome-letter-sheet * {
             visibility: visible !important;
           }
+
           #welcome-letter-sheet {
             position: fixed !important;
             left: 0 !important;
             top: 0 !important;
-            width: 100% !important;
-            max-width: 100% !important;
+            width: 210mm !important;
+            height: 297mm !important;
+            max-width: 210mm !important;
+            max-height: 297mm !important;
             margin: 0 !important;
-            padding: 24mm 18mm !important;
+            padding: 12mm 15mm 12mm 15mm !important;
+            box-sizing: border-box !important;
             box-shadow: none !important;
             border: none !important;
+            border-radius: 0 !important;
+            overflow: hidden !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
-            z-index: 99999 !important;
+            z-index: 999999 !important;
+            background: #ffffff !important;
           }
         }
       `}</style>

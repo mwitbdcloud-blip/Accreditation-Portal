@@ -34,7 +34,7 @@ import {
   filterNonSampleAgents,
   filterNonSampleApplications,
 } from '../utils/sampleDataFilter';
-import { syncAgentsAndApplications } from '../utils/applicationSync';
+import { syncAgentsAndApplications, createApplicationFromAgent } from '../utils/applicationSync';
 
 const STORAGE_KEYS = {
   AGENTS: 'mwi_agents_cache',
@@ -53,14 +53,19 @@ const DEFAULT_SETTINGS: SystemSettings = {
   accreditationDurationMonths: 4,
   renewalWindowDaysBeforeExpiry: 30,
   reminderIntervalsDays: [30, 15, 7, 0],
+  reminderIntervalDays: [30, 15, 7, 0],
   googleSpreadsheetId: '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms',
   googleAppsScriptUrl: '',
   googleDriveFolderId: '0B_MegaWorldAgents_GlobalRoot',
+  googleDriveRootFolderId: '0B_MegaWorldAgents_GlobalRoot',
   contractTemplateName: 'MWI Sales Agency Agreement',
   contractTemplateText: '',
   autoSyncGoogleSheets: true,
   autoRenewalUnlock: true,
   preventDuplicateIdentities: true,
+  emailNotificationsEnabled: true,
+  auditRetentionYears: 5,
+  maintenanceMode: false,
   sheetsSyncStatus: 'Synced',
 };
 
@@ -204,15 +209,72 @@ export const clientStorage = {
   },
 
   getApplication(id: string): AccreditationApplication | null {
+    if (!id) return null;
+    const cleanId = id.trim();
+    const strippedCode = cleanId.replace(/^app_/, '');
     const apps = this.getApplications();
-    return apps.find((a) => a.id === id) || null;
+
+    // 1. Exact ID match
+    let found = apps.find((a) => a.id === cleanId);
+    if (found) return found;
+
+    // 2. Case-insensitive ID match
+    found = apps.find((a) => a.id?.toLowerCase() === cleanId.toLowerCase());
+    if (found) return found;
+
+    // 3. Match by affiliateCode
+    found = apps.find(
+      (a) =>
+        a.affiliateCode &&
+        (a.affiliateCode.toUpperCase() === cleanId.toUpperCase() ||
+          a.affiliateCode.toUpperCase() === strippedCode.toUpperCase() ||
+          `app_${a.affiliateCode.toUpperCase()}` === cleanId.toUpperCase())
+    );
+    if (found) return found;
+
+    // 4. Search raw storage (without filtering)
+    const rawApps = readStorage<AccreditationApplication[]>(STORAGE_KEYS.APPLICATIONS, []);
+    found = rawApps.find(
+      (a) =>
+        a.id === cleanId ||
+        a.id?.toLowerCase() === cleanId.toLowerCase() ||
+        (a.affiliateCode &&
+          (a.affiliateCode.toUpperCase() === cleanId.toUpperCase() ||
+            a.affiliateCode.toUpperCase() === strippedCode.toUpperCase() ||
+            `app_${a.affiliateCode.toUpperCase()}` === cleanId.toUpperCase()))
+    );
+    if (found) return found;
+
+    // 5. Synthesize application from agent profile if agent exists
+    const agent = this.getAgent(strippedCode) || this.getAgent(cleanId);
+    if (agent) {
+      const synthesized = createApplicationFromAgent(agent, null);
+      synthesized.id = cleanId;
+      this.saveApplication(synthesized);
+      return synthesized;
+    }
+
+    return null;
   },
 
   saveApplication(app: AccreditationApplication): void {
     const apps = this.getApplications();
-    const idx = apps.findIndex((a) => a.id === app.id);
+    const cleanId = app.id?.trim();
+    const appCode = app.affiliateCode?.trim().toUpperCase();
+
+    const idx = apps.findIndex(
+      (a) =>
+        (cleanId && a.id === cleanId) ||
+        (appCode && a.affiliateCode && a.affiliateCode.toUpperCase() === appCode)
+    );
+
     if (idx >= 0) {
-      apps[idx] = app;
+      // Retain the requested ID if new, and merge details
+      apps[idx] = {
+        ...apps[idx],
+        ...app,
+        id: app.id || apps[idx].id,
+      };
     } else {
       apps.unshift(app);
     }

@@ -103,7 +103,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
   const [viewMode, setViewMode] = useState<'continuous' | 'paginated'>('continuous');
   const [currentPageIndex, setCurrentPageIndex] = useState<number>(0);
   const [zoomScale, setZoomScale] = useState<number>(1);
-  const [renderedTotalPages, setRenderedTotalPages] = useState<number>(9);
+  const [renderedTotalPages, setRenderedTotalPages] = useState<number>(7);
   const renderedContainerRef = useRef<HTMLElement | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
   const [showMappingDrawer, setShowMappingDrawer] = useState<boolean>(false);
@@ -159,16 +159,19 @@ export const ContractModal: React.FC<ContractModalProps> = ({
     if (!isCurrentActiveUnlocked) return;
     document.body.classList.add('printing-contract');
 
-    // Ensure all rendered SAA page sections are unhidden for the print engine
+    // Ensure all 7 rendered SAA page sections are completely unhidden and normalized for native A4 print engine
     if (renderedContainerRef.current) {
       const sections = renderedContainerRef.current.querySelectorAll<HTMLElement>(
         '.saa-page-sheet, .docx-wrapper > section.docx, section.docx'
       );
       sections.forEach((sec) => {
+        sec.classList.remove('hidden');
         sec.style.setProperty('display', 'flex', 'important');
+        sec.style.setProperty('visibility', 'visible', 'important');
       });
     }
 
+    // Trigger native browser print dialog
     window.print();
 
     // Clean up printing state and restore pagination cleanly
@@ -178,11 +181,15 @@ export const ContractModal: React.FC<ContractModalProps> = ({
         const sections = renderedContainerRef.current.querySelectorAll<HTMLElement>(
           '.saa-page-sheet, .docx-wrapper > section.docx, section.docx'
         );
-        sections.forEach((sec) => {
+        sections.forEach((sec, idx) => {
           sec.style.removeProperty('display');
+          sec.style.removeProperty('visibility');
+          if (viewMode === 'paginated' && idx !== currentPageIndex) {
+            sec.classList.add('hidden');
+          }
         });
       }
-    }, 1500);
+    }, 1200);
   };
 
   const activeTemplateFileName =
@@ -247,7 +254,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({
             {POSITIONS.map((pos) => {
               const isActive = activePosition === pos;
               const isUnlocked = isPositionUnlocked(pos);
-              const pageCount = 9;
+              const pageCount = 7;
               return (
                 <button
                   key={pos}
@@ -460,8 +467,8 @@ export const ContractModal: React.FC<ContractModalProps> = ({
           )}
         </div>
 
-        {/* Collapsible Tag Data Transfer Mapping Drawer at lower section */}
-        {showMappingDrawer && (
+        {/* Collapsible Tag Data Transfer Mapping Drawer at lower section (Staff & Admin only) */}
+        {!isAgentUser && showMappingDrawer && (
           <div className="contract-modal-drawer no-print px-5 py-3 bg-slate-900 border-t border-slate-800 text-xs animate-in fade-in duration-200">
             <div className="flex items-center justify-between mb-2">
               <span className="font-bold text-white flex items-center gap-1.5">
@@ -501,16 +508,18 @@ export const ContractModal: React.FC<ContractModalProps> = ({
             <span className="text-slate-300">
               Source Template: <span className="font-mono text-amber-300">{activeTemplateFileName}</span> ({renderedTotalPages} Pages)
             </span>
-            <button
-              type="button"
-              onClick={() => setShowMappingDrawer(!showMappingDrawer)}
-              className="text-amber-300 hover:text-amber-200 font-semibold flex items-center gap-1 cursor-pointer ml-2 text-xs"
-              title="Toggle Tag Data Transfer Mapping"
-            >
-              <Tag className="w-3.5 h-3.5" />
-              {showMappingDrawer ? 'Hide Tag Data Transfer Mapping' : 'View Tag Data Transfer Mapping'}
-              {showMappingDrawer ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
-            </button>
+            {!isAgentUser && (
+              <button
+                type="button"
+                onClick={() => setShowMappingDrawer(!showMappingDrawer)}
+                className="text-amber-300 hover:text-amber-200 font-semibold flex items-center gap-1 cursor-pointer ml-2 text-xs"
+                title="Toggle Tag Data Transfer Mapping"
+              >
+                <Tag className="w-3.5 h-3.5" />
+                {showMappingDrawer ? 'Hide Tag Data Transfer Mapping' : 'View Tag Data Transfer Mapping'}
+                {showMappingDrawer ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">

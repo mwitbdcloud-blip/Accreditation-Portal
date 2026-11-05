@@ -340,11 +340,29 @@ export async function fetchApplicationsFromFirestore(): Promise<AccreditationApp
 }
 
 export async function fetchApplicationFromFirestore(id: string): Promise<AccreditationApplication | null> {
+  if (!id) return null;
+  const cleanId = id.trim();
+  const cleanCode = cleanId.replace(/^app_/, '');
   try {
-    const snap = await getDoc(doc(db, 'applications', id));
+    const snap = await getDoc(doc(db, 'applications', cleanId));
     if (snap.exists()) {
       return snap.data() as AccreditationApplication;
     }
+
+    // Fallback: Query by field 'id'
+    const qId = query(collection(db, 'applications'), where('id', '==', cleanId));
+    const snapId = await getDocs(qId);
+    if (!snapId.empty) {
+      return snapId.docs[0].data() as AccreditationApplication;
+    }
+
+    // Fallback: Query by field 'affiliateCode'
+    const qCode = query(collection(db, 'applications'), where('affiliateCode', '==', cleanCode));
+    const snapCode = await getDocs(qCode);
+    if (!snapCode.empty) {
+      return snapCode.docs[0].data() as AccreditationApplication;
+    }
+
     return null;
   } catch (err: any) {
     console.warn(`Firestore fetchApplication error for ${id}:`, err?.message || err);

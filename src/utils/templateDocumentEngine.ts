@@ -230,8 +230,8 @@ export async function exportDocxContainerToPdf(
     format: 'a4',
   });
 
-  const pdfWidth = pdf.internal.pageSize.getWidth();
-  const pdfHeight = pdf.internal.pageSize.getHeight();
+  const pdfWidth = pdf.internal.pageSize.getWidth(); // 595.28 pt
+  const pdfHeight = pdf.internal.pageSize.getHeight(); // 841.89 pt
 
   for (let i = 0; i < sections.length; i++) {
     const section = sections[i];
@@ -242,43 +242,77 @@ export async function exportDocxContainerToPdf(
     const prevVisibility = section.style.visibility;
     const prevBoxShadow = section.style.boxShadow;
     const prevOpacity = section.style.opacity;
+    const hadHiddenClass = section.classList.contains('hidden');
 
     // Ensure page is laid out as flex container matching screen view
-    section.style.display = 'flex';
-    section.style.visibility = 'visible';
-    section.style.opacity = '1';
+    if (hadHiddenClass) section.classList.remove('hidden');
+    section.style.setProperty('display', 'flex', 'important');
+    section.style.setProperty('visibility', 'visible', 'important');
+    section.style.setProperty('opacity', '1', 'important');
     section.style.boxShadow = 'none';
 
     // Temporarily hide viewer-only badges
     const badges = Array.from(section.querySelectorAll<HTMLElement>('.template-page-badge'));
     badges.forEach((b) => (b.style.display = 'none'));
 
+    // Wait for all images inside this section to complete loading and decoding
+    const imgs = Array.from(section.querySelectorAll<HTMLImageElement>('img'));
+    await Promise.all(
+      imgs.map(async (img) => {
+        try {
+          if ('decode' in img && !img.complete) {
+            await img.decode();
+          }
+        } catch {
+          // ignore
+        }
+      })
+    );
+
     // High quality canvas capture with safe OKLCH handling
     const canvas = await safeHtml2Canvas(section, {
-      scale: 2,
+      scale: 2.2,
       useCORS: true,
       allowTaint: true,
       logging: false,
       backgroundColor: '#ffffff',
-      windowWidth: 1000,
+      windowWidth: 850,
     });
 
     // Restore previous display state
-    section.style.display = prevDisplay;
-    section.style.visibility = prevVisibility;
-    section.style.opacity = prevOpacity;
-    section.style.boxShadow = prevBoxShadow;
+    if (hadHiddenClass) section.classList.add('hidden');
+    if (prevDisplay) section.style.display = prevDisplay;
+    else section.style.removeProperty('display');
+    if (prevVisibility) section.style.visibility = prevVisibility;
+    else section.style.removeProperty('visibility');
+    if (prevOpacity) section.style.opacity = prevOpacity;
+    else section.style.removeProperty('opacity');
+    if (prevBoxShadow) section.style.boxShadow = prevBoxShadow;
+    else section.style.removeProperty('box-shadow');
     badges.forEach((b) => (b.style.display = ''));
 
     const imgData = canvas.toDataURL('image/jpeg', 0.98);
-    const calculatedHeight = (canvas.height * pdfWidth) / canvas.width;
-    const pageTargetHeight = calculatedHeight > 50 ? calculatedHeight : pdfHeight;
+    const canvasRatio = canvas.height / canvas.width;
 
-    if (i > 0) {
-      pdf.addPage([pdfWidth, pageTargetHeight], 'portrait');
+    // Scale proportionally to fit A4 page without clipping or overflow
+    let renderW = pdfWidth;
+    let renderH = pdfWidth * canvasRatio;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (renderH > pdfHeight) {
+      renderH = pdfHeight;
+      renderW = pdfHeight / canvasRatio;
+      offsetX = (pdfWidth - renderW) / 2;
+    } else {
+      offsetY = (pdfHeight - renderH) / 2;
     }
 
-    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, calculatedHeight);
+    if (i > 0) {
+      pdf.addPage('a4', 'portrait');
+    }
+
+    pdf.addImage(imgData, 'JPEG', offsetX, offsetY, renderW, renderH, undefined, 'FAST');
   }
 
   const pdfBlob = pdf.output('blob');
@@ -291,14 +325,12 @@ export async function exportDocxContainerToPdf(
 
 /**
  * Generates an official Sales Agency Agreement (SAA) PDF matching the EXACT template
- * and content that is viewed in "View Sales Agency Agreement".
+ * and content that is viewed in "View Sales Agency Agreement" (7 Pages Official Template).
  *
- * If an existing rendered container is provided (e.g. from ContractModal where the template
- * is already displayed on screen), it directly captures those exact rendered pages.
- *
- * If no container is provided or container pages are incomplete, it renders the authentic
- * OfficialSaaDocument directly off-screen in continuous mode, completely eliminating any
- * extra/blank pages, and exports every page into the official PDF document.
+ * Renders the authentic OfficialSaaDocument directly off-screen in continuous mode at full
+ * 850px desktop resolution, ensuring that all 7 pages (Agent Information Sheet, Agreement Clauses,
+ * Signatures, Notarial Acknowledgment, and Valid ID / Specimen Signatures) are faithfully
+ * preserved without empty artifact pages or clipping.
  */
 export async function generateContractPdfFromTemplate(
   templateSource: ArrayBuffer | Uint8Array | string | undefined,
@@ -310,21 +342,13 @@ export async function generateContractPdfFromTemplate(
   const p = (position || 'Marketing Associate') as Position;
   const outFileName = `Megaworld_${p.replace(/\s+/g, '_')}_Official_SAA_${contractData.affiliateCode || 'Agreement'}.pdf`;
 
-  // 1. If an existing rendered container is provided and contains all official SAA page sections, export directly!
-  if (existingContainer) {
-    const sections = existingContainer.querySelectorAll<HTMLElement>(
-      '.saa-page-sheet, .docx-wrapper > section.docx, section.docx'
-    );
-    if (sections.length >= 9) {
-      return await exportDocxContainerToPdf(existingContainer, outFileName, onProgress);
-    }
-  }
-
-  // 2. Off-screen pristine rendering of OfficialSaaDocument (guarantees exactly 9 authentic pages with no extra/empty pages)
+  // Pristine off-screen rendering of OfficialSaaDocument
+  // Guarantees all 7 authentic pages are rendered in continuous mode with zoomScale=1
+  // regardless of user's active viewport, mobile screen, or pagination view mode
   const tempHost = document.createElement('div');
   tempHost.id = `saa-export-temp-${Date.now()}`;
   tempHost.style.cssText =
-    'position: fixed; left: 0; top: 0; width: 850px; opacity: 0; pointer-events: none; z-index: -99999; background: #ffffff;';
+    'position: fixed; left: -9999px; top: 0; width: 850px; opacity: 1; pointer-events: none; z-index: -99999; background: #ffffff;';
   document.body.appendChild(tempHost);
 
   const root = createRoot(tempHost);
@@ -335,12 +359,36 @@ export async function generateContractPdfFromTemplate(
           contractData,
           position: p,
           viewMode: 'continuous',
+          zoomScale: 1,
           onTotalPagesCalculated: () => resolve(),
         })
       );
       // Give browser time to complete layout paint
-      setTimeout(resolve, 400);
+      setTimeout(resolve, 500);
     });
+
+    // Ensure all images are fully loaded and decoded
+    const allImages = Array.from(tempHost.querySelectorAll<HTMLImageElement>('img'));
+    await Promise.all(
+      allImages.map(async (img) => {
+        try {
+          if ('decode' in img && !img.complete) {
+            await img.decode();
+          }
+        } catch {
+          // ignore
+        }
+      })
+    );
+
+    // Ensure document fonts have completed rendering
+    try {
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+      }
+    } catch {
+      // ignore
+    }
 
     const result = await exportDocxContainerToPdf(tempHost, outFileName, onProgress);
     return result;

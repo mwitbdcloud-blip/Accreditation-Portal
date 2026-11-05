@@ -1309,14 +1309,24 @@ export const api = {
     reviewerRole: string,
     notes?: string,
     updatedTeamDetails?: any,
-    updatedData?: any
+    updatedData?: any,
+    applicationData?: AccreditationApplication
   ): Promise<{ success: boolean; message: string; application: AccreditationApplication }> {
     const res = await safeFetch<{ success: boolean; message: string; application: AccreditationApplication }>(
       `${BASE_URL}/applications/${id}/review`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, reviewerName, reviewerRole, notes, updatedTeamDetails, updatedData }),
+        body: JSON.stringify({
+          action,
+          reviewerName,
+          reviewerRole,
+          notes,
+          updatedTeamDetails,
+          updatedData,
+          application: applicationData,
+          affiliateCode: applicationData?.affiliateCode,
+        }),
       }
     );
 
@@ -1328,7 +1338,36 @@ export const api = {
       return res.data;
     }
 
-    const app = clientStorage.getApplication(id);
+    // Multi-tier local resolution
+    let app: AccreditationApplication | null = clientStorage.getApplication(id);
+    if (!app && applicationData) {
+      app = { ...applicationData };
+    }
+    if (!app) {
+      try {
+        app = await fetchApplicationFromFirestore(id);
+      } catch {}
+    }
+    if (!app) {
+      const allApps = clientStorage.getApplications();
+      app = allApps.find(
+        (a) =>
+          a.id === id ||
+          a.id?.toLowerCase() === id.toLowerCase() ||
+          a.affiliateCode === id ||
+          a.affiliateCode === id.replace(/^app_/, '') ||
+          `app_${a.affiliateCode}` === id
+      ) || null;
+    }
+    if (!app) {
+      const cleanCode = id.replace(/^app_/, '');
+      const agent = clientStorage.getAgent(cleanCode) || clientStorage.getAgent(id);
+      if (agent) {
+        app = createApplicationFromAgent(agent, null);
+        app.id = id;
+      }
+    }
+
     if (!app) throw new Error(`Application ${id} not found.`);
 
     if (updatedData) {

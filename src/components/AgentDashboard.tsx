@@ -149,11 +149,6 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
             </div>
 
             <div className="space-y-1">
-              <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-amber-400/20 border border-amber-400/30 text-amber-300 text-[11px] font-semibold tracking-wide">
-                <span>International Property Affiliate Portal</span>
-                <span>•</span>
-                <span>Megaworld International</span>
-              </div>
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white font-serif">
                 Welcome, {agent.fullName}
               </h1>

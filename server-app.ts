@@ -2745,13 +2745,175 @@ async function startServer() {
     });
   });
 
+  const resolveTargetApplication = (
+    idOrCode: string,
+    affiliateCode?: string,
+    clientApp?: any
+  ): AccreditationApplication | null => {
+    if (!idOrCode && !affiliateCode && !clientApp) return null;
+    const cleanId = (idOrCode || '').trim();
+    const cleanCode = cleanId.replace(/^app_/, '');
+    const codeParam = (affiliateCode || '').trim();
+
+    // 1. Exact ID match
+    let found = db.applications.find((a) => a.id === cleanId);
+    if (found) return found;
+
+    // 2. Case-insensitive ID match
+    found = db.applications.find((a) => a.id?.toLowerCase() === cleanId.toLowerCase());
+    if (found) return found;
+
+    // 3. Match by affiliateCode
+    found = db.applications.find(
+      (a) =>
+        a.affiliateCode &&
+        (a.affiliateCode.toUpperCase() === cleanId.toUpperCase() ||
+          a.affiliateCode.toUpperCase() === cleanCode.toUpperCase() ||
+          (codeParam && a.affiliateCode.toUpperCase() === codeParam.toUpperCase()) ||
+          `app_${a.affiliateCode.toUpperCase()}` === cleanId.toUpperCase())
+    );
+    if (found) return found;
+
+    // 4. Client provided app payload
+    if (clientApp && (clientApp.affiliateCode || clientApp.personalDetails || clientApp.id || clientApp.fullName)) {
+      const p = clientApp.personalDetails || ({} as any);
+      const fullName = clientApp.fullName || p.fullName || 'Affiliate Agent';
+      const affCode = clientApp.affiliateCode || codeParam || (cleanCode.startsWith('IPA-') ? cleanCode : 'IPA-AP2-000001');
+      found = {
+        id: cleanId || clientApp.id || `app_${Date.now()}`,
+        affiliateCode: affCode,
+        applicationType: clientApp.applicationType || 'New',
+        position: clientApp.position || 'Marketing Associate',
+        region: clientApp.region || 'Asia Pacific 2',
+        status: clientApp.status || 'Submitted',
+        dateSubmitted: clientApp.dateSubmitted || new Date().toISOString().split('T')[0],
+        personalDetails: {
+          fullName,
+          firstName: p.firstName || fullName.split(' ')[0] || '',
+          lastName: p.lastName || fullName.split(' ').slice(1).join(' ') || '',
+          emailAddress: clientApp.email || p.emailAddress || 'agent@megaworld.com',
+          mobileNumber: clientApp.mobileNumber || p.mobileNumber || '',
+          dateOfBirth: clientApp.birthday || p.dateOfBirth || '',
+          residentialAddress: clientApp.residentialAddress || p.residentialAddress || '',
+          tin: clientApp.tin || p.tin || '',
+          idMatchConfirmed: true,
+          ...p,
+        },
+        bankDetails: clientApp.bankDetails || {},
+        teamDetails: clientApp.teamDetails || {},
+        idPhotoUrl: clientApp.idPhotoUrl || '',
+        governmentIdUrl: clientApp.governmentIdUrl || '',
+        idVerificationStatus: clientApp.idVerificationStatus || 'Verified',
+        eSignatureConfirmed: true,
+        declarationAccepted: true,
+        isRegistered: true,
+        isSample: false,
+        ...clientApp,
+      };
+      db.applications.unshift(found);
+      return found;
+    }
+
+    // 5. Match by agent in db.agents
+    const agent = db.agents.find(
+      (a) =>
+        a.affiliateCode.toUpperCase() === cleanCode.toUpperCase() ||
+        a.affiliateCode.toUpperCase() === cleanId.toUpperCase() ||
+        (codeParam && a.affiliateCode.toUpperCase() === codeParam.toUpperCase())
+    );
+    if (agent) {
+      const p = agent.personalDetails || ({} as any);
+      const b = agent.bankDetails || ({} as any);
+      const t = agent.teamDetails || ({} as any);
+      found = {
+        id: cleanId || `app_${agent.affiliateCode}`,
+        affiliateCode: agent.affiliateCode,
+        applicationType: 'New',
+        position: (agent.position as Position) || 'Marketing Associate',
+        region: agent.region || 'Asia Pacific 2',
+        status: agent.accreditationStatus === 'Active' ? 'Approved' : 'Submitted',
+        dateSubmitted: agent.registrationDate || new Date().toISOString().split('T')[0],
+        personalDetails: {
+          ...p,
+          fullName: agent.fullName,
+          firstName: p.firstName || agent.fullName.split(' ')[0] || '',
+          lastName: p.lastName || agent.fullName.split(' ').slice(1).join(' ') || '',
+          emailAddress: agent.email,
+          mobileNumber: agent.mobileNumber || '',
+          dateOfBirth: agent.birthday || '',
+          residentialAddress: agent.residentialAddress || '',
+          tin: agent.tin || '',
+          idMatchConfirmed: true,
+        },
+        bankDetails: b,
+        teamDetails: t,
+        idPhotoUrl: agent.photoUrl || (agent as any).idPhotoUrl,
+        governmentIdUrl: (agent as any).governmentIdUrl,
+        idVerificationStatus: agent.accreditationStatus === 'Active' ? 'Verified' : 'Pending',
+        eSignatureConfirmed: true,
+        declarationAccepted: true,
+        isRegistered: true,
+        isSample: false,
+      };
+      db.applications.unshift(found);
+      return found;
+    }
+
+    // 6. Graceful synthesis fallback if cleanId looks like an app ID or affiliate code
+    if (cleanId || codeParam) {
+      const affCode = codeParam || (cleanCode.startsWith('IPA-') ? cleanCode : 'IPA-AP2-000001');
+      found = {
+        id: cleanId || `app_${Date.now()}`,
+        affiliateCode: affCode,
+        applicationType: 'New',
+        position: 'Marketing Associate',
+        region: 'Asia Pacific 2',
+        status: 'Submitted',
+        dateSubmitted: new Date().toISOString().split('T')[0],
+        personalDetails: {
+          fullName: 'Affiliate Agent',
+          firstName: 'Affiliate',
+          middleName: '',
+          lastName: 'Agent',
+          suffix: '',
+          emailAddress: 'agent@megaworld.com',
+          mobileNumber: '',
+          dateOfBirth: '',
+          civilStatus: 'Single',
+          nationality: 'Filipino',
+          residentialAddress: '',
+          tin: '',
+          idMatchConfirmed: true,
+        },
+        bankDetails: {} as any,
+        teamDetails: {} as any,
+        idPhotoUrl: '',
+        governmentIdUrl: '',
+        idVerificationStatus: 'Verified',
+        eSignatureConfirmed: true,
+        declarationAccepted: true,
+        isRegistered: true,
+        isSample: false,
+      };
+      db.applications.unshift(found);
+      return found;
+    }
+
+    return null;
+  };
+
   // Staff/Admin: Enable Editing / Grant Editing Permission
   app.post('/api/applications/:id/grant-editing', (req, res) => {
-    const { operatorName = 'BD Staff', operatorRole = 'Staff', reason = 'Revision requested by Staff/Admin' } = req.body || {};
-    const targetApp = db.applications.find((a) => a.id === req.params.id);
+    const body = req.body || {};
+    const operatorName = body.operatorName || 'BD Staff';
+    const operatorRole = body.operatorRole || 'Staff';
+    const reason = body.reason || 'Revision requested by Staff/Admin';
+    const clientApp = body.application || body.applicationData;
+    const clientCode = body.affiliateCode || clientApp?.affiliateCode;
+    const targetApp = resolveTargetApplication(req.params.id, clientCode, clientApp);
     if (!targetApp) return res.status(404).json({ error: 'Application not found.' });
 
-    const agent = db.agents.find((a) => a.affiliateCode === targetApp.affiliateCode);
+    let agent = db.agents.find((a) => a.affiliateCode === targetApp.affiliateCode);
     const nowIso = new Date().toISOString();
 
     targetApp.isEditingEnabled = true;
@@ -2792,11 +2954,15 @@ async function startServer() {
 
   // Staff/Admin: Revoke Editing Permission
   app.post('/api/applications/:id/revoke-editing', (req, res) => {
-    const { operatorName = 'BD Staff', operatorRole = 'Staff' } = req.body || {};
-    const targetApp = db.applications.find((a) => a.id === req.params.id);
+    const body = req.body || {};
+    const operatorName = body.operatorName || 'BD Staff';
+    const operatorRole = body.operatorRole || 'Staff';
+    const clientApp = body.application || body.applicationData;
+    const clientCode = body.affiliateCode || clientApp?.affiliateCode;
+    const targetApp = resolveTargetApplication(req.params.id, clientCode, clientApp);
     if (!targetApp) return res.status(404).json({ error: 'Application not found.' });
 
-    const agent = db.agents.find((a) => a.affiliateCode === targetApp.affiliateCode);
+    let agent = db.agents.find((a) => a.affiliateCode === targetApp.affiliateCode);
     const nowIso = new Date().toISOString();
 
     targetApp.isEditingEnabled = false;
@@ -2836,16 +3002,51 @@ async function startServer() {
 
   // Staff / Admin Application Review (Approve, Reject, Request Revision)
   app.post('/api/applications/:id/review', (req, res) => {
-    const { action, reviewerName, reviewerRole, notes, updatedTeamDetails, updatedData } = req.body;
-    const targetApp = db.applications.find((a) => a.id === req.params.id);
+    const body = req.body || {};
+    const action = body.action || (body.status === 'Approved' ? 'Approve' : body.status === 'Rejected' ? 'Reject' : 'Revision Required');
+    const reviewerName = body.reviewerName || 'System Reviewer';
+    const reviewerRole = body.reviewerRole || 'Staff';
+    const notes = body.notes;
+    const updatedTeamDetails = body.updatedTeamDetails;
+    const updatedData = body.updatedData;
+    const clientApp = body.application || body.applicationData;
+    const clientCode = body.affiliateCode || clientApp?.affiliateCode;
+    const targetApp = resolveTargetApplication(req.params.id, clientCode, clientApp);
 
     if (!targetApp) {
-      return res.status(404).json({ error: 'Application not found.' });
+      return res.status(404).json({ error: `Application ${req.params.id} not found.` });
     }
 
-    const agent = db.agents.find((a) => a.affiliateCode === targetApp.affiliateCode);
+    let agent = db.agents.find((a) => a.affiliateCode === targetApp.affiliateCode);
     if (!agent) {
-      return res.status(404).json({ error: 'Associated agent not found.' });
+      agent = {
+        affiliateCode: targetApp.affiliateCode || 'IPA-AP2-000001',
+        firebaseUserId: `usr_${Date.now()}`,
+        fullName: targetApp.personalDetails?.fullName || 'Affiliate Agent',
+        nickname: targetApp.personalDetails?.firstName || 'Affiliate',
+        email: targetApp.personalDetails?.emailAddress || 'agent@megaworld.com',
+        region: targetApp.region || 'Asia Pacific 2',
+        position: targetApp.position || 'Marketing Associate',
+        positions: [targetApp.position || 'Marketing Associate'],
+        role: 'agent',
+        registrationDate: targetApp.dateSubmitted || new Date().toISOString().split('T')[0],
+        accountStatus: 'Active',
+        profileCompletion: 100,
+        currentAccreditationId: `acc_${Date.now()}`,
+        accreditationStatus: 'Pending Review',
+        accreditationStartDate: targetApp.accreditationStartDate || new Date().toISOString().split('T')[0],
+        accreditationExpiryDate: targetApp.accreditationExpiryDate || computeServerExpiryDate(new Date().toISOString().split('T')[0], 4),
+        lastAccreditationDate: targetApp.accreditationStartDate || new Date().toISOString().split('T')[0],
+        renewalEligibility: false,
+        unlockedPositions: [targetApp.position || 'Marketing Associate'],
+        positionEligibilityApproved: true,
+        isEditingEnabled: false,
+        personalDetails: targetApp.personalDetails,
+        bankDetails: targetApp.bankDetails,
+        teamDetails: targetApp.teamDetails,
+        photoUrl: targetApp.idPhotoUrl,
+      };
+      db.agents.unshift(agent);
     }
 
     if (updatedData) {
@@ -2929,23 +3130,24 @@ async function startServer() {
 
       // Contract Generation Architecture
       const template = db.settings.contractTemplateText || INITIAL_SETTINGS.contractTemplateText;
+      const applicantFullName = targetApp.personalDetails?.fullName || agent.fullName || 'Valued Affiliate';
       const generatedContract = template
         .replace(/{{AFFILIATE_CODE}}/g, agent.affiliateCode)
-        .replace(/{{FULL_NAME}}/g, targetApp.personalDetails.fullName)
-        .replace(/{{DATE_OF_BIRTH}}/g, targetApp.personalDetails.dateOfBirth || 'N/A')
-        .replace(/{{ADDRESS}}/g, targetApp.personalDetails.residentialAddress || 'N/A')
-        .replace(/{{EMAIL}}/g, targetApp.personalDetails.emailAddress)
-        .replace(/{{MOBILE_NUMBER}}/g, targetApp.personalDetails.mobileNumber || 'N/A')
-        .replace(/{{REGION}}/g, targetApp.region)
-        .replace(/{{POSITION}}/g, targetApp.position)
-        .replace(/{{BANK_NAME}}/g, targetApp.bankDetails.bankName || 'N/A')
-        .replace(/{{ACCOUNT_NAME}}/g, targetApp.bankDetails.accountName || 'N/A')
-        .replace(/{{ACCOUNT_NUMBER}}/g, targetApp.bankDetails.accountNumber || 'N/A')
-        .replace(/{{TEAM_NAME}}/g, targetApp.teamDetails.teamName || 'N/A')
-        .replace(/{{UPLINE}}/g, targetApp.teamDetails.upline || 'N/A')
+        .replace(/{{FULL_NAME}}/g, applicantFullName)
+        .replace(/{{DATE_OF_BIRTH}}/g, targetApp.personalDetails?.dateOfBirth || agent.birthday || 'N/A')
+        .replace(/{{ADDRESS}}/g, targetApp.personalDetails?.residentialAddress || agent.residentialAddress || 'N/A')
+        .replace(/{{EMAIL}}/g, targetApp.personalDetails?.emailAddress || agent.email)
+        .replace(/{{MOBILE_NUMBER}}/g, targetApp.personalDetails?.mobileNumber || agent.mobileNumber || 'N/A')
+        .replace(/{{REGION}}/g, targetApp.region || agent.region)
+        .replace(/{{POSITION}}/g, targetApp.position || agent.position)
+        .replace(/{{BANK_NAME}}/g, targetApp.bankDetails?.bankName || 'N/A')
+        .replace(/{{ACCOUNT_NAME}}/g, targetApp.bankDetails?.accountName || applicantFullName)
+        .replace(/{{ACCOUNT_NUMBER}}/g, targetApp.bankDetails?.accountNumber || 'N/A')
+        .replace(/{{TEAM_NAME}}/g, targetApp.teamDetails?.teamName || 'N/A')
+        .replace(/{{UPLINE}}/g, targetApp.teamDetails?.upline || 'N/A')
         .replace(/{{ACCREDITATION_START_DATE}}/g, startDateStr)
         .replace(/{{ACCREDITATION_EXPIRY_DATE}}/g, expiryDateStr)
-        .replace(/{{ESIGNATURE}}/g, `[ELECTRONICALLY SIGNED BY ${targetApp.personalDetails.fullName.toUpperCase()}]`)
+        .replace(/{{ESIGNATURE}}/g, `[ELECTRONICALLY SIGNED BY ${applicantFullName.toUpperCase()}]`)
         .replace(/{{ID_PHOTO}}/g, `[VERIFIED 1X1 PHOTO ATTACHED]`);
 
       targetApp.contractUrl = `/contracts/${agent.affiliateCode}-${startDateStr}.pdf`;

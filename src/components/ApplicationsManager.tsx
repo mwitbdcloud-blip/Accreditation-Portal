@@ -86,7 +86,8 @@ interface ApplicationsManagerProps {
     id: string,
     action: 'Approve' | 'Reject' | 'Revision Required',
     notes?: string,
-    updatedTeamDetails?: TeamDetails
+    updatedTeamDetails?: TeamDetails,
+    applicationData?: AccreditationApplication
   ) => void;
   onUpdateApplicationDetails?: (
     id: string,
@@ -636,11 +637,23 @@ export const ApplicationsManager: React.FC<ApplicationsManagerProps> = ({
       }
     }
 
+    const mergedApp: AccreditationApplication = {
+      ...selectedApp,
+      personalDetails: updatedPersonal,
+      bankDetails: updatedBank,
+      teamDetails: updatedTeam,
+      idVerificationStatus: editableDocStatus as any,
+    };
+    if (editableDocPhotoUrl !== null) mergedApp.idPhotoUrl = editableDocPhotoUrl;
+    if (editableGovernmentIdUrl !== null) mergedApp.governmentIdUrl = editableGovernmentIdUrl;
+    if (editableESignatureUrl !== null) mergedApp.eSignatureUrl = editableESignatureUrl;
+
     await onReviewApplication(
       selectedApp.id,
       action,
       reviewNotes,
-      updatedTeam
+      updatedTeam,
+      mergedApp
     );
     setIsProcessing(false);
     handleCloseModal();

@@ -26,7 +26,7 @@ export const TemplateContractViewer: React.FC<TemplateContractViewerProps> = ({
 
   useEffect(() => {
     if (containerRef.current && onLoaded) {
-      onLoaded(9, containerRef.current);
+      onLoaded(7, containerRef.current);
     }
   }, [position, JSON.stringify(contractData), onLoaded]);
 

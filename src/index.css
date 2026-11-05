@@ -46,7 +46,7 @@ select:autofill {
 @media print {
   @page {
     size: A4 portrait;
-    margin: 12mm 12mm 12mm 12mm;
+    margin: 8mm 10mm 8mm 10mm;
   }
 
   html,
@@ -58,7 +58,7 @@ select:autofill {
     padding: 0 !important;
     width: 100% !important;
     height: auto !important;
-    min-height: 100% !important;
+    min-height: 0 !important;
     overflow: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
@@ -69,24 +69,61 @@ select:autofill {
   nav,
   aside,
   footer,
+  #app-left-sidebar,
   #main-navbar,
+  #notifications-btn,
+  #header-profile-btn,
   .no-print,
   [data-no-print] {
     display: none !important;
+    visibility: hidden !important;
   }
 
-  /* When printing contract: hide all root children except the contract modal */
-  body.printing-contract #root > *:not(:has(#contract-modal)),
-  body:has(#contract-modal) #root > *:not(:has(#contract-modal)) {
+  /* When printing contract: hide all UI controls and app chrome */
+  body.printing-contract header,
+  body.printing-contract nav,
+  body.printing-contract aside,
+  body.printing-contract footer,
+  body.printing-contract #app-left-sidebar,
+  body.printing-contract #notifications-btn,
+  body.printing-contract #header-profile-btn,
+  body.printing-contract .contract-modal-header,
+  body.printing-contract .contract-modal-toolbar,
+  body.printing-contract .contract-modal-footer,
+  body.printing-contract .contract-modal-drawer,
+  body.printing-contract .template-page-badge,
+  body.printing-contract button,
+  body.printing-contract select,
+  body.printing-contract input {
     display: none !important;
+    visibility: hidden !important;
   }
 
-  /* If printing Digital ID Badge */
-  body:has(#digital-id-badge-card) #root > *:not(:has(#digital-id-badge-card)) {
-    display: none !important;
+  /* Reset all parent wrappers of #contract-modal and #contract-print-area so NO scrollbars or gray boxes exist */
+  body.printing-contract,
+  body.printing-contract #root,
+  body.printing-contract #root > div,
+  body.printing-contract #root > div > div,
+  body.printing-contract main {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
   }
 
   /* Contract modal outer overlay reset */
+  body.printing-contract #contract-modal,
   #contract-modal {
     position: static !important;
     display: block !important;
@@ -96,14 +133,19 @@ select:autofill {
     padding: 0 !important;
     margin: 0 !important;
     overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
     max-height: none !important;
     height: auto !important;
+    min-height: 0 !important;
     width: 100% !important;
+    max-width: 100% !important;
     inset: auto !important;
     z-index: auto !important;
   }
 
   /* Contract modal inner container */
+  body.printing-contract #contract-modal > div,
   #contract-modal > div {
     position: static !important;
     display: block !important;
@@ -113,50 +155,53 @@ select:autofill {
     box-shadow: none !important;
     max-height: none !important;
     height: auto !important;
+    min-height: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
     border-radius: 0 !important;
   }
 
-  /* Hide modal chrome controls */
-  #contract-modal .contract-modal-header,
-  #contract-modal .contract-modal-toolbar,
-  #contract-modal .contract-modal-footer,
-  #contract-modal .contract-modal-drawer,
-  #contract-modal button,
-  #contract-modal input,
-  #contract-modal select,
-  #contract-modal .template-page-badge {
-    display: none !important;
-    visibility: hidden !important;
-  }
-
   /* Scrollable body in modal */
+  body.printing-contract #contract-modal .contract-modal-body,
   #contract-modal .contract-modal-body {
     overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
     max-height: none !important;
     height: auto !important;
+    min-height: 0 !important;
     padding: 0 !important;
     margin: 0 !important;
     background: #ffffff !important;
     background-color: #ffffff !important;
     display: block !important;
     width: 100% !important;
+    max-width: 100% !important;
   }
 
+  body.printing-contract #contract-print-area,
   #contract-print-area {
     display: block !important;
+    position: static !important;
     width: 100% !important;
+    max-width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;
+    background-color: #ffffff !important;
+    overflow: visible !important;
   }
 
   /* Template contract wrapper */
-  .template-contract-wrapper {
+  body.printing-contract .template-contract-wrapper,
+  .template-contract-wrapper,
+  body.printing-contract .official-saa-container,
+  .official-saa-container {
     transform: none !important;
     max-width: 100% !important;
     width: 100% !important;
@@ -164,28 +209,11 @@ select:autofill {
     padding: 0 !important;
     display: block !important;
     overflow: visible !important;
-  }
-
-  .docx-viewer-root {
-    display: block !important;
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-    background: #ffffff !important;
-  }
-
-  .docx-wrapper {
     background: transparent !important;
-    background-color: transparent !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    display: block !important;
-    overflow: visible !important;
-    box-shadow: none !important;
   }
 
   /* All SAA pages must be displayed in print and properly page-broken */
+  body.printing-contract .saa-page-sheet,
   .saa-page-sheet,
   section.docx,
   .docx-wrapper > section.docx {
@@ -200,11 +228,14 @@ select:autofill {
     border: none !important;
     border-radius: 0 !important;
     margin: 0 auto !important;
-    padding: 24pt 30pt !important;
+    padding: 10mm 14mm 8mm 14mm !important;
     width: 100% !important;
     max-width: 100% !important;
-    min-height: 1020px !important;
+    min-height: 275mm !important;
+    max-height: 285mm !important;
+    height: auto !important;
     box-sizing: border-box !important;
+    overflow: hidden !important;
     page-break-before: auto !important;
     page-break-after: always !important;
     break-after: page !important;
@@ -212,10 +243,37 @@ select:autofill {
     break-inside: avoid !important;
   }
 
+  body.printing-contract .saa-page-sheet:last-child,
   .saa-page-sheet:last-child,
   section.docx:last-child,
   .docx-wrapper > section.docx:last-child {
     page-break-after: auto !important;
     break-after: auto !important;
+  }
+
+  /* Welcome Letter Single Page Print Rules - strictly fits on exactly 1 page */
+  #welcome-letter-sheet,
+  .welcome-letter-sheet {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    min-height: 297mm !important;
+    margin: 0 auto !important;
+    padding: 12mm 16mm 10mm 16mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
   }
 }
